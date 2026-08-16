@@ -350,7 +350,63 @@ class SettingsWindow(QDialog):
         self.recompute_btn.clicked.connect(self._on_recompute_clicked)
         layout.addWidget(self.recompute_btn)
 
+        self._apply_semantic_search_availability()
+
         return self.search_group
+
+    def _apply_semantic_search_availability(self) -> None:
+        """Дизейблит весь блок семантического поиска и подменяет
+        подсказку, если sentence-transformers/torch физически не
+        установлены (этап 3 дорожной карты рефакторинга — опциональная
+        зависимость `pip install .[promptvault]`).
+
+        Раньше чекбокс включался независимо от того, установлена ли
+        библиотека вообще — включить его можно было всегда, просто без
+        эффекта (embedding.get_model() тихо проваливался бы в None при
+        первой попытке). Теперь недоступность видна пользователю сразу,
+        а не только как "почему-то не находит по смыслу" в процессе
+        работы.
+
+        Вызывается один раз при построении окна и заново из
+        retranslate_ui() (после смены языка), т.к. меняет текст
+        подсказки.
+        """
+
+        available = self.gallery.semantic_search_available()
+
+        self.semantic_search_checkbox.setEnabled(available)
+        self.embedding_model_box.setEnabled(available)
+        self.embedding_device_box.setEnabled(available)
+        self.recompute_btn.setEnabled(available)
+
+        if available:
+            self.semantic_search_hint.setText(
+                self.tr(
+                    "Disable if you don't use semantic (meaning-based) search "
+                    "— the embedding model (~1.3GB) will then never be loaded "
+                    "into memory. Takes full effect from the next app start "
+                    "if the model is already loaded in this session."
+                )
+            )
+            self.gpu_warning_label.setVisible(True)
+        else:
+            # чекбокс мог быть True в QSettings с прошлого запуска (когда
+            # зависимость ещё стояла) — визуально снимаем галку, чтобы
+            # не выглядело как "включено, но не работает"; сам сохранённый
+            # выбор в QSettings НЕ трогаем (embedding.set_enabled сюда и
+            # не вызывается) — если зависимость снова появится, прежний
+            # выбор пользователя вернётся как есть.
+            self.semantic_search_checkbox.setChecked(False)
+            self.semantic_search_hint.setText(
+                self.tr(
+                    "Semantic search needs optional dependencies that "
+                    "aren't installed (sentence-transformers, PyTorch). "
+                    "Install them with 'pip install .[promptvault]' (or use "
+                    "the full build) to enable it — regular text search "
+                    "keeps working either way."
+                )
+            )
+            self.gpu_warning_label.setVisible(False)
 
     def _populate_embedding_model_box(self) -> None:
         """(Пере)заполняет embedding_model_box переведёнными текстами
@@ -677,14 +733,6 @@ class SettingsWindow(QDialog):
 
         self.search_group.setTitle(self.tr("Search"))
         self.semantic_search_checkbox.setText(self.tr("Enable semantic search"))
-        self.semantic_search_hint.setText(
-            self.tr(
-                "Disable if you don't use semantic (meaning-based) search — "
-                "the embedding model (~1.3GB) will then never be loaded into "
-                "memory. Takes full effect from the next app start if the "
-                "model is already loaded in this session."
-            )
-        )
         self.embedding_model_label.setText(self.tr("Embedding model"))
         self._populate_embedding_model_box()
         self.embedding_device_label.setText(self.tr("Computation device"))
@@ -696,6 +744,10 @@ class SettingsWindow(QDialog):
             )
         )
         self.recompute_btn.setText(self.tr("Recompute all embeddings now"))
+        # переустанавливает semantic_search_hint (и заново применяет
+        # disabled-состояние виджетов) — текст подсказки зависит от
+        # доступности зависимости, см. её docstring
+        self._apply_semantic_search_availability()
 
         self.performance_group.setTitle(self.tr("Performance"))
         self.page_size_label.setText(self.tr("Page size (lazy loading)"))

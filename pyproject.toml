@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comfyui-studio"
+version = "0.1.0"
+description = "ComfyUI Studio — лаунчер ComfyUI + Prompt Builder + PromptVault в одном приложении"
+requires-python = ">=3.11"
+# Базовые зависимости — нужны, чтобы запустить лаунчер и Prompt Builder,
+# и чтобы PromptVault открывался и был полностью рабочим (обычный
+# текстовый поиск, фильтры, галерея, метаданные) БЕЗ семантического
+# (по смыслу) поиска.
+#
+# numpy здесь НЕ вынесен в опциональную группу `promptvault`, хотя
+# исторически (см. requirements.txt) шёл в одном списке с torch/
+# sentence-transformers — в отличие от них, comfyui_studio/promptvault/
+# core/embedding.py импортирует numpy БЕЗУСЛОВНО на уровне модуля
+# (не лениво внутри функций, как torch/sentence_transformers), а
+# GalleryManager импортирует embedding тоже безусловно — то есть
+# PromptVault физически не откроется без numpy уже сейчас, независимо
+# от опциональной группы ниже. Сделать сам numpy тоже честно
+# опциональным — это отдельная переработка core/embedding.py (вынос
+# байтовой (де)сериализации эмбеддингов в чистый Python/array), не
+# входящая в объём этапа 3; при этом numpy сам по себе лёгкий (в
+# отличие от torch/sentence-transformers) и не создаёт той проблемы
+# (гигабайты в exe, конфликт версий), ради которой затевался этот
+# этап — поэтому он остаётся здесь как обычная зависимость.
+dependencies = [
+    "PySide6==6.11.1",
+    "psutil>=5.9",
+    "nvidia-ml-py>=12.0",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+# `pip install .[promptvault]` — включает семантический (по смыслу)
+# поиск в PromptVault. Без этой группы PromptVault всё равно
+# запускается и полностью работает — просто чекбокс "Enable semantic
+# search" в его настройках задизейблен с пояснением, см.
+# comfyui_studio/promptvault/ui/settings_window.py
+# (_apply_semantic_search_availability) и
+# comfyui_studio/promptvault/core/embedding.py (is_available/
+# set_enabled) — runtime-защита там уже была устроена достаточно
+# аккуратно (ленивые импорты torch/sentence_transformers внутри функций,
+# а не на уровне модуля) до этого этапа, этап 3 лишь добавил
+# pip-разметку зависимостей и довёл до UI то, что ядро уже умело
+# определять само.
+promptvault = [
+    "torch>=2.4",
+    "sentence-transformers>=3.0",
+]
+
+# Установка:
+#   pip install .              — Launcher + Prompt Builder + PromptVault
+#                                 без семантического поиска
+#   pip install .[promptvault] — полный комплект
+#
+# Инструменты разработки (pytest/ruff/mypy) намеренно НЕ продублированы
+# здесь отдельной группой [dev] — они уже описаны в
+# tools/promptvault/pyproject.toml (своя pytest/ruff/mypy конфигурация,
+# используется при запуске тестов из tools/promptvault/). Слияние двух
+# pyproject.toml в один — вместе с переносом самих тестов на
+# `from comfyui_studio.promptvault.` — запланировано на этап 5 (cleanup),
+# делать это здесь заранее означало бы дважды разгребать один и тот же
+# мусор, см. дорожную карту.
+
+[tool.setuptools.packages.find]
+include = ["comfyui_studio*"]
+
+[tool.setuptools.package-data]
+"comfyui_studio" = [
+    "**/*.qss",
+    "**/*.png",
+    "**/*.ico",
+    "**/*.qm",
+    "**/*.ts",
+]

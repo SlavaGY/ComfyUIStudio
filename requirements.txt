@@ -2,6 +2,16 @@
 # Character/Prompt Config Editor + PromptVault) -- один venv на всё,
 # см. main.py в корне и build_exe.bat.
 #
+# Этап 3 дорожной карты рефакторинга добавил pyproject.toml в корне
+# репозитория с разделением на обязательные зависимости и опциональную
+# группу `promptvault` (torch/sentence-transformers -- см. его
+# комментарии). Этот файл пока не удалён и не заменён -- build_exe.bat
+# по-прежнему ставит зависимости через `pip install -r requirements.txt`
+# (полный комплект, как раньше). Выбор одного источника правды
+# (requirements.txt vs pyproject.toml) -- решение этапа 5 (cleanup),
+# сейчас оба намеренно описывают одинаковый набор пакетов, чтобы ничего
+# не разъехалось между ними в промежутке.
+#
 # PySide6 закреплён версией из tools/promptvault/requirements.txt
 # (==6.11.1, из-за PySide6.QtCharts в app/ui/statistics_window.py) --
 # она удовлетворяет и требованиям лаунчера (>=6.6), и

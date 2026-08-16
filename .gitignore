@@ -1,2 +1,6 @@
 .venv-build/
 .vscode/
+__pycache__/
+*.py[cod]
+.gitignore
+ComfyUIStudio_Refactoring_Roadmap.md
