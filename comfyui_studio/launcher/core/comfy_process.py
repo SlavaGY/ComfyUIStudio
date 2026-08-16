@@ -15,25 +15,49 @@ import subprocess
 
 from PySide6.QtCore import Signal, QObject
 
-from .constants import COMFY_LOG_PATH, TOOLS_DIR
+from .constants import COMFY_LOG_PATH, PROJECT_ROOT, TOOLS_DIR
 from .logging_setup import log
 
 
 class ExternalApp:
-    """Описание одного внешнего инструмента комплекта: где его искать
-    (фиксированная подпапка в tools/), как найти собранный exe и как
-    запустить из исходников, если лаунчер сам не заморожен PyInstaller-ом."""
+    """Описание одного внешнего инструмента комплекта: где искать
+    собранный exe (фиксированная подпапка в tools/<subdir>/dist/...,
+    туда его кладут build_windows.bat/build.bat самих инструментов —
+    это НЕ затронуто переносом исходников под comfyui_studio/, см.
+    ниже) и как запустить его из исходников как пакет, если лаунчер
+    сам не заморожен PyInstaller-ом."""
 
-    def __init__(self, label, subdir, exe_name, source_entry_rel, source_cmd):
+    def __init__(self, label, subdir, exe_name, module_name):
         self.label = label
-        self.subdir = subdir  # подпапка внутри tools/
+        self.subdir = subdir  # подпапка внутри tools/ — ТОЛЬКО для поиска dist/<exe_name>.exe
         self.exe_name = exe_name
-        self.source_entry_rel = source_entry_rel  # относит. путь для проверки "это похоже на нужную папку"
-        self.source_cmd = source_cmd  # sys.executable -> list[str] аргументов запуска из исходников
+        # Пакет для запуска из исходников: `python -m <module_name>` —
+        # начиная с этапа 2 дорожной карты (перенос prompt_builder/
+        # promptvault под общее пространство имён comfyui_studio/) это
+        # comfyui_studio.prompt_builder / comfyui_studio.promptvault, а
+        # НЕ tools/<subdir> — там (см. свойство root ниже) с этапа 2
+        # исходников инструмента больше нет, только служебные файлы
+        # сборки (build.spec/README/requirements.txt) и, если собран,
+        # dist/ с exe.
+        self.module_name = module_name
 
     @property
     def root(self):
+        """Папка со СБОРОЧНЫМИ артефактами инструмента (tools/<subdir>/,
+        там же dist/<exe_name>/<exe_name>.exe после сборки) — НЕ папка
+        с исходниками; те теперь под comfyui_studio/<subdir>/, см.
+        source_entry_abs."""
         return os.path.join(TOOLS_DIR, self.subdir)
+
+    @property
+    def source_entry_abs(self):
+        """Путь к __main__.py пакета в исходниках (comfyui_studio/<subdir>/
+        __main__.py), которым можно проверить, что "python -m
+        <module_name>" вообще имеет смысл пробовать — путь считается
+        от PROJECT_ROOT (корень проекта), а не от app.root (tools/<subdir>/),
+        т.к. это разные папки после переноса под comfyui_studio/ (этап 2
+        дорожной карты)."""
+        return os.path.join(PROJECT_ROOT, "comfyui_studio", self.subdir, "__main__.py")
 
 
 EXTERNAL_APPS = [
@@ -41,15 +65,13 @@ EXTERNAL_APPS = [
         label="Character / Prompt Builder Config Editor",
         subdir="prompt_builder",
         exe_name="PromptConfigEditor",
-        source_entry_rel="main.py",
-        source_cmd=lambda py: [py, "main.py"],
+        module_name="comfyui_studio.prompt_builder",
     ),
     ExternalApp(
         label="PromptVault",
         subdir="promptvault",
         exe_name="PromptVault",
-        source_entry_rel=os.path.join("app", "main.py"),
-        source_cmd=lambda py: [py, "-m", "app.main"],
+        module_name="comfyui_studio.promptvault",
     ),
 ]
 
@@ -77,20 +99,19 @@ def resolve_external_launch(app: "ExternalApp"):
          напрямую. Работает независимо от того, запущен ли сам лаунчер из
          исходников или тоже собран в exe.
       2. Иначе, если лаунчер запущен из исходников (не заморожен), пробуем
-         запустить исходники приложения тем же интерпретатором Python.
+         запустить пакет тем же интерпретатором Python: `python -m
+         <module_name>` (comfyui_studio.prompt_builder /
+         comfyui_studio.promptvault) с рабочей папкой PROJECT_ROOT — так
+         же, как их запускает монолитный main.py, только отдельным
+         процессом вместо окна в этом же. До этапа 2 дорожной карты
+         (перенос исходников под comfyui_studio/) здесь был путь вида
+         `tools/<subdir>/main.py` — устарел вместе с самой структурой.
       3. Иначе — понятная ошибка вместо тихого "ничего не произошло".
 
     Возвращает (cmd: list[str], cwd: str, error: None) либо
     (None, None, error: str).
     """
     app_root = app.root
-    if not os.path.isdir(app_root):
-        return None, None, (
-            f"Не найдена папка {app_root} — похоже, «{app.label}» не "
-            "распакован вместе с лаунчером (ожидается в tools/{}) ."
-            .format(app.subdir)
-        )
-
     exe_path = os.path.join(app_root, "dist", app.exe_name, app.exe_name + ".exe")
     if os.path.isfile(exe_path):
         return [exe_path], os.path.dirname(exe_path), None
@@ -102,14 +123,13 @@ def resolve_external_launch(app: "ExternalApp"):
             "исходников из собранного лаунчера невозможен."
         )
 
-    entry_abs = os.path.join(app_root, app.source_entry_rel)
-    if not os.path.isfile(entry_abs):
+    if not os.path.isfile(app.source_entry_abs):
         return None, None, (
-            f"Не найден {app.source_entry_rel} в {app_root} — "
-            "похоже, папка приложения повреждена или неполная."
+            f"Не найден пакет {app.module_name} ({app.source_entry_abs}) — "
+            "похоже, исходники комплекта повреждены или неполные."
         )
 
-    return app.source_cmd(sys.executable), app_root, None
+    return [sys.executable, "-m", app.module_name], PROJECT_ROOT, None
 
 
 

@@ -55,3 +55,12 @@ DEFAULT_CONFIG = {
 }
 
 TOOLS_DIR = os.path.join(app_base_dir(), "tools")
+
+# Корень проекта (папка с exe / с main.py и comfyui_studio/) -- нужен
+# отдельным именем, а не только через app_base_dir(), для запуска
+# инструментов комплекта как пакетов (`python -m comfyui_studio.<tool>`,
+# см. core/comfy_process.py): такой запуск резолвится ОТ КОРНЯ ПРОЕКТА
+# (там лежит comfyui_studio/), а не от TOOLS_DIR -- начиная с этапа 2
+# дорожной карты (перенос prompt_builder/promptvault под comfyui_studio/)
+# исходники инструментов физически там, а не в tools/<subdir>/.
+PROJECT_ROOT = app_base_dir()
