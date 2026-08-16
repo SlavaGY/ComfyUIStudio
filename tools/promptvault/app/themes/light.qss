@@ -1,0 +1,295 @@
+/* Light theme — PromptVault */
+
+/* ==== Base ==== */
+QWidget {
+    background-color: #f5f5f5;
+    color: #1e1e1e;
+    selection-background-color: #cfe4ff;
+    selection-color: #0d1117;
+    font-size: 10pt;
+}
+
+QMainWindow {
+    background-color: #f5f5f5;
+}
+
+/* ==== Buttons ==== */
+QPushButton {
+    background-color: #ececec;
+    color: #1e1e1e;
+    border: 1px solid #d0d0d0;
+    border-radius: 5px;
+    padding: 5px 12px;
+}
+
+QPushButton:hover {
+    background-color: #d0d0d0;
+}
+
+QPushButton:pressed {
+    background-color: #1976d2;
+    color: #ffffff;
+}
+
+QPushButton:disabled {
+    background-color: #ffffff;
+    color: #6b7280;
+    border: 1px solid #ffffff;
+}
+
+QPushButton#primaryButton {
+    background-color: #1976d2;
+    color: #ffffff;
+    border: 1px solid #1976d2;
+    font-weight: 600;
+}
+
+QPushButton#primaryButton:hover {
+    background-color: #1565c0;
+    border: 1px solid #1565c0;
+}
+
+QPushButton#primaryButton:pressed {
+    background-color: #1565c0;
+}
+
+/* ==== Inputs ==== */
+QLineEdit, QTextEdit {
+    background-color: #ffffff;
+    color: #1e1e1e;
+    border: 1px solid #d0d0d0;
+    border-radius: 5px;
+    padding: 4px 6px;
+    selection-background-color: #cfe4ff;
+    selection-color: #0d1117;
+}
+
+QLineEdit:focus, QTextEdit:focus {
+    border: 1px solid #1976d2;
+}
+
+/* ==== Lists ==== */
+QListWidget {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    outline: none;
+}
+
+QListWidget::item {
+    padding: 6px;
+    border-radius: 4px;
+    color: #1e1e1e;
+}
+
+QListWidget::item:hover {
+    background-color: #ececec;
+}
+
+QListWidget::item:selected {
+    background-color: #cfe4ff;
+    color: #0d1117;
+}
+
+/* ==== ScrollArea ==== */
+QScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+QScrollArea > QWidget > QWidget {
+    background-color: transparent;
+}
+
+/* ==== ScrollBar ==== */
+QScrollBar:vertical {
+    background: #ffffff;
+    width: 12px;
+    margin: 0px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:vertical {
+    background: #c2c2c2;
+    min-height: 24px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #a8a8a8;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+QScrollBar:horizontal {
+    background: #ffffff;
+    height: 12px;
+    margin: 0px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:horizontal {
+    background: #c2c2c2;
+    min-width: 24px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: #a8a8a8;
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0px;
+}
+
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: none;
+}
+
+/* ==== CheckBox / RadioButton ==== */
+QCheckBox, QRadioButton {
+    color: #1e1e1e;
+    spacing: 8px;
+    background-color: transparent;
+}
+
+QCheckBox::indicator, QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #d0d0d0;
+    background-color: #ffffff;
+}
+
+QCheckBox::indicator {
+    border-radius: 3px;
+}
+
+QRadioButton::indicator {
+    border-radius: 8px;
+}
+
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {
+    border: 1px solid #1976d2;
+}
+
+QCheckBox::indicator:checked, QRadioButton::indicator:checked {
+    background-color: #1976d2;
+    border: 1px solid #1976d2;
+}
+
+/* исключающий фильтр (задача: трёхстанный фильтр LoRA/тегов —
+   включить/исключить/нейтрально, см. app/ui/filter_popup.py) —
+   переиспользуем состояние PartiallyChecked обычного QCheckBox как
+   "исключить", подсвечиваем красным вместо обычного акцентного цвета */
+QCheckBox::indicator:indeterminate {
+    background-color: #e74c3c;
+    border: 1px solid #e74c3c;
+}
+
+QCheckBox:indeterminate {
+    color: #e74c3c;
+}
+
+/* ==== ComboBox ==== */
+QComboBox {
+    background-color: #ffffff;
+    color: #1e1e1e;
+    border: 1px solid #d0d0d0;
+    border-radius: 5px;
+    padding: 4px 8px;
+}
+
+QComboBox:hover {
+    border: 1px solid #1976d2;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #ffffff;
+    color: #1e1e1e;
+    border: 1px solid #d0d0d0;
+    selection-background-color: #cfe4ff;
+    selection-color: #0d1117;
+    outline: none;
+}
+
+/* ==== Labels ==== */
+QLabel {
+    color: #1e1e1e;
+    background-color: transparent;
+}
+
+/* ==== Popups (Filters / Sort) ==== */
+QFrame#filterPopup, QFrame#sortPopup {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 8px;
+}
+
+/* ==== Splitter ==== */
+QSplitter::handle {
+    background-color: #d0d0d0;
+}
+
+QSplitter::handle:horizontal {
+    width: 2px;
+}
+
+QSplitter::handle:vertical {
+    height: 2px;
+}
+
+/* ==== ToolTips ==== */
+QToolTip {
+    background-color: #ececec;
+    color: #1e1e1e;
+    border: 1px solid #d0d0d0;
+    padding: 4px;
+}
+
+/* ==== Избранное / рейтинг ==== */
+QPushButton#favoriteButton {
+    background-color: transparent;
+    border: none;
+    color: #6b7280;
+    padding: 2px 4px;
+    text-align: left;
+    font-weight: 600;
+}
+
+QPushButton#favoriteButton:hover {
+    color: #1976d2;
+    background-color: transparent;
+}
+
+QLabel#ratingStar {
+    font-size: 13pt;
+    padding: 0px 1px;
+    color: #6b7280;
+}
+
+QLabel#ratingStar[filled="true"] {
+    color: #1976d2;
+}
+
+/* ==== Выделенная карточка генерации ==== */
+QWidget#generationCard {
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+}
+
+QWidget#generationCard[selected="true"] {
+    background-color: #cfe4ff;
+    border: 1px solid #1976d2;
+}

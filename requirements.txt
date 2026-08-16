@@ -1,0 +1,20 @@
+# Объединённые зависимости всего комплекта ComfyUI Studio (лаунчер +
+# Character/Prompt Config Editor + PromptVault) -- один venv на всё,
+# см. main.py в корне и build_exe.bat.
+#
+# PySide6 закреплён версией из tools/promptvault/requirements.txt
+# (==6.11.1, из-за PySide6.QtCharts в app/ui/statistics_window.py) --
+# она удовлетворяет и требованиям лаунчера (>=6.6), и
+# tools/prompt_builder (>=6.5). Важно ставить именно "PySide6", а не
+# "PySide6-Essentials" -- QtCharts физически лежит в PySide6-Addons,
+# который "PySide6" тянет за собой, а "PySide6-Essentials" -- нет.
+PySide6==6.11.1
+
+# ComfyUI Launcher (корень)
+psutil>=5.9
+nvidia-ml-py>=12.0
+
+# PromptVault (tools/promptvault) -- семантический поиск по галерее
+numpy>=1.26
+torch>=2.4
+sentence-transformers>=3.0

@@ -1,0 +1,358 @@
+/* Dracula theme — PromptVault */
+
+/* ==== Base ==== */
+QWidget {
+    background-color: #282a36;
+    color: #f8f8f2;
+    selection-background-color: #44475a;
+    selection-color: #f8f8f2;
+    font-size: 10pt;
+}
+
+QMainWindow {
+    background-color: #282a36;
+}
+
+/* ==== Buttons ==== */
+QPushButton {
+    background-color: #343746;
+    color: #f8f8f2;
+    border: 1px solid #44475a;
+    border-radius: 5px;
+    padding: 5px 12px;
+}
+
+QPushButton:hover {
+    background-color: #44475a;
+}
+
+QPushButton:pressed {
+    background-color: #bd93f9;
+    color: #282a36;
+}
+
+QPushButton:disabled {
+    background-color: #21222c;
+    color: #6272a4;
+    border: 1px solid #21222c;
+}
+
+QPushButton#primaryButton {
+    background-color: #bd93f9;
+    color: #282a36;
+    border: 1px solid #bd93f9;
+    font-weight: 600;
+}
+
+QPushButton#primaryButton:hover {
+    background-color: #ff79c6;
+    border: 1px solid #ff79c6;
+}
+
+QPushButton#primaryButton:pressed {
+    background-color: #ff79c6;
+}
+
+/* ==== Inputs ==== */
+QLineEdit, QTextEdit {
+    background-color: #343746;
+    color: #f8f8f2;
+    border: 1px solid #44475a;
+    border-radius: 5px;
+    padding: 4px 6px;
+    selection-background-color: #44475a;
+    selection-color: #f8f8f2;
+}
+
+QLineEdit:focus, QTextEdit:focus {
+    border: 1px solid #bd93f9;
+}
+
+/* ==== Lists ==== */
+QListWidget {
+    background-color: #21222c;
+    border: 1px solid #44475a;
+    border-radius: 6px;
+    outline: none;
+}
+
+QListWidget::item {
+    padding: 6px;
+    border-radius: 4px;
+    color: #f8f8f2;
+}
+
+QListWidget::item:hover {
+    background-color: #343746;
+}
+
+QListWidget::item:selected {
+    background-color: #44475a;
+    color: #f8f8f2;
+}
+
+/* ==== ScrollArea ==== */
+QScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+QScrollArea > QWidget > QWidget {
+    background-color: transparent;
+}
+
+/* ==== ScrollBar ==== */
+QScrollBar:vertical {
+    background: #21222c;
+    width: 12px;
+    margin: 0px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:vertical {
+    background: #44475a;
+    min-height: 24px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #6272a4;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+QScrollBar:horizontal {
+    background: #21222c;
+    height: 12px;
+    margin: 0px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:horizontal {
+    background: #44475a;
+    min-width: 24px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: #6272a4;
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0px;
+}
+
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: none;
+}
+
+/* ==== CheckBox / RadioButton ==== */
+QCheckBox, QRadioButton {
+    color: #f8f8f2;
+    spacing: 8px;
+    background-color: transparent;
+}
+
+QCheckBox::indicator, QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #44475a;
+    background-color: #343746;
+}
+
+QCheckBox::indicator {
+    border-radius: 3px;
+}
+
+QRadioButton::indicator {
+    border-radius: 8px;
+}
+
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {
+    border: 1px solid #bd93f9;
+}
+
+QCheckBox::indicator:checked, QRadioButton::indicator:checked {
+    background-color: #bd93f9;
+    border: 1px solid #bd93f9;
+}
+
+/* исключающий фильтр (задача: трёхстанный фильтр LoRA/тегов —
+   включить/исключить/нейтрально, см. app/ui/filter_popup.py) —
+   переиспользуем состояние PartiallyChecked обычного QCheckBox как
+   "исключить", подсвечиваем красным вместо обычного акцентного цвета */
+QCheckBox::indicator:indeterminate {
+    background-color: #e74c3c;
+    border: 1px solid #e74c3c;
+}
+
+QCheckBox:indeterminate {
+    color: #e74c3c;
+}
+
+/* ==== ComboBox ==== */
+QComboBox {
+    background-color: #343746;
+    color: #f8f8f2;
+    border: 1px solid #44475a;
+    border-radius: 5px;
+    padding: 4px 8px;
+}
+
+QComboBox:hover {
+    border: 1px solid #bd93f9;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #21222c;
+    color: #f8f8f2;
+    border: 1px solid #44475a;
+    selection-background-color: #44475a;
+    selection-color: #f8f8f2;
+    outline: none;
+}
+
+/* ==== Labels ==== */
+QLabel {
+    color: #f8f8f2;
+    background-color: transparent;
+}
+
+/* ==== Popups (Filters / Sort) ==== */
+QFrame#filterPopup, QFrame#sortPopup {
+    background-color: #21222c;
+    border: 1px solid #44475a;
+    border-radius: 8px;
+}
+
+/* ==== Splitter ==== */
+QSplitter::handle {
+    background-color: #44475a;
+}
+
+QSplitter::handle:horizontal {
+    width: 2px;
+}
+
+QSplitter::handle:vertical {
+    height: 2px;
+}
+
+/* ==== ToolTips ==== */
+QToolTip {
+    background-color: #343746;
+    color: #f8f8f2;
+    border: 1px solid #44475a;
+    padding: 4px;
+}
+
+/* ==== Избранное / рейтинг ==== */
+QPushButton#favoriteButton {
+    background-color: transparent;
+    border: none;
+    color: #6272a4;
+    padding: 2px 4px;
+    text-align: left;
+    font-weight: 600;
+}
+
+QPushButton#favoriteButton:hover {
+    color: #bd93f9;
+    background-color: transparent;
+}
+
+QLabel#ratingStar {
+    font-size: 13pt;
+    padding: 0px 1px;
+    color: #6272a4;
+}
+
+QLabel#ratingStar[filled="true"] {
+    color: #bd93f9;
+}
+
+/* ==== Выделенная карточка генерации ==== */
+QWidget#generationCard {
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+}
+
+QWidget#generationCard[selected="true"] {
+    background-color: #44475a;
+    border: 1px solid #bd93f9;
+}
+
+
+/* ==== Дополнено для ComfyUI Launcher: QGroupBox/QProgressBar/QSpinBox/QMenu ==== */
+QGroupBox {
+    border: 1px solid #44475a;
+    border-radius: 6px;
+    margin-top: 12px;
+    padding-top: 10px;
+    font-weight: 600;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+    color: #bd93f9;
+}
+
+QProgressBar {
+    background-color: #343746;
+    border: 1px solid #44475a;
+    border-radius: 6px;
+    text-align: center;
+    color: #f8f8f2;
+}
+
+QProgressBar::chunk {
+    background-color: #bd93f9;
+    border-radius: 6px;
+}
+
+QSpinBox {
+    background-color: #343746;
+    color: #f8f8f2;
+    border: 1px solid #44475a;
+    border-radius: 5px;
+    padding: 3px 6px;
+}
+
+QSpinBox:hover {
+    border: 1px solid #bd93f9;
+}
+
+QMenu {
+    background-color: #343746;
+    color: #f8f8f2;
+    border: 1px solid #44475a;
+}
+
+QMenu::item {
+    padding: 5px 20px;
+}
+
+QMenu::item:selected {
+    background-color: #bd93f9;
+    color: #282a36;
+}
+
+QMenu::separator {
+    height: 1px;
+    background: #44475a;
+    margin: 4px 6px;
+}

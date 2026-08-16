@@ -1,0 +1,93 @@
+[project]
+name = "promptvault"
+version = "0.6.0"
+description = "Десктопная галерея для просмотра и организации выводов AI-генерации изображений"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6==6.11.1",
+    "numpy>=1.26",
+    "torch>=2.4",
+    "sentence-transformers>=3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-qt>=4.4",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+qt_api = "pyside6"
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "app/ui/*",
+    "app/main.py",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# намеренно небольшой набор правил на старте — Pyflakes (ошибки) +
+# наведение порядка импортов; расширять по мере обкатки на реальном коде
+select = ["E", "F", "I"]
+ignore = [
+    "E501",  # длина строки — уже покрыта line-length, не дублируем как ошибку
+]
+
+[tool.ruff.format]
+# ruff format ТЕПЕРЬ ПОДКЛЮЧЁН (задача 3.5) и настроен здесь — доступен
+# любому через `ruff format app` / `ruff format --diff app` — но
+# СОЗНАТЕЛЬНО НЕ применён ко всему проекту разом и НЕ включён в
+# pre-commit (см. .pre-commit-config.yaml).
+#
+# Причина прежняя (см. git-историю этого файла до задачи 3.5) и теперь
+# подтверждена цифрами: `ruff format --diff app` на срез кода до
+# задачи 3.5 даёт diff по 25 файлам из 25, ~1330 удалённых строк — почти
+# все удаления это схлопывание одиночных пустых строк, специально
+# расставленных внутри функций между логическими блоками (устоявшийся
+# стиль читаемости этого проекта, не случайные пробелы), плюс
+# разворачивание однострочных литералов-множеств/списков в
+# по-элементно-построчный вид. И то и другое реальные, целенаправленные
+# стилистические решения, а не "грязь", которую формуттеру следует
+# убрать.
+#
+# Разово применить ruff format ко всему проекту (согласившись со
+# сменой стиля) можно централизованно одной командой в отдельном
+# PR — но это самостоятельное решение о смене конвенций проекта, не
+# то же самое, что "подключить форматтер", и не должно происходить
+# незаметно как побочный эффект автокоммита pre-commit хука.
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_redundant_casts = true
+# UI-слой (PySide6-виджеты) пока не типизирован полностью — начинаем
+# со строгой проверки только для app/core, где сосредоточена бизнес-логика
+exclude = ["app/ui/", "tests/"]
+
+[[tool.mypy.overrides]]
+module = "app.core.*"
+# --strict для бизнес-логики (задача 3.5) — набор флагов эквивалентен
+# mypy --strict, перечислен явно (а не через strict = true), чтобы
+# controlled полем ignore_missing_imports сверху не переопределялся
+# неявно и было видно, что именно включено
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_unused_ignores = true
+warn_return_any = true
+strict_equality = true
