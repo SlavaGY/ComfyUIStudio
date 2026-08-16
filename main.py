@@ -4,7 +4,8 @@ ComfyUI Studio — монолитная точка входа
 Раньше три инструмента комплекта (ComfyUI Launcher, Character/Prompt
 Builder Config Editor, PromptVault) были самостоятельными приложениями:
 у каждого свой QApplication, свой процесс, а лаунчер открывал два других
-через subprocess.Popen (см. launch_external_app() в comfyui_launcher.py).
+через subprocess.Popen (см. launch_external_app() в
+comfyui_studio/launcher/core/comfy_process.py).
 
 Этот файл объединяет все три в ОДИН процесс с ОДНИМ QApplication:
 у каждого инструмента по-прежнему своё отдельное окно (QMainWindow),
@@ -23,17 +24,17 @@ build/ComfyUIStudio.spec и build_exe.bat), без разгона отдельн
     даёт PyInstaller статически проследить весь граф импортов каждого
     инструмента и скомпилировать его в PYZ вместе с остальной сборкой, без
     сырых .py-исходников, лежащих отдельно в _internal.
-  - main.py каждого инструмента (comfyui_launcher.py, tools/prompt_builder/
-    main.py, tools/promptvault/app/main.py) содержит функцию
-    create_window(...), которая строит окно, не создавая свой
+  - main.py каждого инструмента (comfyui_studio/launcher/ui/launcher_window.py,
+    tools/prompt_builder/main.py, tools/promptvault/app/main.py) содержит
+    функцию create_window(...), которая строит окно, не создавая свой
     QApplication и не запуская app.exec() — это и переиспользуется
     здесь.
   - Лаунчер остаётся "главным" окном комплекта (как и раньше — из него
     открываются два других инструмента). Раньше кнопки "Запустить" в
     разделе "Другие инструменты" запускали subprocess; теперь
-    comfyui_launcher.register_in_process_app() подставляет вместо
-    подпроцесса фабрику, создающую окно ЭТОГО ЖЕ процесса (см.
-    IN_PROCESS_WINDOW_FACTORIES в comfyui_launcher.py) — снаружи это
+    register_in_process_app() (comfyui_studio.launcher.integration.tool_registry)
+    подставляет вместо подпроцесса фабрику, создающую окно ЭТОГО ЖЕ
+    процесса (см. IN_PROCESS_WINDOW_FACTORIES там же) — снаружи это
     выглядит так же (отдельное окно, кнопка "Запустить"), но внутри
     это window.show(), а не новый процесс.
   - Тема и язык по-прежнему общие на весь комплект через shared_theme.py
@@ -90,20 +91,25 @@ def main():
     # пока не закрыт лаунчер или не выбран "Выход" в его трее.
     app.setQuitOnLastWindowClosed(False)
 
-    import comfyui_launcher
+    # Лаунчер теперь пакет comfyui_studio.launcher (этап 1 дорожной карты
+    # рефакторинга — разбиение comfyui_launcher.py). Prompt Builder и
+    # PromptVault пока остаются как раньше (`prompt_builder`/`app`) —
+    # их перенос под общий namespace comfyui_studio — отдельный этап 2.
+    from comfyui_studio.launcher.integration.tool_registry import register_in_process_app
+    from comfyui_studio.launcher.ui.launcher_window import create_window as create_launcher_window
     from prompt_builder.main import create_window as create_prompt_builder_window
     from app.main import create_window as create_promptvault_window
 
-    comfyui_launcher.register_in_process_app(
+    register_in_process_app(
         "prompt_builder",
         lambda: create_prompt_builder_window(),
     )
-    comfyui_launcher.register_in_process_app(
+    register_in_process_app(
         "promptvault",
         lambda: create_promptvault_window(app),
     )
 
-    launcher_window = comfyui_launcher.create_window(app)
+    launcher_window = create_launcher_window(app)
     launcher_window.show()
 
     exit_code = app.exec()
