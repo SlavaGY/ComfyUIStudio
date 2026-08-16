@@ -7,7 +7,7 @@
 
 import pytest
 
-from app.ui.bulk_metadata_editor import BulkMetadataEditor
+from comfyui_studio.promptvault.ui.bulk_metadata_editor import BulkMetadataEditor
 
 
 @pytest.fixture

@@ -14,9 +14,9 @@ import json
 
 import pytest
 
-from app.core.generation_filter import FilterOptions
-from app.core.repository import GenerationRepository
-from app.core.sort_options import SortMode
+from comfyui_studio.promptvault.core.generation_filter import FilterOptions
+from comfyui_studio.promptvault.core.repository import GenerationRepository
+from comfyui_studio.promptvault.core.sort_options import SortMode
 
 
 def _write_json(path, **overrides):

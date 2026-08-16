@@ -21,14 +21,21 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+# Тесты остаются в tools/promptvault/tests/ (этап 2 дорожной карты
+# рефакторинга переносит только сам ИМПОРТИРУЕМЫЙ пакет -- бывший
+# app/, теперь comfyui_studio/promptvault/ -- под общее пространство
+# имён комплекта; тесты физически остаются рядом с этим pyproject.toml
+# и pytest-конфигурацией). "../.." добавляет корень репозитория в
+# sys.path, чтобы `import comfyui_studio.promptvault` резолвился и
+# отсюда, не только при запуске из корня проекта.
+pythonpath = [".", "../.."]
 qt_api = "pyside6"
 
 [tool.coverage.run]
-source = ["app"]
+source = ["comfyui_studio.promptvault"]
 omit = [
-    "app/ui/*",
-    "app/main.py",
+    "comfyui_studio/promptvault/ui/*",
+    "comfyui_studio/promptvault/main.py",
 ]
 
 [tool.ruff]
@@ -74,11 +81,12 @@ python_version = "3.11"
 ignore_missing_imports = true
 warn_redundant_casts = true
 # UI-слой (PySide6-виджеты) пока не типизирован полностью — начинаем
-# со строгой проверки только для app/core, где сосредоточена бизнес-логика
-exclude = ["app/ui/", "tests/"]
+# со строгой проверки только для comfyui_studio/promptvault/core, где
+# сосредоточена бизнес-логика
+exclude = ["comfyui_studio/promptvault/ui/", "tests/"]
 
 [[tool.mypy.overrides]]
-module = "app.core.*"
+module = "comfyui_studio.promptvault.core.*"
 # --strict для бизнес-логики (задача 3.5) — набор флагов эквивалентен
 # mypy --strict, перечислен явно (а не через strict = true), чтобы
 # controlled полем ignore_missing_imports сверху не переопределялся

@@ -13,9 +13,9 @@ import zipfile
 
 import pytest
 
-import app.core.gallery_manager as gallery_manager_module
-from app.core.gallery_manager import GalleryManager
-from app.core.repository import GenerationRepository
+import comfyui_studio.promptvault.core.gallery_manager as gallery_manager_module
+from comfyui_studio.promptvault.core.gallery_manager import GalleryManager
+from comfyui_studio.promptvault.core.repository import GenerationRepository
 
 
 def _write_json(folder, name, **overrides):

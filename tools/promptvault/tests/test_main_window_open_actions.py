@@ -8,8 +8,8 @@ import json
 
 import pytest
 
-import app.ui.main_window as main_window_module
-from app.ui.main_window import MainWindow
+import comfyui_studio.promptvault.ui.main_window as main_window_module
+from comfyui_studio.promptvault.ui.main_window import MainWindow
 
 
 @pytest.fixture(autouse=True)

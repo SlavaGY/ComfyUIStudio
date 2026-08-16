@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from app.core.repository import GenerationRepository
+from comfyui_studio.promptvault.core.repository import GenerationRepository
 
 
 def _write_json(path, **overrides):

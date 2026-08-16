@@ -7,8 +7,8 @@
 
 import pytest
 
-from app.core.generation_filter import FilterOptions
-from app.ui.filter_popup import FilterPopup
+from comfyui_studio.promptvault.core.generation_filter import FilterOptions
+from comfyui_studio.promptvault.ui.filter_popup import FilterPopup
 
 
 @pytest.fixture

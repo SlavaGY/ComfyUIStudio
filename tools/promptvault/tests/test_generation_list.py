@@ -12,8 +12,8 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 
-from app.core.generation import Generation, ImageData
-from app.ui.generation_list import GenerationList
+from comfyui_studio.promptvault.core.generation import Generation, ImageData
+from comfyui_studio.promptvault.ui.generation_list import GenerationList
 
 
 def _make_gen(i: int) -> Generation:

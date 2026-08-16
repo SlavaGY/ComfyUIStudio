@@ -12,10 +12,10 @@ import json
 
 import pytest
 
-from app.core.gallery_manager import GalleryManager
-from app.core.repository import GenerationRepository
-from app.ui.statistics_window import StatisticsWindow
-from app.ui.toolbar import Toolbar
+from comfyui_studio.promptvault.core.gallery_manager import GalleryManager
+from comfyui_studio.promptvault.core.repository import GenerationRepository
+from comfyui_studio.promptvault.ui.statistics_window import StatisticsWindow
+from comfyui_studio.promptvault.ui.toolbar import Toolbar
 
 
 def _write_json(folder, name, **overrides):

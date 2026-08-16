@@ -20,8 +20,8 @@ QTranslator устанавливается на него глобально — 
 import pytest
 from PySide6.QtCore import QCoreApplication
 
-from app.i18n import AVAILABLE_LANGUAGES, LocalizationManager
-from app.ui.toolbar import Toolbar
+from comfyui_studio.promptvault.i18n import AVAILABLE_LANGUAGES, LocalizationManager
+from comfyui_studio.promptvault.ui.toolbar import Toolbar
 
 
 @pytest.fixture(autouse=True)

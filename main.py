@@ -16,18 +16,19 @@ build/ComfyUIStudio.spec и build_exe.bat), без разгона отдельн
 обновлении одного из них.
 
 Как это работает:
-  - PromptVault (tools/promptvault/app) и Prompt Builder (tools/prompt_builder)
-    — оба обычные Python-пакеты (app и prompt_builder соответственно, см. их
-    __init__.py) с внутренними импортами вида `from app.xxx import ...` /
-    `from prompt_builder.xxx import ...`. На sys.path добавляются папки-
-    родители пакетов (tools/promptvault и tools/), а не сами пакеты — это
-    даёт PyInstaller статически проследить весь граф импортов каждого
-    инструмента и скомпилировать его в PYZ вместе с остальной сборкой, без
-    сырых .py-исходников, лежащих отдельно в _internal.
+  - Все три инструмента комплекта (ComfyUI Launcher, Prompt Builder,
+    PromptVault) теперь лежат под общим пакетом comfyui_studio/ —
+    comfyui_studio/launcher, comfyui_studio/prompt_builder,
+    comfyui_studio/promptvault (этапы 1—2 дорожной карты рефакторинга;
+    PromptVault раньше был пакетом `app`, Prompt Builder раньше жил
+    прямо в tools/prompt_builder). Импортируются одинаково:
+    `from comfyui_studio.launcher... / .prompt_builder... / .promptvault...`
+    — без разницы в стиле между тремя инструментами, которая раньше
+    была тут (`app.xxx` у одного, `prompt_builder.xxx` у другого).
   - main.py каждого инструмента (comfyui_studio/launcher/ui/launcher_window.py,
-    tools/prompt_builder/main.py, tools/promptvault/app/main.py) содержит
-    функцию create_window(...), которая строит окно, не создавая свой
-    QApplication и не запуская app.exec() — это и переиспользуется
+    comfyui_studio/prompt_builder/main.py, comfyui_studio/promptvault/main.py)
+    содержит функцию create_window(...), которая строит окно, не создавая
+    свой QApplication и не запуская app.exec() — это и переиспользуется
     здесь.
   - Лаунчер остаётся "главным" окном комплекта (как и раньше — из него
     открываются два других инструмента). Раньше кнопки "Запустить" в
@@ -37,10 +38,21 @@ build/ComfyUIStudio.spec и build_exe.bat), без разгона отдельн
     процесса (см. IN_PROCESS_WINDOW_FACTORIES там же) — снаружи это
     выглядит так же (отдельное окно, кнопка "Запустить"), но внутри
     это window.show(), а не новый процесс.
-  - Тема и язык по-прежнему общие на весь комплект через shared_theme.py
-    / shared_language.py — только теперь это буквально один и тот же
-    объект в памяти для всех трёх инструментов вместо трёх процессов,
-    следящих за одним файлом на диске через QFileSystemWatcher.
+  - Тема и язык по-прежнему общие на весь комплект через
+    comfyui_studio/shared_theme.py / comfyui_studio/shared_language.py
+    — только теперь это буквально один и тот же объект в памяти для
+    всех трёх инструментов вместо трёх процессов, следящих за одним
+    файлом на диске через QFileSystemWatcher.
+
+ВАЖНО про sys.path ниже: PROMPTVAULT_DIR/TOOLS_DIR/ROOT_DIR добавлялись
+в sys.path, когда PromptVault/Prompt Builder были пакетами `app`/
+`prompt_builder`, резолвившимися от tools/. После переноса под
+comfyui_studio/ (этап 2) для ИМПОРТОВ ВЫШЕ этот блок больше не нужен —
+comfyui_studio резолвится как обычный пакет от корня проекта, который и
+так уже в sys.path при `python main.py`. Сам блок пока НЕ удалён —
+проверка, что он не нужен ничему ещё (сборка PyInstaller, возможные
+прямые запуски инструментов) и его собственно удаление — отдельный шаг
+уборки (этап 5 дорожной карты), а не часть этапа 2.
 
 Запуск из исходников:  python main.py
 Сборка exe:             см. build_exe.bat (одна сборка на весь комплект)
@@ -55,20 +67,10 @@ ROOT_DIR = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file_
 TOOLS_DIR = ROOT_DIR / "tools"
 PROMPTVAULT_DIR = TOOLS_DIR / "promptvault"
 
-# tools/prompt_builder — обычный пакет `prompt_builder` (см. его
-# __init__.py), поэтому на sys.path нужен TOOLS_DIR (его родитель), а не
-# сама папка инструмента — ровно так же, как PROMPTVAULT_DIR добавляется
-# не как "tools/promptvault", а именно как папка, ИЗ которой резолвится
-# пакет `app`. Раньше PROMPT_BUILDER_DIR добавлялась в sys.path напрямую
-# и main.py инструмента подгружался через importlib.util.spec_from_file_location
-# по пути на диске — из-за этого PyInstaller не мог статически проследить
-# его импорты и приходилось класть исходники .py как есть в datas
-# (см. историю ComfyUIStudio.spec) — они распаковывались в
-# _internal/tools/prompt_builder рядом со скомпилированной остальной
-# сборкой. Обычный `import prompt_builder.main`, как у PromptVault
-# (`from app.main import ...`), даёт статическому анализатору
-# PyInstaller увидеть весь граф импортов инструмента и скомпилировать
-# его в PYZ вместе со всем остальным — без сырых исходников в сборке.
+# Оставлено как есть с версии до переноса пакетов под comfyui_studio/ —
+# см. пояснение "ВАЖНО про sys.path" в докстринге модуля выше. Не влияет
+# на импорты comfyui_studio.* ниже в main(), но пока не убрано (этап 5
+# дорожной карты, не этот этап).
 for _p in (PROMPTVAULT_DIR, TOOLS_DIR, ROOT_DIR):
     _sp = str(_p)
     if _sp not in sys.path:
@@ -91,14 +93,18 @@ def main():
     # пока не закрыт лаунчер или не выбран "Выход" в его трее.
     app.setQuitOnLastWindowClosed(False)
 
-    # Лаунчер теперь пакет comfyui_studio.launcher (этап 1 дорожной карты
-    # рефакторинга — разбиение comfyui_launcher.py). Prompt Builder и
-    # PromptVault пока остаются как раньше (`prompt_builder`/`app`) —
-    # их перенос под общий namespace comfyui_studio — отдельный этап 2.
+    # Все три инструмента комплекта теперь под общим пространством имён
+    # comfyui_studio (этап 1 — разбиение comfyui_launcher.py, этап 2 —
+    # перенос prompt_builder/promptvault под comfyui_studio, см. дорожную
+    # карту рефакторинга). sys.path-хак выше (PROMPTVAULT_DIR/TOOLS_DIR/
+    # ROOT_DIR) больше не нужен для ЭТИХ импортов — comfyui_studio
+    # резолвится как обычный пакет от корня проекта, уже присутствующего
+    # в sys.path при `python main.py` — но сам хак пока не убран, это
+    # отдельный пункт уборки (этап 5 дорожной карты).
     from comfyui_studio.launcher.integration.tool_registry import register_in_process_app
     from comfyui_studio.launcher.ui.launcher_window import create_window as create_launcher_window
-    from prompt_builder.main import create_window as create_prompt_builder_window
-    from app.main import create_window as create_promptvault_window
+    from comfyui_studio.prompt_builder.main import create_window as create_prompt_builder_window
+    from comfyui_studio.promptvault.main import create_window as create_promptvault_window
 
     register_in_process_app(
         "prompt_builder",

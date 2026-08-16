@@ -9,7 +9,7 @@ import sqlite3
 
 import pytest
 
-from app.core.database import connect
+from comfyui_studio.promptvault.core.database import connect
 
 OLD_SCHEMA = """
 CREATE TABLE generations (

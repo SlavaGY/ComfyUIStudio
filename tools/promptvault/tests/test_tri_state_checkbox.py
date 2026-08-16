@@ -7,7 +7,7 @@
 
 from PySide6.QtCore import Qt
 
-from app.ui.tri_state_checkbox import TriStateFilterCheckBox
+from comfyui_studio.promptvault.ui.tri_state_checkbox import TriStateFilterCheckBox
 
 
 class TestClickCycle:

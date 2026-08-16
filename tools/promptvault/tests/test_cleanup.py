@@ -1,14 +1,14 @@
 """Тесты для автоочистки логов/миниатюр (задача 3.5):
-app.utils.enforce_dir_size_limit, app.core.logger.cleanup_old_logs,
-app.core.thumbnails.cleanup_thumbnail_cache.
+comfyui_studio.promptvault.utils.enforce_dir_size_limit, comfyui_studio.promptvault.core.logger.cleanup_old_logs,
+comfyui_studio.promptvault.core.thumbnails.cleanup_thumbnail_cache.
 """
 
 import os
 import time
 
-from app.core.logger import cleanup_old_logs
-from app.core.thumbnails import cleanup_thumbnail_cache
-from app.utils import enforce_dir_size_limit
+from comfyui_studio.promptvault.core.logger import cleanup_old_logs
+from comfyui_studio.promptvault.core.thumbnails import cleanup_thumbnail_cache
+from comfyui_studio.promptvault.utils import enforce_dir_size_limit
 
 
 def _touch(path, size_bytes=10, age_seconds=0):
@@ -56,7 +56,7 @@ class TestCleanupOldLogs:
 
     def test_removes_logs_older_than_max_age(self, tmp_path, monkeypatch):
 
-        import app.core.logger as logger_module
+        import comfyui_studio.promptvault.core.logger as logger_module
 
         monkeypatch.setattr(logger_module, "LOG_DIR", tmp_path)
 
@@ -70,7 +70,7 @@ class TestCleanupOldLogs:
 
     def test_missing_log_dir_does_not_raise(self, tmp_path, monkeypatch):
 
-        import app.core.logger as logger_module
+        import comfyui_studio.promptvault.core.logger as logger_module
 
         monkeypatch.setattr(logger_module, "LOG_DIR", tmp_path / "nope")
 
@@ -81,7 +81,7 @@ class TestCleanupThumbnailCache:
 
     def test_removes_thumbnails_older_than_max_age(self, tmp_path, monkeypatch):
 
-        import app.core.thumbnails as thumbnails_module
+        import comfyui_studio.promptvault.core.thumbnails as thumbnails_module
 
         monkeypatch.setattr(thumbnails_module, "THUMBNAIL_CACHE_DIR", tmp_path)
 
@@ -95,7 +95,7 @@ class TestCleanupThumbnailCache:
 
     def test_enforces_size_limit_after_age_pass(self, tmp_path, monkeypatch):
 
-        import app.core.thumbnails as thumbnails_module
+        import comfyui_studio.promptvault.core.thumbnails as thumbnails_module
 
         monkeypatch.setattr(thumbnails_module, "THUMBNAIL_CACHE_DIR", tmp_path)
 

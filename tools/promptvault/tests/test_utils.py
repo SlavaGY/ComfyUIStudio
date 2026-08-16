@@ -6,8 +6,8 @@
 QDesktopServices, которому нужен QApplication.
 """
 
-import app.utils as utils_module
-from app.utils import group_paths_by_folder, open_file_externally, reveal_in_file_manager
+import comfyui_studio.promptvault.utils as utils_module
+from comfyui_studio.promptvault.utils import group_paths_by_folder, open_file_externally, reveal_in_file_manager
 
 
 class TestGroupPathsByFolder:

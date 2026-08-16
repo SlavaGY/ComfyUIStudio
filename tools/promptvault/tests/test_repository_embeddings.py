@@ -21,8 +21,8 @@ import re
 import numpy as np
 import pytest
 
-from app.core import embedding
-from app.core.repository import GenerationRepository
+from comfyui_studio.promptvault.core import embedding
+from comfyui_studio.promptvault.core.repository import GenerationRepository
 
 _TOPICS = ["cat", "dog", "forest", "spaceship"]
 _SPLIT_RE = re.compile(r"[,\n]+")

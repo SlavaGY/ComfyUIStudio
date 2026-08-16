@@ -8,7 +8,7 @@ Scripts/pyside6-lupdate.exe) — отдельно ставить не нужно
     python -m tools.update_translations update    # .py -> .ts (после
                                                     # добавления/правки
                                                     # self.tr(...) в
-                                                    # app/ui/)
+                                                    # comfyui_studio/promptvault/ui/)
     python -m tools.update_translations compile    # .ts -> .qm (после
                                                     # заполнения новых
                                                     # <translation> в .ts)
@@ -24,7 +24,7 @@ Scripts/pyside6-lupdate.exe) — отдельно ставить не нужно
      существующие переводы НЕ затираются, только новые/удалённые
      строки).
   2. Вручную (или через Qt Linguist) заполнить <translation> для
-     новых записей в app/resources/translations/promptvault_ru.ts.
+     новых записей в comfyui_studio/promptvault/resources/translations/promptvault_ru.ts.
   3. python -m tools.update_translations compile — пересобрать .qm.
   4. Закоммитить И .ts, И .qm — оба хранятся в репозитории (см.
      CONTRIBUTING.md, раздел "Локализация"): .ts — редактируемый
@@ -40,10 +40,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-UI_DIR = Path(__file__).resolve().parent.parent / "app" / "ui"
+UI_DIR = (
+    Path(__file__).resolve().parent.parent.parent.parent
+    / "comfyui_studio" / "promptvault" / "ui"
+)
 TS_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "app" / "resources" / "translations" / "promptvault_ru.ts"
+    Path(__file__).resolve().parent.parent.parent.parent
+    / "comfyui_studio" / "promptvault" / "resources" / "translations" / "promptvault_ru.ts"
 )
 QM_PATH = TS_PATH.with_suffix(".qm")
 
@@ -66,7 +69,7 @@ def _require_tool(name: str) -> str:
 
 
 def update() -> None:
-    """Сканирует app/ui/*.py и мёржит найденные self.tr(...) строки в
+    """Сканирует comfyui_studio/promptvault/ui/*.py и мёржит найденные self.tr(...) строки в
     .ts — существующие переводы сохраняются, новые строки добавляются
     как unfinished, строки для удалённого кода помечаются obsolete."""
 
@@ -82,7 +85,7 @@ def update() -> None:
 
 def compile_qm() -> None:
     """.ts -> .qm — то, что реально грузит QTranslator в рантайме
-    (см. app/i18n.py). Без этого шага правки в .ts не видны в
+    (см. comfyui_studio/promptvault/i18n.py). Без этого шага правки в .ts не видны в
     приложении."""
 
     lrelease = _require_tool("pyside6-lrelease")
@@ -96,7 +99,7 @@ def compile_qm() -> None:
 def check() -> None:
     """Для CI (см. .github/workflows/ci.yml) — проверяет, что
     закоммиченный .ts уже содержит перевод для каждой self.tr(...)
-    строки в app/ui/, не изменяя сам файл. Падает с ненулевым кодом,
+    строки в comfyui_studio/promptvault/ui/, не изменяя сам файл. Падает с ненулевым кодом,
     если lupdate находит новые (ещё не в .ts) строки — сигнал, что
     кто-то добавил self.tr(...) в коде, но забыл прогнать `update` и
     заполнить перевод."""
@@ -124,7 +127,7 @@ def check() -> None:
 
     if new_count > 0:
         print(
-            f"\n{new_count} строк(и) в app/ui/ ещё не переведены "
+            f"\n{new_count} строк(и) в comfyui_studio/promptvault/ui/ ещё не переведены "
             f"(нет в promptvault_ru.ts). Прогоните "
             f"`python -m tools.update_translations update`, заполните "
             f"переводы и закоммитьте обновлённый .ts + пересобранный .qm.",

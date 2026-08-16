@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from app.ui.main_window import MainWindow
+from comfyui_studio.promptvault.ui.main_window import MainWindow
 
 
 @pytest.fixture(autouse=True)

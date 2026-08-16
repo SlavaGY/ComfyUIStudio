@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from app.core.repository import GenerationRepository
+from comfyui_studio.promptvault.core.repository import GenerationRepository
 
 
 def _write_json(path, **overrides):
@@ -138,7 +138,7 @@ class TestUpdateGeneration:
 
         gen_id = _sync_and_get_id(repository, folder)
 
-        from app.core import repository as repository_module
+        from comfyui_studio.promptvault.core import repository as repository_module
 
         real_stat = os.stat
         call_count = {"n": 0}
@@ -203,7 +203,7 @@ class TestUpdateGeneration:
 
         gen_id = _sync_and_get_id(repository, folder)
 
-        from app.core import repository as repository_module
+        from comfyui_studio.promptvault.core import repository as repository_module
 
         def failing_replace(src, dst):
             raise OSError("simulated disk error")

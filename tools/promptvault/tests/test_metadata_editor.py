@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QDialog
 
-from app.core.generation import Generation
-from app.ui.metadata_editor import MetadataEditor
+from comfyui_studio.promptvault.core.generation import Generation
+from comfyui_studio.promptvault.ui.metadata_editor import MetadataEditor
 
 
 def _make_gen(custom_tags=None) -> Generation:
@@ -172,7 +172,7 @@ class TestMetadataHistoryButton:
 
     def test_clicking_history_button_opens_dialog_with_entries(self, qapp, monkeypatch):
 
-        from app.ui import metadata_editor as metadata_editor_module
+        from comfyui_studio.promptvault.ui import metadata_editor as metadata_editor_module
 
         ed = MetadataEditor(
             _make_gen(),
@@ -205,7 +205,7 @@ class TestMetadataHistoryDialog:
 
     def test_lists_entries_as_readable_text(self, qapp):
 
-        from app.ui.metadata_editor import MetadataHistoryDialog
+        from comfyui_studio.promptvault.ui.metadata_editor import MetadataHistoryDialog
 
         dialog = MetadataHistoryDialog([
             {
@@ -224,7 +224,7 @@ class TestMetadataHistoryDialog:
 
     def test_empty_history_shows_empty_list(self, qapp):
 
-        from app.ui.metadata_editor import MetadataHistoryDialog
+        from comfyui_studio.promptvault.ui.metadata_editor import MetadataHistoryDialog
 
         dialog = MetadataHistoryDialog([])
 

@@ -8,8 +8,8 @@ GenerationList.
 import pytest
 from PySide6.QtGui import QKeySequence
 
-from app.core.hotkeys import HOTKEY_ACTIONS
-from app.ui.main_window import MainWindow
+from comfyui_studio.promptvault.core.hotkeys import HOTKEY_ACTIONS
+from comfyui_studio.promptvault.ui.main_window import MainWindow
 
 
 @pytest.fixture(autouse=True)

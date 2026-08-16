@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from themes.theme_manager import ThemeManager
+from comfyui_studio.themes.theme_manager import ThemeManager
 
 from ..core.comfy_process import (
     EXTERNAL_APPS,
@@ -429,7 +429,7 @@ class SettingsPage(QWidget):
         return self.loc.tr(text) if self.loc is not None else text
 
     def _sync_language_combo_display(self):
-        from i18n import AVAILABLE_LANGUAGES
+        from comfyui_studio.i18n import AVAILABLE_LANGUAGES
 
         code = self.loc.current_language()
         display = next((n for n, c in AVAILABLE_LANGUAGES.items() if c == code), None)
@@ -439,7 +439,7 @@ class SettingsPage(QWidget):
             self.language_combo.blockSignals(False)
 
     def _on_language_changed(self, display_name):
-        from i18n import AVAILABLE_LANGUAGES
+        from comfyui_studio.i18n import AVAILABLE_LANGUAGES
 
         code = AVAILABLE_LANGUAGES.get(display_name)
         if code is None:

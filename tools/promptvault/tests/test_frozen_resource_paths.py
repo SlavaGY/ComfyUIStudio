@@ -1,8 +1,9 @@
 """Тесты для резолва путей ресурсов (иконка/переводы/темы) внутри
 сборки PyInstaller (задача: иконка приложения в панели задач Windows
-после сборки — см. подробный комментарий у ICON_PATH в app/config.py).
+после сборки — см. подробный комментарий у ICON_PATH в comfyui_studio/promptvault/config.py).
 
-Модули app/config.py и app/themes/theme_manager.py вычисляют эти пути
+Модули comfyui_studio/promptvault/config.py и
+comfyui_studio/promptvault/themes/theme_manager.py вычисляют эти пути
 на уровне модуля (при импорте), поэтому здесь используется
 importlib.reload с заранее подставленными sys.frozen/sys._MEIPASS —
 единственный способ проверить обе ветки (обычный запуск и "как будто
@@ -24,17 +25,17 @@ class TestNonFrozenPaths:
 
     def test_config_paths_relative_to_app_package(self):
 
-        import app.config as config
+        import comfyui_studio.promptvault.config as config
 
         _reload(config)
 
         assert config.ICON_PATH == config._APP_DIR / "resources" / "icon.png"
         assert config.TRANSLATIONS_DIR == config._APP_DIR / "resources" / "translations"
-        assert config._APP_DIR.name == "app"
+        assert config._APP_DIR.name == "promptvault"
 
     def test_themes_dir_relative_to_themes_package(self):
 
-        import app.themes.theme_manager as theme_manager
+        import comfyui_studio.promptvault.themes.theme_manager as theme_manager
 
         _reload(theme_manager)
 
@@ -43,9 +44,9 @@ class TestNonFrozenPaths:
 
 class TestFrozenPaths:
     """С sys.frozen=True и sys._MEIPASS выставленными (как это делает
-    бутлоадер PyInstaller) пути должны уйти под _MEIPASS/app/..., а не
+    бутлоадер PyInstaller) пути должны уйти под _MEIPASS/comfyui_studio/promptvault/..., а не
     вычисляться через __file__ (который внутри сборки ненадёжен —
-    см. комментарий в app/config.py)."""
+    см. комментарий в comfyui_studio/promptvault/config.py)."""
 
     def test_config_paths_use_meipass(self, tmp_path, monkeypatch):
 
@@ -55,16 +56,16 @@ class TestFrozenPaths:
         monkeypatch.setattr(sys, "frozen", True, raising=False)
         monkeypatch.setattr(sys, "_MEIPASS", str(fake_meipass), raising=False)
 
-        import app.config as config
+        import comfyui_studio.promptvault.config as config
 
         try:
             _reload(config)
 
-            assert config._APP_DIR == fake_meipass / "app"
-            assert config.ICON_PATH == fake_meipass / "app" / "resources" / "icon.png"
+            assert config._APP_DIR == fake_meipass / "comfyui_studio" / "promptvault"
+            assert config.ICON_PATH == fake_meipass / "comfyui_studio" / "promptvault" / "resources" / "icon.png"
             assert (
                 config.TRANSLATIONS_DIR
-                == fake_meipass / "app" / "resources" / "translations"
+                == fake_meipass / "comfyui_studio" / "promptvault" / "resources" / "translations"
             )
         finally:
             # переигрываем модуль обратно на нормальные пути ДО того,
@@ -83,12 +84,12 @@ class TestFrozenPaths:
         monkeypatch.setattr(sys, "frozen", True, raising=False)
         monkeypatch.setattr(sys, "_MEIPASS", str(fake_meipass), raising=False)
 
-        import app.themes.theme_manager as theme_manager
+        import comfyui_studio.promptvault.themes.theme_manager as theme_manager
 
         try:
             _reload(theme_manager)
 
-            assert theme_manager.THEMES_DIR == fake_meipass / "app" / "themes"
+            assert theme_manager.THEMES_DIR == fake_meipass / "comfyui_studio" / "promptvault" / "themes"
         finally:
             monkeypatch.undo()
             _reload(theme_manager)

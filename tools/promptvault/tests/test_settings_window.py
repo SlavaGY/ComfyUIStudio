@@ -1,4 +1,4 @@
-"""Тесты для app/ui/settings_window.py — окно настроек, куда перенесены
+"""Тесты для comfyui_studio/promptvault/ui/settings_window.py — окно настроек, куда перенесены
 тема/язык/семантический поиск из Toolbar, плюс новые настройки
 производительности (размер страницы) и автоочистки (миниатюры/логи).
 
@@ -11,14 +11,14 @@ import pytest
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import QMessageBox
 
-from app.core import embedding
-from app.core.gallery_manager import GalleryManager
-from app.core.hotkeys import DEFAULT_HOTKEYS, HOTKEY_ACTIONS, HotkeyManager
-from app.core.repository import GenerationRepository
-from app.i18n import LocalizationManager
-from app.themes.theme_manager import ThemeManager
-from app.ui.settings_window import SettingsWindow
-from app.ui.toolbar import Toolbar
+from comfyui_studio.promptvault.core import embedding
+from comfyui_studio.promptvault.core.gallery_manager import GalleryManager
+from comfyui_studio.promptvault.core.hotkeys import DEFAULT_HOTKEYS, HOTKEY_ACTIONS, HotkeyManager
+from comfyui_studio.promptvault.core.repository import GenerationRepository
+from comfyui_studio.promptvault.i18n import LocalizationManager
+from comfyui_studio.promptvault.themes.theme_manager import ThemeManager
+from comfyui_studio.promptvault.ui.settings_window import SettingsWindow
+from comfyui_studio.promptvault.ui.toolbar import Toolbar
 
 
 @pytest.fixture(autouse=True)
@@ -263,7 +263,7 @@ class TestEmbeddingModelSection:
         # ответ "No" на предложение немедленного пересчёта — сама смена
         # модели должна примениться независимо от этого ответа
         monkeypatch.setattr(
-            "app.ui.settings_window.QMessageBox.question",
+            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.question",
             lambda *a, **kw: QMessageBox.No,
         )
 
@@ -277,7 +277,7 @@ class TestEmbeddingModelSection:
         window, gallery, _theme, _loc, _toolbar = settings_window
 
         monkeypatch.setattr(
-            "app.ui.settings_window.QMessageBox.question",
+            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.question",
             lambda *a, **kw: QMessageBox.No,
         )
 
@@ -292,11 +292,11 @@ class TestEmbeddingModelSection:
         window, gallery, _theme, _loc, _toolbar = settings_window
 
         monkeypatch.setattr(
-            "app.ui.settings_window.QMessageBox.question",
+            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.question",
             lambda *a, **kw: QMessageBox.Yes,
         )
         monkeypatch.setattr(
-            "app.ui.settings_window.QMessageBox.information",
+            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.information",
             lambda *a, **kw: None,
         )
 
@@ -313,7 +313,7 @@ class TestEmbeddingModelSection:
         window, gallery, _theme, _loc, _toolbar = settings_window
 
         monkeypatch.setattr(
-            "app.ui.settings_window.QMessageBox.question",
+            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.question",
             lambda *a, **kw: QMessageBox.No,
         )
 
@@ -348,7 +348,7 @@ class TestEmbeddingModelSection:
 
         warned = []
         monkeypatch.setattr(
-            "app.ui.settings_window.QMessageBox.warning",
+            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.warning",
             lambda *a, **kw: warned.append(1),
         )
 
@@ -362,11 +362,11 @@ class TestEmbeddingModelSection:
         window, gallery, _theme, _loc, _toolbar = settings_window
 
         monkeypatch.setattr(
-            "app.ui.settings_window.QMessageBox.question",
+            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.question",
             lambda *a, **kw: QMessageBox.Yes,
         )
         monkeypatch.setattr(
-            "app.ui.settings_window.QMessageBox.information",
+            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.information",
             lambda *a, **kw: None,
         )
 
@@ -399,7 +399,7 @@ class TestStorageSection:
 
     def test_spins_reflect_defaults(self, settings_window):
 
-        from app.config import (
+        from comfyui_studio.promptvault.config import (
             LOG_DIR_MAX_BYTES,
             LOG_MAX_AGE_DAYS,
             THUMBNAIL_CACHE_MAX_BYTES,
@@ -451,7 +451,7 @@ class TestMainWindowIntegration:
 
     def test_settings_button_opens_settings_window(self, qapp, tmp_path, monkeypatch):
 
-        from app.ui.main_window import MainWindow
+        from comfyui_studio.promptvault.ui.main_window import MainWindow
 
         w = MainWindow()
 
@@ -467,7 +467,7 @@ class TestMainWindowIntegration:
 
     def test_reopening_reuses_same_window(self, qapp, tmp_path, monkeypatch):
 
-        from app.ui.main_window import MainWindow
+        from comfyui_studio.promptvault.ui.main_window import MainWindow
 
         w = MainWindow()
 
@@ -559,16 +559,16 @@ class TestMainWindowRestartAndQuit:
         что закрытие окна доходит до этой точки с правильными
         аргументами. Регрессия: раньше здесь переиспользовался
         "сырой" sys.argv, что ломало перезапуск при запуске через
-        `python -m app.main` (см. TODO.md) — теперь всегда явно
-        `-m app.main`."""
+        `python -m comfyui_studio.promptvault.main` (см. TODO.md) — теперь
+        всегда явно `-m comfyui_studio.promptvault.main`."""
 
         import os
 
-        from app.ui.main_window import MainWindow
+        from comfyui_studio.promptvault.ui.main_window import MainWindow
 
         execv_calls = []
         monkeypatch.setattr(os, "execv", lambda *a: execv_calls.append(a))
-        monkeypatch.setattr(sys, "argv", ["app/main.py"])
+        monkeypatch.setattr(sys, "argv", ["comfyui_studio/promptvault/main.py"])
 
         w = MainWindow()
 
@@ -580,33 +580,34 @@ class TestMainWindowRestartAndQuit:
             assert w._pending_restart is True
             assert len(execv_calls) == 1
             assert execv_calls[0][0] == sys.executable
-            assert execv_calls[0][1] == [sys.executable, "-m", "app.main"]
+            assert execv_calls[0][1] == [sys.executable, "-m", "comfyui_studio.promptvault.main"]
         finally:
             pass  # окно уже закрыто restart_application -> close()
 
     def test_restart_forwards_extra_cli_args(self, qapp, tmp_path, monkeypatch):
         """sys.argv[1:] (аргументы после имени модуля) должны
-        сохраниться при пересборке инвокации как `-m app.main`."""
+        сохраниться при пересборке инвокации как
+        `-m comfyui_studio.promptvault.main`."""
 
         import os
 
-        from app.ui.main_window import MainWindow
+        from comfyui_studio.promptvault.ui.main_window import MainWindow
 
         execv_calls = []
         monkeypatch.setattr(os, "execv", lambda *a: execv_calls.append(a))
-        monkeypatch.setattr(sys, "argv", ["app/main.py", "--some-flag"])
+        monkeypatch.setattr(sys, "argv", ["comfyui_studio/promptvault/main.py", "--some-flag"])
 
         w = MainWindow()
 
         w.restart_application()
 
-        assert execv_calls[0][1] == [sys.executable, "-m", "app.main", "--some-flag"]
+        assert execv_calls[0][1] == [sys.executable, "-m", "comfyui_studio.promptvault.main", "--some-flag"]
 
     def test_quit_does_not_call_execv(self, qapp, tmp_path, monkeypatch):
 
         import os
 
-        from app.ui.main_window import MainWindow
+        from comfyui_studio.promptvault.ui.main_window import MainWindow
 
         execv_calls = []
         monkeypatch.setattr(os, "execv", lambda *a: execv_calls.append(a))
@@ -622,7 +623,7 @@ class TestMainWindowRestartAndQuit:
 
         import os
 
-        from app.ui.main_window import MainWindow
+        from comfyui_studio.promptvault.ui.main_window import MainWindow
 
         monkeypatch.setattr(os, "execv", lambda *a: None)
 

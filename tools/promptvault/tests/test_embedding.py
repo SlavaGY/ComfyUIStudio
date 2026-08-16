@@ -2,7 +2,7 @@
 
 Модель не загружается по-настоящему (это требует сети/скачивания
 весов при первом запуске) — вместо неё подставляется фейковый объект
-через monkeypatch на app.core.embedding.get_model, с детерминированным
+через monkeypatch на comfyui_studio.promptvault.core.embedding.get_model, с детерминированным
 encode(), достаточным, чтобы проверить сквозную логику модуля
 (по-теговое кодирование документов, нормализация, батчинг, обработка
 пустых строк, деградация при ошибках) независимо от реальной
@@ -18,7 +18,7 @@ import os
 import numpy as np
 import pytest
 
-from app.core import embedding
+from comfyui_studio.promptvault.core import embedding
 
 # conftest.py заменяет embedding.get_model глобальной заглушкой для ВСЕХ
 # тестов по умолчанию (см. _stub_embedding_model_by_default) — реальная

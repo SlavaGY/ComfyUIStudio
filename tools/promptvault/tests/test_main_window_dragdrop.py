@@ -4,7 +4,7 @@ drag & drop JSON-файлов в главное окно).
 
 from PySide6.QtCore import QMimeData, QUrl
 
-from app.ui.main_window import MainWindow
+from comfyui_studio.promptvault.ui.main_window import MainWindow
 
 
 def _mime_with_urls(local_paths, non_file_urls=None):

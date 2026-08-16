@@ -8,8 +8,8 @@ QT_QPA_PLATFORM=offscreen (см. CONTRIBUTING.md):
 
 import pytest
 
-from app.config import SEMANTIC_SIMILARITY_THRESHOLD
-from app.core import embedding, generation_filter
+from comfyui_studio.promptvault.config import SEMANTIC_SIMILARITY_THRESHOLD
+from comfyui_studio.promptvault.core import embedding, generation_filter
 
 # Фикстура `qapp` больше не определяется здесь вручную — её предоставляет
 # pytest-qt (см. requirements-dev.txt / pyproject.toml). Она даёт тот же

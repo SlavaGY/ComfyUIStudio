@@ -9,7 +9,7 @@ import shutil
 
 import pytest
 
-from app.ui.main_window import MainWindow
+from comfyui_studio.promptvault.ui.main_window import MainWindow
 
 
 @pytest.fixture(autouse=True)
@@ -135,7 +135,7 @@ class TestRestoreLastFolder:
 
         try:
             monkeypatch.setattr(
-                "app.ui.main_window.QFileDialog.getExistingDirectory",
+                "comfyui_studio.promptvault.ui.main_window.QFileDialog.getExistingDirectory",
                 lambda *a, **k: str(folder),
             )
             w1.open_folder()

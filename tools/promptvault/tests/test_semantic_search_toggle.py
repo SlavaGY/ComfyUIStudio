@@ -3,7 +3,7 @@
 пользователь явно её отключил):
 
 - GalleryManager.set_semantic_search_enabled / semantic_search_enabled
-  (сохранение в QSettings, применение к app.core.embedding).
+  (сохранение в QSettings, применение к comfyui_studio.promptvault.core.embedding).
 
 Сама кнопка теперь в SettingsWindow — см. tests/test_settings_window.py.
 
@@ -12,9 +12,9 @@
 
 import pytest
 
-from app.core import embedding
-from app.core.gallery_manager import GalleryManager
-from app.core.repository import GenerationRepository
+from comfyui_studio.promptvault.core import embedding
+from comfyui_studio.promptvault.core.gallery_manager import GalleryManager
+from comfyui_studio.promptvault.core.repository import GenerationRepository
 
 
 @pytest.fixture(autouse=True)
@@ -130,5 +130,5 @@ class TestGalleryManagerSemanticSearchToggle:
 
 # Кнопка "Semantic search" переехала в SettingsWindow — см.
 # tests/test_settings_window.py. GalleryManager-часть (сохранение в
-# QSettings, применение к app.core.embedding) по-прежнему тестируется
+# QSettings, применение к comfyui_studio.promptvault.core.embedding) по-прежнему тестируется
 # выше в этом файле.

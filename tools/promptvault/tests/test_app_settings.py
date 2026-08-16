@@ -4,13 +4,13 @@
 
 import pytest
 
-from app.config import (
+from comfyui_studio.promptvault.config import (
     LOG_DIR_MAX_BYTES,
     LOG_MAX_AGE_DAYS,
     THUMBNAIL_CACHE_MAX_BYTES,
     THUMBNAIL_MAX_AGE_DAYS,
 )
-from app.settings import AppSettings
+from comfyui_studio.promptvault.settings import AppSettings
 
 
 @pytest.fixture(autouse=True)

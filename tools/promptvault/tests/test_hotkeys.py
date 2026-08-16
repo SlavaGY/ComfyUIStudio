@@ -5,7 +5,7 @@
 import pytest
 from PySide6.QtGui import QKeySequence
 
-from app.core.hotkeys import DEFAULT_HOTKEYS, HOTKEY_ACTIONS, HotkeyManager
+from comfyui_studio.promptvault.core.hotkeys import DEFAULT_HOTKEYS, HOTKEY_ACTIONS, HotkeyManager
 
 
 @pytest.fixture(autouse=True)

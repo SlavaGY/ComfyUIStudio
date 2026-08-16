@@ -8,9 +8,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from app.core import embedding, generation_filter
-from app.core.generation import Generation, ImageData, LoraData
-from app.core.generation_filter import FilterOptions, GenerationFilter
+from comfyui_studio.promptvault.core import embedding, generation_filter
+from comfyui_studio.promptvault.core.generation import Generation, ImageData, LoraData
+from comfyui_studio.promptvault.core.generation_filter import FilterOptions, GenerationFilter
 
 
 def _make_gen(
@@ -365,7 +365,7 @@ def _doc_vector_bytes(*tags: str) -> bytes:
 def fake_semantic_embedding(monkeypatch):
     """Подменяет embedding.compute_query_embedding на детерминированную
     функцию по темам — GenerationFilter вызывает именно её для запроса
-    (через `from app.core import embedding; embedding.compute_query_embedding(...)`),
+    (через `from comfyui_studio.promptvault.core import embedding; embedding.compute_query_embedding(...)`),
     поэтому патч на атрибут модуля подхватывается автоматически.
     EMBEDDING_DIM тоже подменяется — иначе bytes_to_chunks/
     cosine_similarity внутри GenerationFilter будут резать чанки по
@@ -375,10 +375,10 @@ def fake_semantic_embedding(monkeypatch):
     значение — продакшен-значение в app/config.py настраивается
     эмпирически под конкретную ML-модель и периодически меняется (при
     смене MODEL_NAME в embedding.py), тесты не должны от него зависеть.
-    Патчим ИМЕННО app.core.generation_filter.SEMANTIC_SIMILARITY_THRESHOLD
-    (а не app.config) — generation_filter делает `from app.config import
+    Патчим ИМЕННО comfyui_studio.promptvault.core.generation_filter.SEMANTIC_SIMILARITY_THRESHOLD
+    (а не comfyui_studio.promptvault.config) — generation_filter делает `from comfyui_studio.promptvault.config import
     SEMANTIC_SIMILARITY_THRESHOLD`, так что имя уже привязано к его
-    собственному пространству имён и патч на app.config его не затронет."""
+    собственному пространству имён и патч на comfyui_studio.promptvault.config его не затронет."""
 
     def _fake_compute_query(text: str) -> bytes | None:
         if not text or not text.strip():

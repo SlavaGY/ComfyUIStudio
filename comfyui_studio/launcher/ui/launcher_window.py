@@ -11,8 +11,8 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QStackedWidget, QSystemTrayIcon
 
-from themes.theme_manager import ThemeManager
-from i18n import LocalizationManager
+from comfyui_studio.themes.theme_manager import ThemeManager
+from comfyui_studio.i18n import LocalizationManager
 
 from ..core.comfy_process import ComfyProcess, ProcessLogBridge
 from ..core.config import build_extra_launch_args, load_config, prepare_launch_script
