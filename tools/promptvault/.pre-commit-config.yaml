@@ -17,7 +17,7 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: [PySide6==6.11.1]
-        args: [app/core]
+        args: [comfyui_studio/promptvault/core]
         pass_filenames: false
 
   - repo: https://github.com/pre-commit/pre-commit-hooks

@@ -4,7 +4,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QSettings, Signal
 from PySide6.QtWidgets import QApplication
 
-from .. import shared_theme
+from ... import shared_theme
 
 # см. подробный комментарий у аналогичного кода в
 # comfyui_studio/promptvault/config.py (ICON_PATH/TRANSLATIONS_DIR) —

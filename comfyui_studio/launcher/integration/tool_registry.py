@@ -18,7 +18,8 @@ IN_PROCESS_WINDOW_FACTORIES = {}
 def register_in_process_app(subdir, factory):
     """factory: сallable без аргументов, возвращающий готовое (но ещё не
     показанное) QWidget/QMainWindow -- см. create_window() в
-    tools/prompt_builder/main.py и tools/promptvault/app/main.py."""
+    comfyui_studio/prompt_builder/main.py и
+    comfyui_studio/promptvault/main.py."""
     IN_PROCESS_WINDOW_FACTORIES[subdir] = factory
 
 

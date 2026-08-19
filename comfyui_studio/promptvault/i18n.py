@@ -26,7 +26,7 @@ from __future__ import annotations
 from PySide6.QtCore import QCoreApplication, QObject, QSettings, QTranslator, Signal
 
 from comfyui_studio.promptvault.config import TRANSLATIONS_DIR
-from . import shared_language
+from .. import shared_language
 
 # отображаемое имя в UI -> код языка
 AVAILABLE_LANGUAGES: dict[str, str] = {

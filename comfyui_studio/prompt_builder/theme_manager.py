@@ -19,7 +19,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QSettings, Signal
 from PySide6.QtWidgets import QApplication
 
-import comfyui_studio.prompt_builder.shared_theme as shared_theme
+import comfyui_studio.shared_theme as shared_theme
 
 
 def resource_base() -> Path:

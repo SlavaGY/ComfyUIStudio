@@ -51,19 +51,28 @@ promptvault = [
     "sentence-transformers>=3.0",
 ]
 
+# Инструменты разработки (pytest/ruff/mypy) — этап 5 дорожной карты
+# рефакторинга ("cleanup") слил сюда группу `dev`, ранее жившую
+# отдельно в tools/promptvault/pyproject.toml (тот файл удалён —
+# единая точка правды вместо двух параллельных pyproject.toml с
+# рассинхронизирующимися версиями зависимостей). pytest/ruff/mypy
+# сейчас используются только тестами PromptVault
+# (tools/promptvault/tests/), но группа объявлена на уровне всего
+# репозитория, а не только для промптвольта — на случай, если Launcher/
+# Prompt Builder тоже обзаведутся тестами позже.
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-qt>=4.4",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
 # Установка:
 #   pip install .              — Launcher + Prompt Builder + PromptVault
 #                                 без семантического поиска
 #   pip install .[promptvault] — полный комплект
-#
-# Инструменты разработки (pytest/ruff/mypy) намеренно НЕ продублированы
-# здесь отдельной группой [dev] — они уже описаны в
-# tools/promptvault/pyproject.toml (своя pytest/ruff/mypy конфигурация,
-# используется при запуске тестов из tools/promptvault/). Слияние двух
-# pyproject.toml в один — вместе с переносом самих тестов на
-# `from comfyui_studio.promptvault.` — запланировано на этап 5 (cleanup),
-# делать это здесь заранее означало бы дважды разгребать один и тот же
-# мусор, см. дорожную карту.
+#   pip install .[dev]         — плюс инструменты разработки (тесты/линт/типы)
 
 [tool.setuptools.packages.find]
 include = ["comfyui_studio*"]
@@ -76,3 +85,96 @@ include = ["comfyui_studio*"]
     "**/*.qm",
     "**/*.ts",
 ]
+
+# --------------------------------------------------------------------------
+# Конфигурация pytest/coverage/ruff/mypy ниже — слита сюда из
+# tools/promptvault/pyproject.toml на этапе 5 дорожной карты рефакторинга
+# ("cleanup"). Пока используется только пакетом comfyui_studio.promptvault
+# (единственная часть комплекта с тестами и полным набором type hints на
+# сегодня) — отсюда testpaths/source/exclude ниже, указывающие именно на
+# него, а не на весь comfyui_studio/. Расширять на Launcher/Prompt Builder
+# по мере появления там своих тестов/типизации.
+# --------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+# Тесты физически остаются в tools/promptvault/tests/ (этап 2 дорожной
+# карты переносил только сам ИМПОРТИРУЕМЫЙ пакет — бывший app/, теперь
+# comfyui_studio/promptvault/ — под общее пространство имён комплекта;
+# сами тесты никогда не переезжали). Запускать pytest нужно из корня
+# репозитория (там же, где этот pyproject.toml) — `pythonpath = ["."]`
+# добавляет корень в sys.path, чтобы `import comfyui_studio.promptvault`
+# резолвился без отдельной установки пакета.
+testpaths = ["tools/promptvault/tests"]
+pythonpath = ["."]
+qt_api = "pyside6"
+
+[tool.coverage.run]
+source = ["comfyui_studio.promptvault"]
+omit = [
+    "comfyui_studio/promptvault/ui/*",
+    "comfyui_studio/promptvault/main.py",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# намеренно небольшой набор правил на старте — Pyflakes (ошибки) +
+# наведение порядка импортов; расширять по мере обкатки на реальном коде
+select = ["E", "F", "I"]
+ignore = [
+    "E501",  # длина строки — уже покрыта line-length, не дублируем как ошибку
+]
+
+[tool.ruff.format]
+# ruff format ПОДКЛЮЧЁН и настроен здесь — доступен любому через
+# `ruff format comfyui_studio/promptvault` / `ruff format --diff
+# comfyui_studio/promptvault` — но СОЗНАТЕЛЬНО НЕ применён ко всему
+# проекту разом и НЕ включён в pre-commit (см.
+# tools/promptvault/.pre-commit-config.yaml).
+#
+# Причина (перенесена из исходного tools/promptvault/pyproject.toml,
+# см. git-историю): `ruff format --diff` на срез кода PromptVault до
+# этого решения давал diff по 25 файлам из 25, ~1330 удалённых строк —
+# почти все удаления это схлопывание одиночных пустых строк, специально
+# расставленных внутри функций между логическими блоками (устоявшийся
+# стиль читаемости этого проекта, не случайные пробелы), плюс
+# разворачивание однострочных литералов-множеств/списков в
+# по-элементно-построчный вид. И то и другое реальные, целенаправленные
+# стилистические решения, а не "грязь", которую формуттеру следует
+# убрать.
+#
+# Разово применить ruff format ко всему проекту (согласившись со
+# сменой стиля) можно централизованно одной командой в отдельном
+# PR — но это самостоятельное решение о смене конвенций проекта, не
+# то же самое, что "подключить форматтер", и не должно происходить
+# незаметно как побочный эффект автокоммита pre-commit хука.
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_redundant_casts = true
+# UI-слой (PySide6-виджеты) пока не типизирован полностью — начинаем
+# со строгой проверки только для comfyui_studio/promptvault/core, где
+# сосредоточена бизнес-логика. tools/promptvault/tests/ исключены по
+# той же причине, что и раньше (тесты не покрыты strict-типизацией).
+exclude = ["comfyui_studio/promptvault/ui/", "tools/promptvault/tests/"]
+
+[[tool.mypy.overrides]]
+module = "comfyui_studio.promptvault.core.*"
+# --strict для бизнес-логики — набор флагов эквивалентен mypy --strict,
+# перечислен явно (а не через strict = true), чтобы controlled полем
+# ignore_missing_imports сверху не переопределялся неявно и было видно,
+# что именно включено
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_unused_ignores = true
+warn_return_any = true
+strict_equality = true

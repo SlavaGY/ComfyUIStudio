@@ -15,7 +15,7 @@ Editor — по образцу i18n.py в лаунчере (ComfyUI Studio), н�
 """
 from PySide6.QtCore import QObject, QSettings, Signal
 
-import comfyui_studio.prompt_builder.shared_language as shared_language
+import comfyui_studio.shared_language as shared_language
 
 AVAILABLE_LANGUAGES = {
     "Русский": "ru",

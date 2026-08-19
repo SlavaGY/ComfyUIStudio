@@ -1,3 +1,8 @@
+# То же самое, что группа `dev` в корневом pyproject.toml
+# (pip install -e ".[dev]" из корня репозитория) — оставлено здесь как
+# более быстрый путь для тех, кто уже сидит внутри tools/promptvault/ и
+# не хочет ставить весь комплект (Launcher/Prompt Builder) ради тестов
+# одного PromptVault.
 pytest>=8.0
 pytest-cov>=5.0
 pytest-qt>=4.4

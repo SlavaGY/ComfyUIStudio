@@ -11,9 +11,9 @@ comfyui_studio/launcher/core/comfy_process.py).
 у каждого инструмента по-прежнему своё отдельное окно (QMainWindow),
 но окна живут в общем цикле событий одного и того же процесса, а не
 трёх разных. Практическая причина: единая сборка в один exe (см.
-build/ComfyUIStudio.spec и build_exe.bat), без разгона отдельных
-подпроцессов и без риска рассинхронизации версий инструментов при
-обновлении одного из них.
+ComfyUIStudio-core.spec / ComfyUIStudio-full.spec и build_exe.bat), без
+разгона отдельных подпроцессов и без риска рассинхронизации версий
+инструментов при обновлении одного из них.
 
 Как это работает:
   - Все три инструмента комплекта (ComfyUI Launcher, Prompt Builder,
@@ -21,7 +21,9 @@ build/ComfyUIStudio.spec и build_exe.bat), без разгона отдельн
     comfyui_studio/launcher, comfyui_studio/prompt_builder,
     comfyui_studio/promptvault (этапы 1—2 дорожной карты рефакторинга;
     PromptVault раньше был пакетом `app`, Prompt Builder раньше жил
-    прямо в tools/prompt_builder). Импортируются одинаково:
+    прямо в tools/prompt_builder — оба каталога под tools/ с этапа 2
+    больше не импортируются, там остались только служебные файлы сборки
+    отдельных standalone-exe, см. README). Импортируются одинаково:
     `from comfyui_studio.launcher... / .prompt_builder... / .promptvault...`
     — без разницы в стиле между тремя инструментами, которая раньше
     была тут (`app.xxx` у одного, `prompt_builder.xxx` у другого).
@@ -44,23 +46,12 @@ build/ComfyUIStudio.spec и build_exe.bat), без разгона отдельн
     всех трёх инструментов вместо трёх процессов, следящих за одним
     файлом на диске через QFileSystemWatcher.
 
-ВАЖНО про sys.path ниже: PROMPTVAULT_DIR/TOOLS_DIR/ROOT_DIR добавлялись
-в sys.path, когда PromptVault/Prompt Builder были пакетами `app`/
-`prompt_builder`, резолвившимися от tools/. После переноса под
-comfyui_studio/ (этап 2) для ИМПОРТОВ ВЫШЕ этот блок больше не нужен —
-comfyui_studio резолвится как обычный пакет от корня проекта, который и
-так уже в sys.path при `python main.py`. Сам блок пока НЕ удалён —
-проверка, что он не нужен ничему ещё (сборка PyInstaller, возможные
-прямые запуски инструментов) и его собственно удаление — отдельный шаг
-уборки (этап 5 дорожной карты), а не часть этапа 2.
-
 Запуск из исходников:  python main.py
 Сборка exe:             см. build_exe.bat (одна сборка на весь комплект)
 """
 
 import os
 import sys
-from pathlib import Path
 
 
 # Отключаем Windows Native Window Occlusion в Chromium/QtWebEngine —
@@ -86,20 +77,6 @@ if _EXTRA_CHROMIUM_FLAGS not in _existing_flags:
     )
 
 
-ROOT_DIR = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
-TOOLS_DIR = ROOT_DIR / "tools"
-PROMPTVAULT_DIR = TOOLS_DIR / "promptvault"
-
-# Оставлено как есть с версии до переноса пакетов под comfyui_studio/ —
-# см. пояснение "ВАЖНО про sys.path" в докстринге модуля выше. Не влияет
-# на импорты comfyui_studio.* ниже в main(), но пока не убрано (этап 5
-# дорожной карты, не этот этап).
-for _p in (PROMPTVAULT_DIR, TOOLS_DIR, ROOT_DIR):
-    _sp = str(_p)
-    if _sp not in sys.path:
-        sys.path.insert(0, _sp)
-
-
 def main():
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
@@ -119,11 +96,11 @@ def main():
     # Все три инструмента комплекта теперь под общим пространством имён
     # comfyui_studio (этап 1 — разбиение comfyui_launcher.py, этап 2 —
     # перенос prompt_builder/promptvault под comfyui_studio, см. дорожную
-    # карту рефакторинга). sys.path-хак выше (PROMPTVAULT_DIR/TOOLS_DIR/
-    # ROOT_DIR) больше не нужен для ЭТИХ импортов — comfyui_studio
-    # резолвится как обычный пакет от корня проекта, уже присутствующего
-    # в sys.path при `python main.py` — но сам хак пока не убран, это
-    # отдельный пункт уборки (этап 5 дорожной карты).
+    # карту рефакторинга). comfyui_studio резолвится как обычный пакет от
+    # корня проекта, уже присутствующего в sys.path при `python main.py`
+    # — отдельный sys.path-хак (PROMPTVAULT_DIR/TOOLS_DIR/ROOT_DIR),
+    # нужный только для старых пакетов app/prompt_builder под tools/, был
+    # удалён на этапе 5 дорожной карты (cleanup).
     from comfyui_studio.launcher.integration.tool_registry import register_in_process_app
     from comfyui_studio.launcher.ui.launcher_window import create_window as create_launcher_window
     from comfyui_studio.prompt_builder.main import create_window as create_prompt_builder_window
