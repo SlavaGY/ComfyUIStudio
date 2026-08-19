@@ -52,8 +52,21 @@ class MainWindow(QMainWindow):
     в GalleryManager (self.gallery).
     """
 
-    def __init__(self):
+    def __init__(self, standalone: bool = True):
+        """standalone: False, когда это окно открыто ВНУТРИ монолитной
+        сборки ComfyUI Studio (см. comfyui_studio/launcher/integration/
+        tool_registry.py, register_in_process_app) -- то есть делит один
+        процесс и одно QApplication с лаунчером и, возможно, Prompt
+        Builder. Влияет только на show_settings() ниже (скрывает там
+        Restart/Quit — см. SettingsWindow(standalone=...) и docstring
+        closeEvent) и на защиту в самом closeEvent от случайного
+        os.execv() поверх общего процесса; на остальную работу окна не
+        влияет. По умолчанию True — то есть поведение при обычном
+        самостоятельном запуске (`python -m comfyui_studio.promptvault.main`
+        или EXTERNAL_APPS-подпроцесс) не изменилось."""
+
         super().__init__()
+        self.standalone = standalone
 
         self.setWindowTitle(f"PromptVault")
         self.resize(1600, 900)
@@ -84,8 +97,14 @@ class MainWindow(QMainWindow):
         self.gallery = GalleryManager(self.repository, self)
         self.folder_sync = FolderSync(self.repository, self)
 
-        self.toolbar = Toolbar()
-        self.filter_popup = FilterPopup(self)
+        self.toolbar = Toolbar(standalone=self.standalone)
+        self.filter_popup = FilterPopup(
+            parent=self,
+            semantic_search_enabled=(
+                self.gallery.semantic_search_enabled()
+                and self.gallery.semantic_search_available()
+            ),
+        )
         self.sort_popup = SortPopup()
 
         self.generation_list = GenerationList()
@@ -582,10 +601,21 @@ class MainWindow(QMainWindow):
                 theme_manager=self.theme_manager,
                 localization_manager=self.localization_manager,
                 toolbar=self.toolbar,
+                standalone=self.standalone,
                 parent=self,
             )
-            self.settings_window.restartRequested.connect(self.restart_application)
-            self.settings_window.quitRequested.connect(self.quit_application)
+            # restartRequested/quitRequested существуют только при
+            # standalone=True -- см. SettingsWindow.__init__/
+            # _build_application_group. При standalone=False (PromptVault
+            # открыт внутри монолитной ComfyUI Studio) блок Application в
+            # его настройках вообще не строится -- см. этап 4 дорожной
+            # карты рефакторинга ("Единое дерево настроек"), доработку по
+            # замечанию пользователя: Studio-wide Restart/Quit теперь
+            # живут в самой ComfyUI Studio (Advanced -> Application), а
+            # не дублируются/не путают отсюда.
+            if self.standalone:
+                self.settings_window.restartRequested.connect(self.restart_application)
+                self.settings_window.quitRequested.connect(self.quit_application)
             self.settings_window.hotkeyChanged.connect(self._on_hotkey_changed)
 
         self.settings_window.show()
@@ -599,9 +629,19 @@ class MainWindow(QMainWindow):
         в настройках) — закрывает текущий процесс так же аккуратно,
         как обычное закрытие окна (см. closeEvent — останавливает
         FolderSync, закрывает соединение с БД), а затем заменяет
-        процесс новым запуском `python -m app.main` (см. closeEvent —
-        именно как `-m app.main`, а не переиспользованием sys.argv "как
-        есть", иначе запуск через `python -m app.main` ломается).
+        процесс новым запуском `python -m comfyui_studio.promptvault.main`
+        (см. closeEvent — именно с `-m`, а не переиспользованием
+        sys.argv "как есть", иначе запуск через `-m` ломается).
+
+        Доступно только при standalone=True — при standalone=False
+        (PromptVault открыт внутри монолитной ComfyUI Studio) кнопка,
+        вызывающая этот метод, вообще не строится (см.
+        SettingsWindow.__init__), а closeEvent дополнительно игнорирует
+        _pending_restart как защиту от дурака — self-restart здесь убил
+        бы общий процесс лаунчера и ComfyUI, а не только PromptVault.
+        Studio-wide аналог для перезапуска ВСЕГО комплекта — см.
+        MainWindow.restart_studio() в comfyui_studio/launcher/ui/
+        launcher_window.py.
 
         Подтверждение уже было запрошено в SettingsWindow — сюда
         попадаем, только если пользователь согласился."""
@@ -1088,6 +1128,24 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
         if self._pending_restart:
+            if not self.standalone:
+                # Защита от дурака: кнопка Restart в SettingsWindow уже
+                # не строится вовсе, когда standalone=False (см.
+                # show_settings() выше и SettingsWindow.__init__), так
+                # что штатно сюда с standalone=False попасть нельзя. Но
+                # os.execv() ниже заменил бы ВЕСЬ процесс монолитной
+                # ComfyUI Studio (лаунчер + управление ComfyUI) одним
+                # только PromptVault -- слишком опасная операция, чтобы
+                # полагаться исключительно на "кнопки же не должно
+                # быть" где-то выше по стеку вызовов.
+                logger.warning(
+                    "_pending_restart выставлен при standalone=False -- "
+                    "перезапуск процесса ПРОПУЩЕН (это окно работает "
+                    "внутри общего процесса ComfyUI Studio, self-restart "
+                    "убил бы весь процесс, а не только PromptVault)"
+                )
+                return
+
             python = sys.executable
 
             # os.execv с "сырым" sys.argv не работает, если приложение

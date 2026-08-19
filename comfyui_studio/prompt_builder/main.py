@@ -21,10 +21,9 @@ from __future__ import annotations
 import os
 import sys
 
-from PySide6.QtCore import Qt, QSettings
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QKeySequence
 from PySide6.QtWidgets import (
-    QApplication, QFileDialog, QMainWindow, QMessageBox, QTabWidget,
+    QApplication, QFileDialog, QMainWindow, QMessageBox, QTabWidget, QToolBar,
 )
 
 from comfyui_studio.prompt_builder.characters_tab import CharactersTab
@@ -32,7 +31,7 @@ from comfyui_studio.prompt_builder.json_store import JsonStoreError, load_json, 
 from comfyui_studio.prompt_builder.promptbuilder_tab import PromptBuilderTab
 from comfyui_studio.prompt_builder.theme_manager import ThemeManager, resource_base
 from comfyui_studio.prompt_builder.pb_i18n import LocalizationManager
-from comfyui_studio.prompt_builder.lora_combo import get_lora_folder, set_lora_folder
+from comfyui_studio.prompt_builder.pb_settings import get_extension_folder
 
 CHARACTERS_FILENAME = "characters.json"
 PROMPT_BUILDER_FILENAME = "prompt_builder_config.json"
@@ -55,38 +54,39 @@ class MainWindow(QMainWindow):
         self.theme_manager = ThemeManager()
         self.loc = LocalizationManager()
         self.dirty = {"characters": False, "prompt_builder": False}
-        # Та же группа QSettings, что и у ThemeManager — один файл настроек на всё.
-        self._settings = QSettings("PromptConfigEditor", "PromptConfigEditor")
 
         self._build_body()
-        self._build_menu()
+        self._build_toolbar()
         self.loc.language_changed_externally.connect(self._on_language_changed_externally)
-        self.statusBar().showMessage(self.loc.tr("Файлы не загружены — откройте папку расширения (Ctrl+O)"))
+        self.statusBar().showMessage(
+            self.loc.tr(
+                "Файлы не загружены — укажите папку расширения в "
+                "настройках ComfyUI Studio, либо откройте файл (Ctrl+O)"
+            )
+        )
 
         app = QApplication.instance()
         self.theme_manager.apply_theme(self.theme_manager.current_theme(), app)
         self.loc.apply_language(self.loc.current_language())
 
         self._refresh_title()
-        self._restore_last_folder()
+        self._load_from_extension_folder()
 
-    # ------------------------------------------------------- last folder
-    def _last_folder(self) -> str:
-        return self._settings.value("last_folder", "", str)
-
-    def _set_last_folder(self, path: str):
-        folder = path if os.path.isdir(path) else os.path.dirname(path)
-        if folder:
-            self._settings.setValue("last_folder", folder)
-
+    # ------------------------------------------------------ extension folder
     def _dialog_start_dir(self) -> str:
-        folder = self._last_folder()
+        folder = get_extension_folder()
         return folder if folder and os.path.isdir(folder) else ""
 
-    def _restore_last_folder(self):
-        """Тихо подхватывает файлы из папки, открытой в прошлый раз —
-        без диалогов об ошибке, если папки/файлов уже нет на месте."""
-        folder = self._last_folder()
+    def _load_from_extension_folder(self):
+        """Тихо подхватывает файлы из папки расширения, настроенной в
+        едином дереве настроек ComfyUI Studio (см. pb_settings.
+        get_extension_folder(), ui/settings/prompt_builder_page.py в
+        лаунчере) — без диалогов об ошибке, если папки/файлов уже нет
+        на месте. Раньше эта папка запоминалась изнутри самого редактора
+        (меню "Файл -> Открыть папку расширения...") — теперь это чистое
+        чтение уже готовой настройки, сам редактор её не меняет (см.
+        докстринг pb_settings.py)."""
+        folder = get_extension_folder()
         if not folder or not os.path.isdir(folder):
             return
         chars_path = os.path.join(folder, CHARACTERS_FILENAME)
@@ -111,56 +111,45 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.prompt_builder_tab, self.loc.tr("  Конструктор промпта (prompt_builder_config.json)  "))
         self.tabs.currentChanged.connect(lambda _i: self._refresh_title())
 
-    def _build_menu(self):
-        menubar = self.menuBar()
-        menubar.clear()
+    def _build_toolbar(self):
+        """Тулбар из двух кнопок вместо прежнего меню "Файл"/"Справка"
+        (см. докстринг pb_settings.py) — папки (расширения, LoRA) и
+        число бэкапов теперь настраиваются извне, из единого дерева
+        настроек ComfyUI Studio, а не изнутри самого редактора; "Открыть
+        characters.json.../prompt_builder_config.json..." (два разных
+        диалога) заменены одной кнопкой "Открыть файл..." (см.
+        open_existing_file() ниже — сама определяет, в какую вкладку
+        грузить, по имени файла). "Сохранить текущую вкладку"/"Сохранить
+        как..."/"О программе"/"Выход" убраны как избыточные: "Сохранить
+        всё" покрывает основной сценарий (в редакторе всего два
+        файла-цели с фиксированными именами), а "Выход" ничем не
+        отличался от обычного закрытия окна (closeEvent ниже и так
+        спрашивает про несохранённые изменения)."""
+
+        toolbar = QToolBar()
+        toolbar.setMovable(False)
+        toolbar.setFloatable(False)
+        self.addToolBar(toolbar)
 
         tr = self.loc.tr
 
-        file_menu = menubar.addMenu(tr("Файл"))
-        self.act_open_folder = file_menu.addAction(tr("Открыть папку расширения..."), self.open_folder, "Ctrl+O")
-        file_menu.addSeparator()
-        self.act_open_characters = file_menu.addAction(tr("Открыть characters.json..."), self.open_characters_file)
-        self.act_open_pb = file_menu.addAction(tr("Открыть prompt_builder_config.json..."), self.open_prompt_builder_file)
-        file_menu.addSeparator()
-        self.act_choose_lora_folder = file_menu.addAction(
-            tr("Указать папку с файлами LoRA..."), self._choose_lora_folder
+        self.act_save_all = toolbar.addAction(tr("💾 Сохранить всё"), self.save_all)
+        self.act_save_all.setShortcut(QKeySequence.Save)  # Ctrl+S
+        self.act_open_existing = toolbar.addAction(
+            tr("📂 Открыть файл..."), self.open_existing_file
         )
-        file_menu.addSeparator()
-        self.act_save_current = file_menu.addAction(tr("Сохранить текущую вкладку"), self.save_current, "Ctrl+S")
-        self.act_save_as = file_menu.addAction(tr("Сохранить как..."), self.save_current_as)
-        self.act_save_all = file_menu.addAction(tr("Сохранить всё"), self.save_all)
-        file_menu.addSeparator()
-        self.act_quit = file_menu.addAction(tr("Выход"), self.close)
-        self.file_menu = file_menu
+        self.act_open_existing.setShortcut(QKeySequence.Open)  # Ctrl+O
 
-        # Тема оформления и язык интерфейса теперь общие на весь комплект
-        # ComfyUI Studio и настраиваются из лаунчера (см. README) — здесь
-        # своего переключателя больше нет, только применение (ThemeManager/
-        # LocalizationManager следят за общими файлами комплекта).
-
-        help_menu = menubar.addMenu(tr("Справка"))
-        self.act_about = help_menu.addAction(tr("О программе"), self._show_about)
-        self.help_menu = help_menu
+        self.toolbar = toolbar
 
     def retranslate_ui(self):
-        """Перевыставляет уже построенные тексты меню и вкладок после
+        """Перевыставляет уже построенные тексты тулбара и вкладок после
         смены языка — сам факт выбора языка не обновляет текст уже
         созданных виджетов."""
         tr = self.loc.tr
 
-        self.file_menu.setTitle(tr("Файл"))
-        self.act_open_folder.setText(tr("Открыть папку расширения..."))
-        self.act_open_characters.setText(tr("Открыть characters.json..."))
-        self.act_open_pb.setText(tr("Открыть prompt_builder_config.json..."))
-        self.act_choose_lora_folder.setText(tr("Указать папку с файлами LoRA..."))
-        self.act_save_current.setText(tr("Сохранить текущую вкладку"))
-        self.act_save_as.setText(tr("Сохранить как..."))
-        self.act_save_all.setText(tr("Сохранить всё"))
-        self.act_quit.setText(tr("Выход"))
-
-        self.help_menu.setTitle(tr("Справка"))
-        self.act_about.setText(tr("О программе"))
+        self.act_save_all.setText(tr("💾 Сохранить всё"))
+        self.act_open_existing.setText(tr("📂 Открыть файл..."))
 
         self.tabs.setTabText(0, tr("  Персонажи (characters.json)  "))
         self.tabs.setTabText(1, tr("  Конструктор промпта (prompt_builder_config.json)  "))
@@ -174,18 +163,6 @@ class MainWindow(QMainWindow):
         приложение уже открыто — applying уже сделан в LocalizationManager,
         здесь только перевыставляем уже показанные тексты."""
         self.retranslate_ui()
-
-    def _show_about(self):
-        QMessageBox.information(
-            self, APP_TITLE,
-            self.loc.tr(
-                "Редактор конфигов для расширения ComfyUI character_search_ui.\n\n"
-                "Редактирует:\n"
-                " • characters.json — база персонажей\n"
-                " • prompt_builder_config.json — блочный конструктор промпта\n\n"
-                "Перед каждым сохранением создаётся резервная копия (*.bak-...)."
-            ),
-        )
 
     # ------------------------------------------------------------ state
     def _current_tab_key(self) -> str:
@@ -217,50 +194,52 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("   |   ".join(parts))
 
     # ------------------------------------------------------------ open
-    def open_folder(self):
-        folder = QFileDialog.getExistingDirectory(
-            self, "Выберите папку расширения (с characters.json и prompt_builder_config.json)",
-            self._dialog_start_dir())
-        if not folder:
-            return
-        self._set_last_folder(folder)
-        chars_path = os.path.join(folder, CHARACTERS_FILENAME)
-        pb_path = os.path.join(folder, PROMPT_BUILDER_FILENAME)
-
-        opened_any = False
-        if os.path.isfile(chars_path):
-            self._load_characters(chars_path)
-            opened_any = True
-        if os.path.isfile(pb_path):
-            self._load_prompt_builder(pb_path)
-            opened_any = True
-
-        if not opened_any:
-            QMessageBox.warning(
-                self, "Файлы не найдены",
-                f"В папке не найдено ни {CHARACTERS_FILENAME}, ни {PROMPT_BUILDER_FILENAME}.\n"
-                "Откройте файлы по отдельности через меню «Файл».",
-            )
-
-    def _choose_lora_folder(self):
-        chosen = QFileDialog.getExistingDirectory(
-            self, self.loc.tr("Папка с файлами LoRA"), get_lora_folder()
+    def open_existing_file(self):
+        """Заменяет прежние три отдельных диалога ("Открыть папку
+        расширения...", "Открыть characters.json...", "Открыть
+        prompt_builder_config.json...", все были в меню "Файл", см.
+        докстринг _build_toolbar) одним. Папка расширения теперь только
+        настраивается (см. pb_settings.get_extension_folder()) — этот
+        диалог её не меняет и не запоминает, даже если выбранный файл
+        лежит в другой папке: начальная папка диалога подсказывается из
+        неё же, но открытие произвольного файла не должно неявно
+        менять настройку, которую пользователь задал через настройки
+        ComfyUI Studio."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, self.loc.tr("Открыть файл"), self._dialog_start_dir(),
+            "JSON (*.json);;Все файлы (*)",
         )
-        if chosen:
-            set_lora_folder(chosen)
+        if not path:
+            return
 
-    def open_characters_file(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Открыть characters.json", self._dialog_start_dir(), "JSON (*.json);;Все файлы (*)")
-        if path:
-            self._set_last_folder(path)
+        name = os.path.basename(path).lower()
+        if name == CHARACTERS_FILENAME.lower():
             self._load_characters(path)
+            return
+        if name == PROMPT_BUILDER_FILENAME.lower():
+            self._load_prompt_builder(path)
+            return
 
-    def open_prompt_builder_file(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Открыть prompt_builder_config.json", self._dialog_start_dir(), "JSON (*.json);;Все файлы (*)")
-        if path:
-            self._set_last_folder(path)
+        # Имя файла не совпадает ни с одним из двух ожидаемых — не
+        # угадываем по содержимому, просто спрашиваем прямо.
+        reply = QMessageBox.question(
+            self,
+            self.loc.tr("В какую вкладку загрузить?"),
+            self.loc.tr(
+                'Файл "{name}" не похож по имени ни на {characters}, ни '
+                "на {prompt_builder}.\n\nЗагрузить его как вкладку "
+                '"Персонажи"? ("Нет" — загрузить как "Конструктор промпта")'
+            ).format(
+                name=os.path.basename(path),
+                characters=CHARACTERS_FILENAME,
+                prompt_builder=PROMPT_BUILDER_FILENAME,
+            ),
+            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if reply == QMessageBox.Yes:
+            self._load_characters(path)
+        elif reply == QMessageBox.No:
             self._load_prompt_builder(path)
 
     def _load_characters(self, path: str, quiet: bool = False):
@@ -302,18 +281,6 @@ class MainWindow(QMainWindow):
         self._refresh_title()
 
     # ------------------------------------------------------------ save
-    def save_current(self):
-        self._save_tab(self._current_tab_key())
-
-    def save_current_as(self):
-        key = self._current_tab_key()
-        default_name = CHARACTERS_FILENAME if key == "characters" else PROMPT_BUILDER_FILENAME
-        start = os.path.join(self._dialog_start_dir(), default_name) if self._dialog_start_dir() else default_name
-        path, _ = QFileDialog.getSaveFileName(self, "Сохранить как", start, "JSON (*.json)")
-        if path:
-            self._set_last_folder(path)
-            self._save_tab(key, path)
-
     def save_all(self):
         for key in ("characters", "prompt_builder"):
             tab = self.characters_tab if key == "characters" else self.prompt_builder_tab

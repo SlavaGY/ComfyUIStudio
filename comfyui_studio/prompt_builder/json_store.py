@@ -7,7 +7,10 @@ utils/char_utils.py, utils/prompt_logic.py из character_search_ui):
 - UTF-8, кириллица не экранируется (ensure_ascii=False) — так же, как
   в исходных файлах расширения.
 - Перед каждым сохранением создаётся резервная копия рядом с файлом:
-  <имя>.json.bak-YYYYMMDD-HHMMSS (храним последние BACKUP_KEEP штук).
+  <имя>.json.bak-YYYYMMDD-HHMMSS (сколько последних штук хранить —
+  см. pb_settings.get_backup_keep(), настраивается из единого дерева
+  настроек ComfyUI Studio; раньше было жёстко зашитым BACKUP_KEEP = 10
+  здесь же).
 """
 from __future__ import annotations
 
@@ -18,7 +21,7 @@ import shutil
 import time
 from typing import Any
 
-BACKUP_KEEP = 10
+from comfyui_studio.prompt_builder.pb_settings import get_backup_keep
 
 
 class JsonStoreError(Exception):
@@ -51,11 +54,14 @@ def _make_backup(path: str) -> str | None:
     except OSError:
         return None
 
-    # Подчищаем старые бэкапы, оставляя последние BACKUP_KEEP.
+    # Подчищаем старые бэкапы, оставляя последние get_backup_keep() штук
+    # (0 — не хранить ни одного, полностью отключить бэкапы этим же
+    # переключателем не получится — сам файл на bak-момент уже
+    # скопирован выше; keep=0 просто сразу удалит его же).
     try:
         pattern = f"{path}.bak-*"
         backups = sorted(glob.glob(pattern))
-        excess = len(backups) - BACKUP_KEEP
+        excess = len(backups) - get_backup_keep()
         for old in backups[:max(0, excess)]:
             os.remove(old)
     except OSError:

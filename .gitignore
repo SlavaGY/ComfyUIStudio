@@ -1,6 +1,7 @@
+build/
+comfyui_studio.egg-info/
+dist/
 .venv-build/
-.vscode/
-__pycache__/
-*.py[cod]
-.gitignore
-ComfyUIStudio_Refactoring_Roadmap.md
+.venv-build-full/
+.venv-build-core/
+

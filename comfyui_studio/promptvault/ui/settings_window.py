@@ -59,15 +59,42 @@ class SettingsWindow(QDialog):
         gallery: GalleryManager,
         theme_manager: ThemeManager,
         localization_manager: LocalizationManager,
-        toolbar: Toolbar,
+        toolbar: Toolbar | None = None,
+        standalone: bool = True,
         parent: QWidget | None = None,
     ):
+        """standalone: False, когда PromptVault открыт ВНУТРИ монолитной
+        сборки ComfyUI Studio (общий процесс с лаунчером — см.
+        MainWindow(standalone=...) и её docstring). Скрывает блок
+        Application (Restart/Quit) целиком в этом случае — self-restart
+        через os.execv() в общем процессе убил бы не только PromptVault,
+        а лаунчер и управление ComfyUI вместе с ним (см. MainWindow.
+        closeEvent), а "Quit" из настроек PromptVault, закрывающий
+        только его собственное окно, было бы просто вводящим в
+        заблуждение названием кнопки. Studio-wide Restart/Quit — в самой
+        ComfyUI Studio, раздел Advanced -> Application (этап 4 дорожной
+        карты рефакторинга, доработка по замечанию пользователя).
+
+        toolbar: раньше был обязательным параметром, хотя фактически
+        нигде в этом классе не читается (проверено — единственное
+        использование было `self.toolbar = toolbar`, ни разу дальше).
+        Список хоткеев берётся из отдельного self.hotkey_manager =
+        HotkeyManager() ниже, который ничего не знает о toolbar и сам
+        читает/пишет назначения через QSettings. Из-за этой (ложной)
+        обязательности SettingsWindow нельзя было открыть без уже
+        существующего MainWindow PromptVault — теперь можно (см.
+        comfyui_studio.promptvault.main.create_settings_window):
+        параметр остался в сигнатуре ради обратной совместимости (и на
+        случай, если он когда-нибудь понадобится по-настоящему), но
+        по умолчанию None и ничем не ограничивает вызывающий код."""
+
         super().__init__(parent)
 
         self.gallery = gallery
         self.theme_manager = theme_manager
         self.localization_manager = localization_manager
         self.toolbar = toolbar
+        self.standalone = standalone
         self.app_settings = AppSettings()
         self.hotkey_manager = HotkeyManager()
 
@@ -75,9 +102,34 @@ class SettingsWindow(QDialog):
         self.setMinimumWidth(440)
 
         self._build_ui()
+        # ВАЖНО: подключаемся именно bound-методом (self._on_...), а не
+        # lambda-функцией, замыкающей self -- PySide автоматически
+        # отключает соединение, когда C++-объект ПОЛУЧАТЕЛЯ уничтожен,
+        # но делает это, только распознав получателя как bound-метод
+        # QObject'а; у голой lambda такого распознаваемого получателя
+        # нет, и соединение остаётся висеть даже после уничтожения self.
+        #
+        # localization_manager -- общий, более долгоживущий объект (не
+        # принадлежит этому окну), поэтому именно эта комбинация опасна:
+        # при закрытии PromptVault ВНУТРИ монолитной ComfyUI Studio (см.
+        # SettingsPage._open_in_process_window в лаунчере, этап 4
+        # дорожной карты -- WA_DeleteOnClose + gc.collect()) C++-объект
+        # этого SettingsWindow реально уничтожается, а localization_manager
+        # переживает это закрытие. Со старой lambda-связкой следующая же
+        # смена языка (например, в едином дереве настроек лаунчера)
+        # пыталась вызвать retranslate_ui() на уже удалённом C++-объекте
+        # -- `RuntimeError: libshiboken: Internal C++ object (SettingsWindow)
+        # already deleted`, всплывавшее не в момент закрытия, а позже, при
+        # следующей смене языка, что и затрудняло диагностику. До этапа 4
+        # окна никогда не удалялись по-настоящему (см. докстринг
+        # _open_in_process_window), поэтому эта связка ни разу не
+        # проявлялась как баг раньше.
         self.localization_manager.language_changed_externally.connect(
-            lambda _code: self.retranslate_ui()
+            self._on_language_changed_externally
         )
+
+    def _on_language_changed_externally(self, _code: str) -> None:
+        self.retranslate_ui()
 
     # --------------------------------------------------
 
@@ -89,7 +141,8 @@ class SettingsWindow(QDialog):
         layout.addWidget(self._build_search_group())
         layout.addWidget(self._build_performance_group())
         layout.addWidget(self._build_storage_group())
-        layout.addWidget(self._build_application_group())
+        if self.standalone:
+            layout.addWidget(self._build_application_group())
 
         layout.addStretch()
 
@@ -273,9 +326,7 @@ class SettingsWindow(QDialog):
 
         self.semantic_search_checkbox = QCheckBox(self.tr("Enable semantic search"))
         self.semantic_search_checkbox.setChecked(self.gallery.semantic_search_enabled())
-        self.semantic_search_checkbox.toggled.connect(
-            self.gallery.set_semantic_search_enabled
-        )
+        self.semantic_search_checkbox.toggled.connect(self._on_semantic_search_toggled)
         layout.addWidget(self.semantic_search_checkbox)
 
         self.semantic_search_hint = QLabel(
@@ -291,8 +342,20 @@ class SettingsWindow(QDialog):
         layout.addWidget(self.semantic_search_hint)
 
         # -------- выбор модели эмбеддинга (задача: выбор модели) --------
+        #
+        # Обёрнуты в отдельный QWidget (а не просто QFormLayout, который
+        # сам по себе не умеет setVisible()), чтобы прятать их ЦЕЛИКОМ,
+        # когда сам переключатель "Enable semantic search" выключен —
+        # см. _apply_semantic_search_enabled_visibility() ниже. Раньше
+        # они только дизейблились (см. _apply_semantic_search_availability,
+        # который остаётся ортогональным механизмом — дизейблит, когда
+        # физически недоступна сама библиотека), но оставались видны и
+        # занимали место на экране, даже когда семантический поиск
+        # выключен и настраивать тут решительно нечего.
 
-        form = QFormLayout()
+        self.embedding_settings_widget = QWidget()
+        form = QFormLayout(self.embedding_settings_widget)
+        form.setContentsMargins(0, 0, 0, 0)
 
         self.embedding_model_box = QComboBox()
         self._embedding_model_keys: list[str | None] = []
@@ -325,7 +388,7 @@ class SettingsWindow(QDialog):
         self.embedding_device_label = QLabel(self.tr("Computation device"))
         form.addRow(self.embedding_device_label, self.embedding_device_box)
 
-        layout.addLayout(form)
+        layout.addWidget(self.embedding_settings_widget)
 
         self.gpu_warning_label = QLabel(
             self.tr(
@@ -349,6 +412,29 @@ class SettingsWindow(QDialog):
         )
         self.recompute_btn.clicked.connect(self._on_recompute_clicked)
         layout.addWidget(self.recompute_btn)
+
+        # -------- удаление посчитанных векторов (НОВОЕ) --------
+        #
+        # Не завязана на self.semantic_search_checkbox (видна и активна
+        # всегда, в отличие от блока выше) — это операция очистки
+        # хранилища, не имеющая отношения к тому, включён ли сейчас
+        # переключатель, и не требующая самой библиотеки
+        # sentence-transformers/torch (чистый DELETE в БД, см.
+        # GenerationRepository.clear_all_embeddings) — можно подчистить
+        # оставшиеся векторы, даже уже удалив тяжёлые зависимости.
+        self.delete_vectors_btn = QPushButton(self.tr("Delete all vectors"))
+        self.delete_vectors_btn.setToolTip(
+            self.tr(
+                "Deletes the computed embedding vectors for every "
+                "generation — frees up space in the database. Semantic "
+                "search will fall back to plain text search until vectors "
+                "are computed again (enable semantic search and use "
+                "'Recompute all embeddings now', or they'll be computed "
+                "gradually as generations are added/edited)."
+            )
+        )
+        self.delete_vectors_btn.clicked.connect(self._on_delete_vectors_clicked)
+        layout.addWidget(self.delete_vectors_btn)
 
         self._apply_semantic_search_availability()
 
@@ -375,8 +461,7 @@ class SettingsWindow(QDialog):
         available = self.gallery.semantic_search_available()
 
         self.semantic_search_checkbox.setEnabled(available)
-        self.embedding_model_box.setEnabled(available)
-        self.embedding_device_box.setEnabled(available)
+        self.embedding_settings_widget.setEnabled(available)
         self.recompute_btn.setEnabled(available)
 
         if available:
@@ -388,15 +473,21 @@ class SettingsWindow(QDialog):
                     "if the model is already loaded in this session."
                 )
             )
-            self.gpu_warning_label.setVisible(True)
         else:
             # чекбокс мог быть True в QSettings с прошлого запуска (когда
             # зависимость ещё стояла) — визуально снимаем галку, чтобы
             # не выглядело как "включено, но не работает"; сам сохранённый
-            # выбор в QSettings НЕ трогаем (embedding.set_enabled сюда и
-            # не вызывается) — если зависимость снова появится, прежний
-            # выбор пользователя вернётся как есть.
+            # выбор в QSettings НЕ трогаем. blockSignals — иначе
+            # setChecked(False) сам вызвал бы _on_semantic_search_toggled
+            # и тот бы вызвал self.gallery.set_semantic_search_enabled(False),
+            # реально перезаписав сохранённый выбор пользователя, что
+            # прямо противоречит написанному выше — если зависимость
+            # снова появится, прежний выбор пользователя должен
+            # вернуться как есть, а не быть молча забыт из-за того, что
+            # окно настроек открывали, пока зависимости не было.
+            self.semantic_search_checkbox.blockSignals(True)
             self.semantic_search_checkbox.setChecked(False)
+            self.semantic_search_checkbox.blockSignals(False)
             self.semantic_search_hint.setText(
                 self.tr(
                     "Semantic search needs optional dependencies that "
@@ -406,7 +497,37 @@ class SettingsWindow(QDialog):
                     "keeps working either way."
                 )
             )
-            self.gpu_warning_label.setVisible(False)
+
+        # blockSignals выше означает, что toggled не сработал сам — эта
+        # видимость не обновится сама собой, обновляем явно.
+        self._apply_semantic_search_enabled_visibility()
+
+    def _on_semantic_search_toggled(self, checked: bool) -> None:
+        self.gallery.set_semantic_search_enabled(checked)
+        self._apply_semantic_search_enabled_visibility()
+
+    def _apply_semantic_search_enabled_visibility(self) -> None:
+        """Скрывает (а не просто дизейблит) выбор модели эмбеддинга,
+        устройства и кнопку "Recompute all embeddings now", пока сам
+        переключатель "Enable semantic search" выключен — эти элементы
+        ничего не настраивают, пока семантический поиск не включён, и
+        не должны занимать место на экране/сбивать с толку.
+
+        Независимо от _apply_semantic_search_availability() выше (та
+        дизейблит то же самое, если сама библиотека физически не
+        установлена) — то есть виджеты ВИДНЫ, только если переключатель
+        включён, и АКТИВНЫ, только если вдобавок доступна зависимость;
+        обе проверки самостоятельны и не должны дублировать логику друг
+        друга.
+
+        "Delete all vectors" сюда не входит — эта кнопка видна и активна
+        всегда, независимо от переключателя (см. её тултип и комментарий
+        в _build_search_group)."""
+
+        enabled = self.semantic_search_checkbox.isChecked()
+        self.embedding_settings_widget.setVisible(enabled)
+        self.gpu_warning_label.setVisible(enabled)
+        self.recompute_btn.setVisible(enabled)
 
     def _populate_embedding_model_box(self) -> None:
         """(Пере)заполняет embedding_model_box переведёнными текстами
@@ -583,6 +704,34 @@ class SettingsWindow(QDialog):
             self.tr("Recomputed embeddings for {n} generations.").format(n=total),
         )
 
+    def _on_delete_vectors_clicked(self) -> None:
+
+        answer = QMessageBox.question(
+            self,
+            self.tr("Delete all vectors?"),
+            self.tr(
+                "Delete the computed embedding vectors for every generation "
+                "in the library? This frees up space in the database. "
+                "Semantic search will fall back to plain text search until "
+                "vectors are computed again."
+            ),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+
+        if answer == QMessageBox.Yes:
+            self._delete_all_vectors()
+
+    def _delete_all_vectors(self) -> None:
+
+        total = self.gallery.clear_all_embeddings()
+
+        QMessageBox.information(
+            self,
+            self.tr("Done"),
+            self.tr("Deleted vectors for {n} generations.").format(n=total),
+        )
+
     # --------------------------------------------------
     # Performance: размер страницы ленивой загрузки (задача 3.3)
 
@@ -744,6 +893,17 @@ class SettingsWindow(QDialog):
             )
         )
         self.recompute_btn.setText(self.tr("Recompute all embeddings now"))
+        self.delete_vectors_btn.setText(self.tr("Delete all vectors"))
+        self.delete_vectors_btn.setToolTip(
+            self.tr(
+                "Deletes the computed embedding vectors for every "
+                "generation — frees up space in the database. Semantic "
+                "search will fall back to plain text search until vectors "
+                "are computed again (enable semantic search and use "
+                "'Recompute all embeddings now', or they'll be computed "
+                "gradually as generations are added/edited)."
+            )
+        )
         # переустанавливает semantic_search_hint (и заново применяет
         # disabled-состояние виджетов) — текст подсказки зависит от
         # доступности зависимости, см. её docstring
@@ -772,12 +932,13 @@ class SettingsWindow(QDialog):
             self.tr("Cleanup runs once on app startup — changes take effect next launch.")
         )
 
-        self.application_group.setTitle(self.tr("Application"))
-        self.restart_btn.setText(self.tr("🔄 Restart"))
-        self.restart_btn.setToolTip(
-            self.tr("Restart PromptVault (e.g. after changing a setting that needs it).")
-        )
-        self.quit_btn.setText(self.tr("⏻ Quit"))
-        self.quit_btn.setToolTip(self.tr("Close PromptVault completely."))
+        if self.standalone:
+            self.application_group.setTitle(self.tr("Application"))
+            self.restart_btn.setText(self.tr("🔄 Restart"))
+            self.restart_btn.setToolTip(
+                self.tr("Restart PromptVault (e.g. after changing a setting that needs it).")
+            )
+            self.quit_btn.setText(self.tr("⏻ Quit"))
+            self.quit_btn.setToolTip(self.tr("Close PromptVault completely."))
 
         self.close_btn.setText(self.tr("Close"))

@@ -467,6 +467,22 @@ class GalleryManager(QObject):
 
         return total
 
+    def clear_all_embeddings(self) -> int:
+        """Удаляет посчитанные векторы у ВСЕХ генераций в БД, без
+        пересчёта — см. GenerationRepository.clear_all_embeddings и
+        кнопку "Delete vectors" в настройках
+        (SettingsWindow._on_delete_vectors_clicked). Возвращает число
+        записей, у которых был вектор."""
+
+        total = self._repository.clear_all_embeddings()
+
+        logger.info("Удалены векторы эмбеддингов для %d генераций", total)
+
+        if self.current_folder is not None:
+            self.apply_filters()
+
+        return total
+
     # ------------------------------------------------------------
     # производительность: размер страницы ленивой загрузки (задача 3.3,
     # настраивается через SettingsWindow)

@@ -16,8 +16,8 @@ from comfyui_studio.i18n import LocalizationManager
 
 from ..core.comfy_process import ComfyProcess, ProcessLogBridge
 from ..core.config import build_extra_launch_args, load_config, prepare_launch_script
-from ..core.constants import APP_NAME
-from ..core.logging_setup import ICON_PATH, log
+from ..core.constants import APP_NAME, PROJECT_ROOT
+from ..core.logging_setup import ICON_PATH, log, set_console_log_level
 from ..core.system_monitor import ResourceMonitor
 from ..integration.comfy_theme import COMFY_PALETTE_MAP, sync_comfyui_color_palette
 from .browser_page import BrowserPage
@@ -37,8 +37,19 @@ class MainWindow(QMainWindow):
         self.theme_manager = theme_manager
         self.loc = loc
         self.cfg = load_config()
+        # применяем сохранённый уровень консольного логирования как можно
+        # раньше -- см. ui/settings/advanced_page.py и
+        # core/logging_setup.set_console_log_level (этап 4 дорожной карты)
+        set_console_log_level(self.cfg.get("log_level", "INFO"))
         self.comfy_process = None
         self._quitting = False
+        # НОВОЕ: см. restart_studio()/closeEvent() ниже -- этап 4
+        # дорожной карты, доработка по замечанию пользователя (кнопки
+        # выхода/перезапуска ВСЕЙ Studio вместо тех же кнопок только для
+        # PromptVault внутри его собственных настроек, см.
+        # comfyui_studio/promptvault/ui/settings_window.py, параметр
+        # standalone).
+        self._pending_restart = False
 
         self.log_bridge = ProcessLogBridge()
         self.log_bridge.line_received.connect(self._on_process_log_line)
@@ -56,6 +67,8 @@ class MainWindow(QMainWindow):
         self.settings_page.open_running_requested.connect(self._show_browser_page)
         self.settings_page.stop_requested.connect(self._stop_and_show_settings)
         self.settings_page.cancel_requested.connect(self._on_launch_cancelled)
+        self.settings_page.quit_studio_requested.connect(self.quit_studio)
+        self.settings_page.restart_studio_requested.connect(self.restart_studio)
 
         self.launch_watcher = LaunchWatcher(loc=self.loc, parent=self)
         self.launch_watcher.ready.connect(self._on_server_ready)
@@ -124,7 +137,10 @@ class MainWindow(QMainWindow):
         if cfg.get("sync_comfy_theme"):
             sync_comfyui_color_palette(cfg["root_path"], self.theme_manager.current_theme())
 
-        self.comfy_process = ComfyProcess(cfg["root_path"], launch_script, self.log_bridge)
+        self.comfy_process = ComfyProcess(
+            cfg["root_path"], launch_script, self.log_bridge,
+            env_overrides=cfg.get("env_vars"),
+        )
         self.comfy_process.start()
 
         # Остаёмся на экране настроек — виден живой лог запуска, только
@@ -198,12 +214,28 @@ class MainWindow(QMainWindow):
     # -- трей --------------------------------------------------------
 
     def _retranslate_secondary_ui(self, _code):
-        """Перевыставляет тексты того, что вне SettingsPage (у неё
-        своя обработка смены языка): страницу браузера и меню трея.
-        Вызывается и при локальной смене языка (комбобокс в
-        SettingsPage), и при внешней (см. shared_language.py)."""
+        """Перевыставляет тексты того, что вне SettingsPage.settings_dialog
+        (у него своя обработка смены языка, см. AppSettingsDialog.
+        _on_language_changed/_on_language_changed_externally): страницу
+        браузера, меню трея, и сам домашний экран SettingsPage (лог,
+        статус, кнопки запуска/остановки, "Другие инструменты").
+        Вызывается и при локальной смене языка (комбобокс в General
+        внутри AppSettingsDialog), и при внешней (см. shared_language.py
+        — например, язык сменили из уже открытого окна PromptVault).
+
+        До этой правки здесь ретранслировались только browser_page/tray
+        -- SettingsPage.retranslate_ui() был определён, но не вызывался
+        НИОТКУДА после переноса языка/темы в AppSettingsDialog (этап 4
+        дорожной карты рефакторинга): раньше комбобокс языка жил прямо в
+        SettingsPage и сам себя ретранслировал сразу же при переключении,
+        и этот метод было незачем трогать -- после переноса он остался
+        обрабатывать только "всё остальное", забыв про сам домашний
+        экран. Из-за этого лог/статус/кнопки на домашнем экране оставались
+        на прежнем языке до перезапуска приложения, хотя дерево настроек и
+        окна остальных инструментов обновлялись сразу же."""
         self.browser_page.retranslate_ui()
         self.tray.retranslate_ui()
+        self.settings_page.retranslate_ui()
 
     def _restore_from_tray(self):
         self.showNormal()
@@ -211,6 +243,41 @@ class MainWindow(QMainWindow):
         self.activateWindow()
 
     def _quit_from_tray(self):
+        self._quitting = True
+        self.close()
+
+    def quit_studio(self):
+        """Полностью закрывает ВСЮ ComfyUI Studio (лаунчер + окна
+        остальных инструментов, если открыты) -- то же самое, что пункт
+        «Выход» в трее (см. _quit_from_tray выше), просто вызывается из
+        единого дерева настроек (Advanced -> Application, см.
+        ui/settings/advanced_page.py). Подтверждение уже было запрошено
+        в AdvancedSettingsPage — сюда попадаем, только если пользователь
+        согласился."""
+        log.info("Завершение работы ComfyUI Studio по запросу пользователя (Настройки)")
+        self._quitting = True
+        self.close()
+
+    def restart_studio(self):
+        """Перезапускает ВСЮ ComfyUI Studio целиком -- закрывает текущий
+        процесс так же аккуратно, как обычный выход (closeEvent ниже:
+        останавливает ComfyUI, если запущен, копит ResourceMonitor/трей/
+        QtWebEngine), а затем заменяет процесс новым запуском. Подтверждение
+        уже было запрошено в AdvancedSettingsPage.
+
+        До этой доработки в едином дереве настроек была только кнопка
+        Restart САМОГО PromptVault (см. comfyui_studio/promptvault/ui/
+        settings_window.py) — в монолитной сборке она была не просто
+        бесполезной, а опасной: PromptVault перезапускает себя через
+        os.execv() безусловно, что в общем процессе означало бы убить
+        ВЕСЬ процесс (лаунчер + управление ComfyUI) и поднять вместо
+        него ТОЛЬКО PromptVault. См. MainWindow.__init__(standalone=...)
+        и SettingsWindow(standalone=...) в PromptVault — кнопки
+        Restart/Quit там теперь скрыты, когда PromptVault открыт в этом
+        же процессе, а полноценные Studio-wide аналоги — вот эти два
+        метода."""
+        log.info("Перезапуск ComfyUI Studio по запросу пользователя (Настройки)")
+        self._pending_restart = True
         self._quitting = True
         self.close()
 
@@ -260,10 +327,29 @@ class MainWindow(QMainWindow):
         # setQuitOnLastWindowClosed(False) держит цикл событий живым,
         # пока мы явно не попросим его завершиться — иначе процесс
         # остаётся висеть в диспетчере задач после закрытия окна.
-        # Небольшая задержка перед фактическим quit() даёт QtWebEngine
-        # время дообработать deleteLater() старой страницы и сбросить
-        # её хранилище на диск, прежде чем процесс будет завершён.
-        QTimer.singleShot(400, QApplication.instance().quit)
+        # Небольшая задержка перед фактическим quit()/перезапуском даёт
+        # QtWebEngine время дообработать deleteLater() старой страницы и
+        # сбросить её хранилище на диск, прежде чем процесс будет
+        # завершён (или заменён новым, см. restart_studio() выше).
+        if self._pending_restart:
+            QTimer.singleShot(400, self._relaunch_process)
+        else:
+            QTimer.singleShot(400, QApplication.instance().quit)
+
+    def _relaunch_process(self):
+        """Замещает текущий процесс новым запуском -- см. restart_studio()
+        выше. В собранном виде (PyInstaller, sys.frozen) перезапускает
+        сам .exe; при запуске из исходников -- тем же интерпретатором
+        Python корневой main.py (НЕ `-m`, в отличие от того, как
+        перезапускается сам по себе PromptVault -- корневой main.py это
+        обычный скрипт, а не член пакета, см. PROJECT_ROOT в
+        core/constants.py)."""
+        python = sys.executable
+        if getattr(sys, "frozen", False):
+            os.execv(python, [python] + sys.argv[1:])
+        else:
+            main_py = os.path.join(PROJECT_ROOT, "main.py")
+            os.execv(python, [python, main_py] + sys.argv[1:])
 
 
 
@@ -292,6 +378,17 @@ def create_window(app: QApplication) -> "MainWindow":
 
 
 def main():
+    # См. подробный комментарий у аналогичного блока в main.py (корень
+    # проекта) — тот же флаг нужен и здесь, если лаунчер запускается как
+    # самостоятельный процесс (напрямую этим файлом), а не через
+    # монолитный main.py.
+    _EXTRA_CHROMIUM_FLAGS = "--disable-features=CalculateNativeWinOcclusion"
+    _existing_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+    if _EXTRA_CHROMIUM_FLAGS not in _existing_flags:
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+            f"{_existing_flags} {_EXTRA_CHROMIUM_FLAGS}".strip()
+        )
+
     if hasattr(Qt, "AA_ShareOpenGLContexts"):
         QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
 

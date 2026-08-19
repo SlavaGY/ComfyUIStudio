@@ -60,6 +60,22 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# UPX ломает Qt6/Chromium-бинарники (это не только Qt-плагины, которые
+# PyInstaller исключает из UPX сам с версии 4.3 — Qt*.dll и exe-хелперы
+# движка WebEngine в эту автоматику не попадают). Симптом на практике:
+# встроенный интерфейс ComfyUI после сборки .exe начинает моргать даже в
+# статике (без UPX — из исходников python main.py — стабильно). См.
+# https://github.com/upx/upx/issues/107 и рекомендацию самой
+# документации PyInstaller исключать "Qt*.dll" через upx_exclude.
+UPX_EXCLUDE = [
+    "Qt6*.dll",
+    "libEGL.dll",
+    "libGLESv2.dll",
+    "d3dcompiler_47.dll",
+    "opengl32sw.dll",
+    "QtWebEngineProcess.exe",
+]
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -70,6 +86,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=UPX_EXCLUDE,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -84,6 +101,6 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    upx_exclude=[],
+    upx_exclude=UPX_EXCLUDE,
     name='ComfyUIStudio',
 )

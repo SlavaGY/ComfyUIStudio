@@ -302,20 +302,35 @@ class ComfyProcess:
     """Запускает ComfyUI, читает его stdout/stderr в фоне и умеет
     корректно убить всё дерево процессов."""
 
-    def __init__(self, root_path, launch_script_abs, bridge: ProcessLogBridge):
+    def __init__(self, root_path, launch_script_abs, bridge: ProcessLogBridge, env_overrides=None):
         self.root_path = root_path
         self.launch_script_abs = launch_script_abs
         self.bridge = bridge
         self.proc = None
         self._reader = None
+        # НОВОЕ (этап 4 дорожной карты, "Единое дерево настроек" ->
+        # ComfyUI -> Environment): переменные окружения, заданные
+        # пользователем в ui/settings/comfyui_page.py (cfg["env_vars"]) --
+        # накладываются ПОВЕРХ os.environ (см. start() ниже), не заменяют
+        # его целиком, иначе пропало бы PATH и прочее необходимое для
+        # самого запуска python_embeded.
+        self.env_overrides = dict(env_overrides) if env_overrides else {}
 
     def start(self):
         creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        env = os.environ.copy()
+        if self.env_overrides:
+            env.update(self.env_overrides)
+            log.info(
+                "Запуск ComfyUI с доп. переменными окружения: %s",
+                ", ".join(sorted(self.env_overrides)),
+            )
         log.info("Запуск ComfyUI: %s (cwd=%s)", self.launch_script_abs, self.root_path)
         self.proc = subprocess.Popen(
             ["cmd.exe", "/c", self.launch_script_abs],
             cwd=self.root_path,
             creationflags=creationflags,
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )

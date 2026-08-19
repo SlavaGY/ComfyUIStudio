@@ -52,6 +52,17 @@ DEFAULT_CONFIG = {
     "port": 8188,
     "disable_auto_launch": True,
     "sync_comfy_theme": False,
+    # НОВОЕ (этап 4 дорожной карты, "Единое дерево настроек"):
+    # переменные окружения, добавляемые/переопределяемые поверх
+    # os.environ для процесса ComfyUI -- см. ComfyUISettingsPage
+    # (ui/settings/comfyui_page.py, раздел "Environment") и
+    # ComfyProcess.start() (core/comfy_process.py).
+    "env_vars": {},
+    # уровень логирования КОНСОЛЬНОГО хендлера (см. core/logging_setup.py,
+    # set_console_log_level) -- файловый хендлер лаунчера всегда пишет
+    # DEBUG независимо от этой настройки, меняется только то, что видно
+    # в консоли/выводе процесса. См. ui/settings/advanced_page.py.
+    "log_level": "INFO",
 }
 
 TOOLS_DIR = os.path.join(app_base_dir(), "tools")

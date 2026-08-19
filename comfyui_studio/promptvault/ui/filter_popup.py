@@ -31,11 +31,24 @@ class FilterPopup(QFrame):
     applied = Signal()
     resetRequested = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, semantic_search_enabled: bool = True):
+        """semantic_search_enabled: если False, строка "Semantic search"
+        вообще не строится (не просто дизейблится) — семантический
+        поиск выключен в настройках PromptVault (см. SettingsWindow,
+        раздел Search) или физически недоступен (нет sentence-
+        transformers/torch). Раньше поле показывалось всегда, даже
+        когда семантический поиск не работал бы — вводило в
+        заблуждение. Проверяется один раз при построении (значение
+        читается из GalleryManager в MainWindow.__init__) — включение
+        семантического поиска обратно в настройках применяется после
+        перезапуска PromptVault, как и остальные последствия этого
+        переключателя (см. semantic_search_hint в SettingsWindow)."""
+
         super().__init__(parent, Qt.Tool | Qt.FramelessWindowHint)
 
         self.setObjectName("filterPopup")
         self.setWindowTitle(self.tr("Filters"))
+        self._semantic_search_enabled = semantic_search_enabled
 
         layout = QVBoxLayout(self)
 
@@ -73,7 +86,8 @@ class FilterPopup(QFrame):
             "★★★★★ 5",
         ])
 
-        form.addRow(self.tr("Semantic search"), self.semantic_search_box)
+        if semantic_search_enabled:
+            form.addRow(self.tr("Semantic search"), self.semantic_search_box)
         form.addRow(self.tr("Model"), self.model_box)
         form.addRow(self.tr("Sampler"), self.sampler_box)
         form.addRow(self.tr("Favorites"), self.favorites_box)
@@ -418,7 +432,17 @@ class FilterPopup(QFrame):
         return selected or None
 
     def semantic_query(self) -> str:
+        """Пустая строка, если строка "Semantic search" не показана
+        (см. __init__, semantic_search_enabled) — даже если в самом
+        self.semantic_search_box случайно оказался непустой текст
+        (например, restore() ниже подставил его из ранее сохранённого
+        состояния фильтров, записанного, пока семантический поиск ещё
+        был включён): раз поле не видно и недоступно для
+        редактирования, оно не должно незаметно продолжать влиять на
+        результат фильтрации."""
 
+        if not self._semantic_search_enabled:
+            return ""
         return self.semantic_search_box.text().strip()
 
     def model(self):

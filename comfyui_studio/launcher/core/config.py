@@ -154,8 +154,10 @@ LAUNCH_ARG_DEFS = [
 
 def build_extra_launch_args(cfg):
     """Собирает итоговый список CLI-флагов из cfg["launch_args"]
-    (заполняется LaunchArgsDialog) плюс отдельно хранящийся
-    disable_auto_launch — единый список строк для prepare_launch_script."""
+    (заполняется разделом "Arguments" ComfyUISettingsPage, см.
+    ui/settings/comfyui_page.py -- этап 4 дорожной карты, было
+    LaunchArgsDialog) плюс отдельно хранящийся disable_auto_launch —
+    единый список строк для prepare_launch_script."""
     args = []
     if cfg.get("disable_auto_launch"):
         args.append("--disable-auto-launch")

@@ -63,6 +63,29 @@ import sys
 from pathlib import Path
 
 
+# Отключаем Windows Native Window Occlusion в Chromium/QtWebEngine —
+# подтверждённая причина мигания встроенного интерфейса ComfyUI при
+# панорамировании графа (см. журнал переписки stage4_4 → stage4_5:
+# анти-фликер CSS-инъекция не помогла, а этот флаг убрал баг). Проблема
+# в том, что Chromium периодически "думает", что окно WebEngineView
+# перекрыто/неактивно из-за соседних нативных Qt-виджетов в том же
+# топ-баре (BrowserPage.top_bar — адрес, ResourceBar с таймером,
+# кнопки), и приостанавливает/пересобирает композитинг — это и даёт
+# видимое моргание при интенсивной перерисовке (панорамирование графа).
+# Ставится через os.environ (а не через переменную PowerShell/cmd,
+# которую легко забыть выставить или выставить не в том синтаксисе —
+# как раз и произошло при диагностике), чтобы работало из коробки при
+# любом способе запуска (python main.py, собранный exe, IDE).
+# ВАЖНО: должно стоять до создания QApplication/QWebEngineProfile —
+# Chromium читает QTWEBENGINE_CHROMIUM_FLAGS только при старте процесса.
+_EXTRA_CHROMIUM_FLAGS = "--disable-features=CalculateNativeWinOcclusion"
+_existing_flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+if _EXTRA_CHROMIUM_FLAGS not in _existing_flags:
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+        f"{_existing_flags} {_EXTRA_CHROMIUM_FLAGS}".strip()
+    )
+
+
 ROOT_DIR = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 TOOLS_DIR = ROOT_DIR / "tools"
 PROMPTVAULT_DIR = TOOLS_DIR / "promptvault"
@@ -112,7 +135,16 @@ def main():
     )
     register_in_process_app(
         "promptvault",
-        lambda: create_promptvault_window(app),
+        # standalone=False -- PromptVault делит этот процесс/QApplication
+        # с лаунчером (и, если открыт, Prompt Builder). Скрывает
+        # Restart/Quit в его собственных настройках (см.
+        # MainWindow(standalone=...) и SettingsWindow(standalone=...) в
+        # comfyui_studio/promptvault/ui/) -- иначе self-restart PromptVault
+        # через os.execv() заменил бы ВЕСЬ процесс (включая лаунчер и
+        # управление ComfyUI) одним только PromptVault. Studio-wide
+        # аналог -- см. AdvancedSettingsPage ("Application") в
+        # comfyui_studio/launcher/ui/settings/advanced_page.py.
+        lambda: create_promptvault_window(app, standalone=False),
     )
 
     launcher_window = create_launcher_window(app)

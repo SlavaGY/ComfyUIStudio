@@ -27,7 +27,19 @@ class Toolbar(QWidget):
     importRatingsRequested = Signal()
     settingsRequested = Signal()
 
-    def __init__(self):
+    def __init__(self, standalone: bool = True):
+        """standalone: False, когда PromptVault открыт ВНУТРИ монолитной
+        сборки ComfyUI Studio (тот же флаг, что и у MainWindow/
+        SettingsWindow, см. их докстринги). Прячет кнопку "⚙ Settings"
+        целиком в этом случае — единое дерево настроек лаунчера уже
+        даёт прямой доступ к настройкам PromptVault (см.
+        comfyui_studio.promptvault.main.create_settings_window и
+        launcher/ui/settings/promptvault_page.py), так что вторая
+        кнопка с тем же назначением здесь была бы лишней, дублирующей
+        точкой входа — путаницей, а не удобством. При самостоятельном
+        запуске (standalone=True, по умолчанию) это единственный способ
+        добраться до настроек, поэтому кнопка остаётся."""
+
         super().__init__()
 
         layout = QHBoxLayout(self)
@@ -51,6 +63,7 @@ class Toolbar(QWidget):
         self.import_ratings_btn = QPushButton(self.tr("⬇ Import ratings"))
 
         self.settings_btn = QPushButton(self.tr("⚙ Settings"))
+        self.settings_btn.setVisible(standalone)
 
         layout.addWidget(self.open_folder_btn)
 

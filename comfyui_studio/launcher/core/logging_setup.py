@@ -53,3 +53,39 @@ def setup_logging():
 
 
 log = setup_logging()
+
+
+# --------------------------------------------------------------------------
+# Уровень логирования консоли -- этап 4 дорожной карты ("Единое дерево
+# настроек" -> Advanced). Файловый хендлер (см. setup_logging() выше)
+# ВСЕГДА пишет DEBUG -- это то, что реально читают при разборе проблем
+# (см. APP_LOG_PATH), менять его уровень смысла нет. Настраивается
+# только консольный хендлер -- то, что видно в stdout при запуске из
+# консоли/IDE; в собранном windowed-режиме (--console=False в
+# ComfyUIStudio-*.spec) эта консоль всё равно никому не видна, но
+# уровень хендлера всё равно применяется единообразно, а не только
+# "когда есть консоль".
+# --------------------------------------------------------------------------
+
+AVAILABLE_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
+
+
+def set_console_log_level(level_name: str) -> None:
+    """Меняет уровень КОНСОЛЬНОГО хендлера логгера "comfyui_launcher" на
+    лету -- вызывается один раз при старте (см. MainWindow.__init__,
+    применяет cfg["log_level"]) и заново при изменении в
+    ui/settings/advanced_page.py. Неизвестное имя уровня тихо
+    игнорируется (остаётся прежний уровень) -- пользователь такое имя
+    предложить не может (значение приходит из QComboBox с
+    AVAILABLE_LOG_LEVELS), но на случай повреждённого config.json падать
+    из-за опечатки в файле не хочется.
+    """
+    level = getattr(logging, level_name.upper(), None)
+    if level is None:
+        log.warning("Неизвестный уровень логирования в config.json: %s", level_name)
+        return
+    for handler in log.handlers:
+        if isinstance(handler, logging.StreamHandler) and not isinstance(
+            handler, RotatingFileHandler
+        ):
+            handler.setLevel(level)

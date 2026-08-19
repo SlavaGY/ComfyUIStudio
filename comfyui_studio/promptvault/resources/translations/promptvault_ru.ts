@@ -869,6 +869,26 @@ Recompute all embeddings now? (This can take a while for large libraries; you ca
         <source>Quit PromptVault now?</source>
         <translation>Закрыть PromptVault сейчас?</translation>
     </message>
+    <message>
+        <source>Delete all vectors</source>
+        <translation>Удалить все векторы</translation>
+    </message>
+    <message>
+        <source>Deletes the computed embedding vectors for every generation — frees up space in the database. Semantic search will fall back to plain text search until vectors are computed again (enable semantic search and use 'Recompute all embeddings now', or they'll be computed gradually as generations are added/edited).</source>
+        <translation>Удаляет посчитанные векторы эмбеддингов у всех генераций — освобождает место в базе данных. Семантический поиск будет работать как обычный текстовый, пока векторы не будут посчитаны заново (включите семантический поиск и нажмите «Пересчитать все эмбеддинги сейчас», либо они будут пересчитываться постепенно по мере добавления/редактирования генераций).</translation>
+    </message>
+    <message>
+        <source>Delete all vectors?</source>
+        <translation>Удалить все векторы?</translation>
+    </message>
+    <message>
+        <source>Delete the computed embedding vectors for every generation in the library? This frees up space in the database. Semantic search will fall back to plain text search until vectors are computed again.</source>
+        <translation>Удалить посчитанные векторы эмбеддингов у всех генераций в библиотеке? Это освободит место в базе данных. Семантический поиск будет работать как обычный текстовый, пока векторы не будут посчитаны заново.</translation>
+    </message>
+    <message>
+        <source>Deleted vectors for {n} generations.</source>
+        <translation>Векторы удалены для {n} генераций.</translation>
+    </message>
 </context>
 <context>
     <name>SortPopup</name>

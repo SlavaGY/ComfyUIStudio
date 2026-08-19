@@ -155,6 +155,216 @@ TRANSLATIONS = {
         "< 1 с": "< 1 s",
         "мин": "min",
         "с": "s",
+
+        # -- Этап 4 дорожной карты рефакторинга ("Единое дерево
+        # настроек") -- comfyui_studio/launcher/ui/settings/*.py,
+        # AppSettingsDialog и переработанный SettingsPage. Изначально
+        # эти страницы по ошибке использовали английский текст как
+        # исходный (см. историю правок) -- из-за чего при русском языке
+        # интерфейса (ниже нет обратного en -> ru словаря) весь раздел
+        # показывался бы по-английски вне зависимости от выбранного
+        # языка. Ключ "Настройки...", в частности, был тем самым
+        # отсутствующим переводом, из-за которого при переключении на
+        # английский кнопка "Настройки..." оставалась на русском.
+        "Настройки...": "Settings...",
+        "Настройки ComfyUI Studio": "ComfyUI Studio Settings",
+        "Общие": "General",
+        "Дополнительно": "Advanced",
+
+        # General -> Appearance/Startup/Updates
+        "Оформление и язык": "Appearance & language",
+        "Автозапуск": "Startup",
+        "Запускать ComfyUI Studio при старте Windows": (
+            "Launch ComfyUI Studio when Windows starts"
+        ),
+        (
+            "Добавляет ComfyUI Studio в автозагрузку текущего пользователя "
+            "Windows (права администратора не нужны). Сам ComfyUI при этом "
+            "автоматически не запускается — только открывается приложение, "
+            "как при обычном запуске вручную."
+        ): (
+            "Adds ComfyUI Studio to your Windows user startup items (no "
+            "admin rights required). ComfyUI itself isn't launched "
+            "automatically — only the app opens, same as starting it by "
+            "hand."
+        ),
+        "Автозапуск доступен только в Windows.": "Autostart is only available on Windows.",
+        "Обновления": "Updates",
+        "Текущая версия: {version}": "Current version: {version}",
+        "Открыть страницу релизов...": "Open releases page...",
+        (
+            "Открывает страницу релизов на GitHub в браузере — "
+            "автоматической проверки обновлений пока нет, это заготовка "
+            "на будущее (см. дорожную карту рефакторинга, этап 4)."
+        ): (
+            "Opens the GitHub releases page in your browser — there's no "
+            "automatic update check yet, this is a placeholder for a "
+            "future one (see the refactoring roadmap, stage 4)."
+        ),
+
+        # ComfyUI -> Installation/Environment
+        "Установка": "Installation",
+        "Переменные окружения": "Environment variables",
+        (
+            "Дополнительные переменные окружения только для процесса "
+            "ComfyUI (добавляются поверх обычного окружения — например, "
+            "HF_HOME, чтобы перенести кэш HuggingFace, или "
+            "CUDA_VISIBLE_DEVICES, чтобы выбрать видеокарту)."
+        ): (
+            "Extra environment variables for the ComfyUI process only "
+            "(added on top of the normal environment — e.g. HF_HOME to "
+            "relocate the HuggingFace cache, or CUDA_VISIBLE_DEVICES to "
+            "pick a GPU)."
+        ),
+        "Имя": "Name",
+        "Значение": "Value",
+        "Добавить переменную": "Add variable",
+        "Удалить выбранные": "Remove selected",
+
+        # Prompt Builder -> Folders / Backups (страница перестала быть
+        # пустой заготовкой — редактор лишился меню "Файл", выбор папок
+        # переехал сюда, см. launcher/ui/settings/prompt_builder_page.py)
+        "Папки": "Folders",
+        "Папка расширения:": "Extension folder:",
+        (
+            "Папка с characters.json и prompt_builder_config.json — "
+            "Prompt Builder подхватывает файлы из неё автоматически при "
+            "следующем открытии."
+        ): (
+            "The folder with characters.json and prompt_builder_config."
+            "json — Prompt Builder picks up files from it automatically "
+            "the next time it opens."
+        ),
+        "Папка с файлами LoRA:": "LoRA files folder:",
+        (
+            "Список LoRA в редакторе пересканирует эту папку заново при "
+            "каждом открытии выпадающего списка — изменение здесь "
+            "применяется сразу же, без перезапуска Prompt Builder."
+        ): (
+            "The editor's LoRA list rescans this folder every time the "
+            "dropdown opens — changes here take effect immediately, no "
+            "need to restart Prompt Builder."
+        ),
+        "Выберите папку расширения": "Select the extension folder",
+        "Выберите папку с файлами LoRA": "Select the LoRA files folder",
+        "Резервные копии": "Backups",
+        "Хранить резервных копий (на файл):": "Backups to keep (per file):",
+        (
+            "Резервная копия (*.bak-ГГГГММДД-ЧЧММСС) создаётся при каждом "
+            "сохранении; лишние сверх этого числа удаляются сразу же "
+            "(самые старые — первыми). 0 — не хранить резервные копии "
+            "вовсе."
+        ): (
+            "A backup (*.bak-YYYYMMDD-HHMMSS) is created on every save; "
+            "extras beyond this number are deleted right away (oldest "
+            "first). 0 — don't keep backups at all."
+        ),
+
+        # PromptVault -> Database / мост в его собственные настройки
+        "База данных": "Database",
+        "Расположение:": "Location:",
+        (
+            "Только для чтения — перенос базы данных пока не "
+            "поддерживается (потребовался бы отдельный шаг миграции, см. "
+            "дорожную карту рефакторинга). Здесь всегда лежит единая, "
+            "общая база PromptVault, независимо от того, какая папка "
+            "открыта в PromptVault в данный момент."
+        ): (
+            "Read-only — relocating the database isn't supported yet "
+            "(would need a separate migration step, see the refactoring "
+            "roadmap). This is where PromptVault's single, shared "
+            "database always lives, regardless of which folder is "
+            "currently open in PromptVault."
+        ),
+        "Открыть папку с файлом": "Open containing folder",
+        "Сделать резервную копию": "Back up now",
+        "Поиск, производительность и хранение": "Search, performance & storage",
+        (
+            "Открывает собственное окно настроек PromptVault "
+            "(семантический поиск, размер страницы ленивой загрузки, "
+            "автоочистка миниатюр/логов, горячие клавиши) — без запуска "
+            "самого PromptVault целиком."
+        ): (
+            "Opens PromptVault's own settings window (semantic search, "
+            "lazy-loading page size, thumbnail/log auto-cleanup, "
+            "hotkeys) — without launching PromptVault itself."
+        ),
+        "Открыть настройки PromptVault...": "Open PromptVault settings...",
+        "Не удалось открыть настройки PromptVault: {error}": (
+            "Couldn't open PromptVault settings: {error}"
+        ),
+        "Файл базы данных пока не найден: {path}.": "No database file found yet at {path}.",
+        "Не удалось сделать резервную копию: {error}": "Backup failed: {error}",
+        "Резервная копия сохранена: {path}": "Backup saved to {path}",
+
+        # Advanced -> Logging/Diagnostics/Reset/Application
+        "Логирование": "Logging",
+        "Уровень логирования консоли:": "Console log level:",
+        (
+            "Файл лога всегда сохраняет полную детализацию независимо от "
+            "этой настройки — она влияет только на то, что выводится в "
+            "консоль."
+        ): (
+            "The log file always keeps full detail regardless of this "
+            "setting — it only affects what's printed to the console."
+        ),
+        "Открыть файл лога": "Open log file",
+        "Диагностика": "Diagnostics",
+        "Сброс": "Reset",
+        (
+            "Сбрасывает только настройки лаунчера ComfyUI (путь установки, "
+            "порт, аргументы запуска, переменные окружения, тему, язык). "
+            "Prompt Builder и PromptVault сохраняют свои настройки — это "
+            "их не затрагивает."
+        ): (
+            "Resets ComfyUI Launcher settings only (installation path, "
+            "port, launch arguments, environment variables, theme, "
+            "language). Prompt Builder and PromptVault keep their own "
+            "settings — this doesn't touch them."
+        ),
+        "Сбросить настройки лаунчера к значениям по умолчанию": (
+            "Reset launcher settings to defaults"
+        ),
+        "Сброс настроек лаунчера": "Reset launcher settings",
+        (
+            "Это сбросит папку установки ComfyUI, порт, аргументы "
+            "запуска, переменные окружения, тему и язык к значениям по "
+            "умолчанию. Действие необратимо. Продолжить?"
+        ): (
+            "This resets the ComfyUI installation path, port, launch "
+            "arguments, environment variables, theme and language back "
+            "to defaults. This cannot be undone. Continue?"
+        ),
+        (
+            "Настройки лаунчера сброшены. Перезапустите ComfyUI Studio, "
+            "чтобы изменения вступили в силу полностью."
+        ): (
+            "Launcher settings have been reset. Restart ComfyUI Studio "
+            "for the change to fully take effect."
+        ),
+        "Приложение": "Application",
+        (
+            "Закрывает или перезапускает весь комплект ComfyUI Studio "
+            "целиком — лаунчер и открытые окна остальных инструментов. "
+            "Если ComfyUI запущен, он будет корректно остановлен перед "
+            "выходом/перезапуском."
+        ): (
+            "Closes or restarts all of ComfyUI Studio — the launcher and "
+            "any open windows of the other tools. If ComfyUI is running, "
+            "it will be stopped cleanly before quitting/restarting."
+        ),
+        "🔄 Перезапустить ComfyUI Studio": "🔄 Restart ComfyUI Studio",
+        "⏻ Закрыть ComfyUI Studio": "⏻ Quit ComfyUI Studio",
+        "Перезапуск ComfyUI Studio": "Restart ComfyUI Studio",
+        (
+            "Перезапустить ComfyUI Studio целиком сейчас? Если ComfyUI "
+            "запущен, он будет остановлен."
+        ): "Restart all of ComfyUI Studio now? If ComfyUI is running, it will be stopped.",
+        "Закрытие ComfyUI Studio": "Quit ComfyUI Studio",
+        (
+            "Закрыть ComfyUI Studio целиком сейчас? Если ComfyUI запущен, "
+            "он будет остановлен."
+        ): "Quit all of ComfyUI Studio now? If ComfyUI is running, it will be stopped.",
     }
 }
 

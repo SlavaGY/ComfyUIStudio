@@ -1421,6 +1421,33 @@ class GenerationRepository:
 
         return total
 
+    def clear_all_embeddings(self) -> int:
+        """Удаляет посчитанные векторы эмбеддингов у ВСЕХ генераций (просто
+        `embedding = NULL`, без пересчёта — в отличие от
+        recompute_all_embeddings выше). Кнопка "Delete vectors" в
+        настройках (см. SettingsWindow._on_delete_vectors_clicked) —
+        освободить место в БД, если семантический поиск больше не
+        используется, не дожидаясь следующего pip-install/переключения
+        зависимостей. Работает независимо от того, доступна ли сейчас
+        сама библиотека sentence-transformers/torch (это чистая
+        операция над БД, вычислений не требует) — так что доступна,
+        даже если пользователь уже удалил тяжёлые зависимости и просто
+        хочет подчистить то, что от них осталось в БД.
+
+        Возвращает число записей, у которых был вектор (и он был
+        удалён) — 0, если удалять было нечего."""
+
+        cursor = self._conn.execute(
+            "UPDATE generations SET embedding = NULL WHERE embedding IS NOT NULL"
+        )
+        self._conn.commit()
+
+        deleted = cursor.rowcount if cursor.rowcount is not None and cursor.rowcount >= 0 else 0
+
+        logger.info("Векторы эмбеддингов удалены: %d записей", deleted)
+
+        return deleted
+
     def search_semantic(self, query: str, limit: int = 100) -> list[int]:
         """Возвращает id генераций из ВСЕЙ БД (а не только текущей
         открытой папки), чей промпт семантически ближе всего к query,

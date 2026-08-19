@@ -26,35 +26,39 @@ DEFAULT_LANGUAGE = "ru"
 
 TRANSLATIONS = {
     "en": {
-        "Файл": "File",
-        "Открыть папку расширения...": "Open extension folder...",
-        "Открыть characters.json...": "Open characters.json...",
-        "Открыть prompt_builder_config.json...": "Open prompt_builder_config.json...",
-        "Сохранить текущую вкладку": "Save current tab",
-        "Сохранить как...": "Save as...",
-        "Сохранить всё": "Save all",
-        "Выход": "Quit",
-        "Справка": "Help",
-        "О программе": "About",
+        # -- Тулбар (main.py, _build_toolbar) -- заменил меню "Файл"/
+        # "Справка" целиком (см. докстринг pb_settings.py и
+        # main.py._build_toolbar): "Открыть папку расширения...",
+        # "Открыть characters.json...", "Открыть prompt_builder_config.
+        # json...", "Указать папку с файлами LoRA...", "Сохранить текущую
+        # вкладку", "Сохранить как...", "Выход", "Справка", "О программе"
+        # больше не существуют как действия — соответствующие ключи ниже
+        # убраны как неиспользуемые (папки/бэкапы теперь в едином дереве
+        # настроек ComfyUI Studio, "Открыть файл..." заменяет три диалога
+        # открытия одним).
+        "💾 Сохранить всё": "💾 Save all",
+        "📂 Открыть файл...": "📂 Open file...",
+        "Открыть файл": "Open file",
+        "В какую вкладку загрузить?": "Which tab should this load into?",
+        (
+            'Файл "{name}" не похож по имени ни на {characters}, ни на '
+            "{prompt_builder}.\n\nЗагрузить его как вкладку "
+            '"Персонажи"? ("Нет" — загрузить как "Конструктор промпта")'
+        ): (
+            'The file "{name}" doesn\'t match either {characters} or '
+            "{prompt_builder} by name.\n\nLoad it as the \"Characters\" "
+            'tab? ("No" — load it as "Prompt builder")'
+        ),
         "  Персонажи (characters.json)  ": "  Characters (characters.json)  ",
         "  Конструктор промпта (prompt_builder_config.json)  ": (
             "  Prompt builder (prompt_builder_config.json)  "
         ),
-        "Файлы не загружены — откройте папку расширения (Ctrl+O)": (
-            "No files loaded — open the extension folder (Ctrl+O)"
-        ),
         (
-            "Редактор конфигов для расширения ComfyUI character_search_ui.\n\n"
-            "Редактирует:\n"
-            " • characters.json — база персонажей\n"
-            " • prompt_builder_config.json — блочный конструктор промпта\n\n"
-            "Перед каждым сохранением создаётся резервная копия (*.bak-...)."
+            "Файлы не загружены — укажите папку расширения в настройках "
+            "ComfyUI Studio, либо откройте файл (Ctrl+O)"
         ): (
-            "Config editor for the ComfyUI character_search_ui extension.\n\n"
-            "Edits:\n"
-            " • characters.json — character database\n"
-            " • prompt_builder_config.json — block-based prompt builder\n\n"
-            "A backup (*.bak-...) is created before every save."
+            "No files loaded — set the extension folder in ComfyUI "
+            "Studio's settings, or open a file (Ctrl+O)"
         ),
 
         # --- CharactersTab ---
@@ -62,7 +66,6 @@ TRANSLATIONS = {
         "Поиск по ключу или тегам...": "Search by key or tags...",
         "Только с LoRA": "LoRA only",
         "Только с ошибками": "Errors only",
-        "Указать папку с файлами LoRA...": "Set the LoRA files folder...",
         "Папка с файлами LoRA": "LoRA files folder",
         "+ Новый": "+ New",
         "Дублировать": "Duplicate",
