@@ -71,15 +71,17 @@ SEMANTIC_SIMILARITY_THRESHOLD (см. app/config.py) для этой модели
 
 from __future__ import annotations
 
+import atexit
+import importlib.util
 import logging
-import os
 import re
-import threading
+import sys
 from typing import Any
 
 import numpy as np
 
 from comfyui_studio.promptvault.config import DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS
+from comfyui_studio.promptvault.core.embedding_ipc import WorkerError, WorkerHandle
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +115,24 @@ _PASSAGE_PREFIX = "passage: "
 # модель, поддерживает позиционные эмбеддинги вплоть до 512)
 MAX_SEQ_LENGTH = 256
 
-_model: Any = None
-_model_lock = threading.Lock()
+_worker = WorkerHandle()
 _load_failed = False
+
+# на случай, если ни один явный путь закрытия (unload_model(), вызванный
+# из on_close/settings_window_destroyed) не сработал -- например,
+# PromptVault запущен standalone (см. main.py) и весь процесс просто
+# завершается сам, без промежуточных Qt-сигналов уничтожения окна.
+# Подпроцесс воркера НЕ завершается автоматически вместе с родителем на
+# большинстве платформ (в т.ч. на Windows без явного использования Job
+# Objects) -- без этой подстраховки он остался бы висеть отдельным
+# осиротевшим процессом после закрытия PromptVault. Явные вызовы
+# unload_model() в on_close-путях остаются нужны САМИ ПО СЕБЕ (не только
+# для страховки) -- при standalone=False PromptVault делит процесс с
+# лаунчером, и тот продолжает жить после закрытия только окна
+# PromptVault, так что atexit здесь бы не сработал вовремя (сработал бы
+# только при закрытии всего ComfyUIStudio, а не сразу после закрытия
+# именно PromptVault).
+atexit.register(lambda: _worker.terminate() if _worker.is_running() else None)
 
 # см. set_enabled — позволяет пользователю (через
 # GalleryManager.set_semantic_search_enabled) полностью отключить
@@ -177,7 +194,7 @@ def set_model(model_key: str | None) -> None:
     """
 
     global _current_model_key, MODEL_NAME, EMBEDDING_DIM
-    global _QUERY_PREFIX, _PASSAGE_PREFIX, _model, _load_failed
+    global _QUERY_PREFIX, _PASSAGE_PREFIX, _load_failed
 
     if model_key is None:
         set_enabled(False)
@@ -194,10 +211,12 @@ def set_model(model_key: str | None) -> None:
     _QUERY_PREFIX = info["query_prefix"]
     _PASSAGE_PREFIX = info["passage_prefix"]
 
-    # старый экземпляр (если был) относится к прошлой модели — его
-    # нельзя переиспользовать; следующий get_model() загрузит новую
-    # модель заново
-    _model = None
+    # старая модель (если была загружена в подпроцессе-воркере)
+    # относится к прошлой модели — её нельзя переиспользовать; менять
+    # здесь ничего специально не нужно: WorkerHandle.ensure_loaded()
+    # сам сравнивает запрошенные model_name/device_preference с тем,
+    # что уже загружено в воркере, и перезагрузит модель заново при
+    # следующем get_model(), если они разошлись (см. embedding_ipc.py)
     _load_failed = False
 
     set_enabled(True)
@@ -208,8 +227,9 @@ def set_model(model_key: str | None) -> None:
 # ------------------------------------------------------------------
 # выбор устройства (CPU/GPU) — задача: настройка вычислений
 
-# "auto" — автоопределение (см. _pick_device), "cpu"/"cuda" —
-# принудительный выбор пользователем в настройках
+# "auto" — автоопределение (см. embedding_worker._pick_device,
+# исполняется в подпроцессе), "cpu"/"cuda" — принудительный выбор
+# пользователем в настройках
 _device_preference: str = "auto"
 
 
@@ -220,26 +240,28 @@ def device_preference() -> str:
 
 def set_device_preference(preference: str) -> None:
     """Устанавливает предпочтение устройства: "auto" (автоопределение,
-    см. _pick_device), "cpu" или "cuda" (принудительно).
+    см. embedding_worker._pick_device — исполняется в подпроцессе, не
+    здесь), "cpu" или "cuda" (принудительно).
 
     Принудительный выбор "cuda" без установленного torch с
     CUDA-сборкой не приведёт к реальному использованию GPU — см.
-    предупреждение в UI (SettingsWindow) и комментарий у _pick_device
-    про CPU-only сборку torch, которую `pip install torch` часто
-    ставит по умолчанию на Windows.
+    предупреждение в UI (SettingsWindow) и комментарий у
+    embedding_worker._pick_device про CPU-only сборку torch, которую
+    `pip install torch` часто ставит по умолчанию на Windows.
 
-    Сбрасывает уже загруженную модель — со следующего обращения через
-    get_model() она будет загружена заново уже на новом устройстве.
+    Менять уже загруженную в подпроцессе модель здесь не нужно — см.
+    комментарий в set_model() выше, WorkerHandle.ensure_loaded() сам
+    заметит расхождение и перезагрузит модель на новом устройстве при
+    следующем get_model().
     """
 
-    global _device_preference, _model, _load_failed
+    global _device_preference, _load_failed
 
     if preference not in ("auto", "cpu", "cuda"):
         raise ValueError(f"Неизвестное устройство: {preference}")
 
     _device_preference = preference
 
-    _model = None
     _load_failed = False
 
     logger.info("Устройство для модели эмбеддингов: %s", preference)
@@ -248,28 +270,31 @@ def set_device_preference(preference: str) -> None:
 def gpu_available() -> bool:
     """True, если установлен torch со сборкой, поддерживающей CUDA, и
     физически доступен GPU — чисто информационная проверка для UI
-    (SettingsWindow), сама по себе ничего не переключает."""
+    (SettingsWindow), сама по себе ничего не переключает.
 
-    try:
-        import torch
-    except ImportError:
-        return False
+    НЕ импортирует torch в ЭТОМ процессе — делегирует проверку в
+    подпроцесс-воркер (см. embedding_ipc.WorkerHandle.gpu_available()),
+    спавня его при необходимости. Раньше эта функция делала `import
+    torch` прямо здесь — сам факт такого импорта (даже без загрузки
+    модели) навсегда тянул за собой память torch в основной процесс,
+    ровно то, чего вся эта архитектура с подпроцессом и пытается
+    избежать (см. модуль embedding_worker.py и запись в дорожной карте
+    от 2026-08-20)."""
 
-    try:
-        return bool(torch.cuda.is_available())
-    except Exception:  # noqa: BLE001 — чисто информационная проверка
-        return False
+    return _worker.gpu_available()
 
-# _load_and_verify_model делает самопроверочный encode() именно потому,
-# что конструктор SentenceTransformer может успешно отработать даже с
-# несовместимым torch — а падение происходит только на первом реальном
-# forward-проходе. Но сама ПОПЫТКА создать SentenceTransformer уже
-# выделяет память под веса модели (~1.3 ГБ) ДО этого падения — и это
-# распределение не всегда возвращается ОС сразу после (кэширующий
-# аллокатор PyTorch придерживает память пулами). Проверка версии torch
-# заранее (без импорта torch/sentence-transformers вообще, через
-# метаданные пакета) позволяет пропустить заведомо обречённую попытку
-# целиком и не платить эту память за гарантированно нерабочую загрузку.
+
+# embedding_worker._load_model() делает самопроверочный encode() именно
+# потому, что конструктор SentenceTransformer может успешно отработать
+# даже с несовместимым torch — а падение происходит только на первом
+# реальном forward-проходе. Но сама ПОПЫТКА создать SentenceTransformer
+# уже выделяет память под веса модели (~1.3 ГБ) ДО этого падения — в
+# ПОДПРОЦЕССЕ это уже не так критично, как раньше было для основного
+# процесса (подпроцесс так и так будет полностью убит при закрытии
+# PromptVault, см. unload_model), но всё равно нет смысла тратить время
+# на заведомо обречённую попытку. Проверка версии torch заранее (без
+# импорта torch/sentence-transformers вообще, через метаданные пакета)
+# позволяет пропустить её целиком.
 _MIN_TORCH_VERSION = (2, 4)
 
 
@@ -320,15 +345,76 @@ def set_enabled(enabled: bool) -> None:
         )
 
 
+def library_installed() -> bool:
+    """True, если библиотека sentence-transformers физически
+    установлена — чистая проверка окружения, не зависящая от
+    пользовательского выбора вкл/выкл (см. set_enabled) и от того,
+    падала ли уже попытка загрузки модели в этом запуске (см.
+    _load_failed).
+
+    Это то, что должен спрашивать UI (SettingsWindow, через
+    GalleryManager.semantic_search_available()), чтобы решить, можно
+    ли вообще ПОКАЗАТЬ переключатель "Enable semantic search" как
+    кликабельный — иначе получается замкнутый круг: пользователь
+    выключает семантический поиск, is_available() перестаёт быть True
+    из-за _disabled_by_user, а если UI дизейблит сам чекбокс по этому
+    же признаку, включить поиск обратно становится невозможно.
+
+    ВАЖНО: намеренно НЕ `import sentence_transformers` — та библиотека
+    тянет за собой torch, а сам факт импорта torch (даже без загрузки
+    какой-либо модели) резервирует под себя изрядный кусок памяти сам
+    по себе (нативные библиотеки — MKL/OpenMP/сишные экстеншены — не
+    ленивые, грузятся целиком при самом импорте, не при первом реальном
+    использовании). SettingsWindow вызывает эту функцию БЕЗУСЛОВНО при
+    каждом построении окна настроек (см. _apply_semantic_search_
+    availability), в том числе когда семантический поиск выключен —
+    полноценный `import sentence_transformers` здесь означало бы, что
+    просто ОТКРЫТИЕ окна настроек PromptVault само по себе тянет в
+    память torch, независимо от того, включена ли настройка (именно
+    так и было, когда эта функция ненадолго использовала полноценный
+    import — импорт модуля кешируется в sys.modules на весь процесс,
+    и снять его обратно потом уже нельзя, в отличие от unload_model()
+    для самой модели). importlib.util.find_spec() ищет модуль на
+    путях поиска и возвращает информацию о нём, не выполняя его код —
+    достаточно, чтобы отличить "установлено" от "не установлено", и
+    не стоит почти ничего по памяти или времени.
+
+    Один нюанс find_spec(): если "sentence_transformers" уже лежит в
+    sys.modules, но с отсутствующим/некорректным __spec__ (бывает у
+    вручную сконструированных заглушек вроде
+    types.ModuleType("sentence_transformers") без честного spec —
+    именно так тестовый набор подделывает наличие пакета, см.
+    tools/promptvault/tests/test_embedding.py), find_spec() не
+    возвращает None, а поднимает ValueError — тогда считаем модуль
+    установленным на основании того, что он и так уже в sys.modules
+    (раз он там есть, значит в каком-то смысле уже "установлен",
+    искать его по путям и не нужно).
+    """
+
+    try:
+        return importlib.util.find_spec("sentence_transformers") is not None
+    except ValueError:
+        return "sentence_transformers" in sys.modules
+
+
 def is_available() -> bool:
     """True, если библиотека sentence-transformers установлена, модель
     хотя бы попробовать загрузить ещё не пытались/пытались успешно, и
     пользователь не отключил семантический поиск явно (см. set_enabled).
 
+    Это проверка "активен ли поиск ПРЯМО СЕЙЧАС" — используется местами
+    вроде backfill_missing_embeddings, которым нужно знать, стоит ли
+    вообще пытаться считать эмбеддинги. Для вопроса "можно ли в принципе
+    ВКЛЮЧИТЬ семантический поиск" (например, чтобы решить, дизейблить
+    ли сам переключатель в UI) нужен library_installed() выше, а не эта
+    функция — иначе состояние "выключено пользователем" делает
+    переключатель невозможным включить обратно.
+
     Не гарантирует, что загрузка при первом реальном вызове точно
     удастся (например, файлы модели могут быть повреждены) — но
-    позволяет UI заранее не показывать семантический поиск как рабочую
-    возможность, если зависимость вообще не установлена.
+    позволяет коду заранее не пытаться использовать семантический
+    поиск как рабочую возможность, если зависимость вообще не
+    установлена.
     """
 
     if _disabled_by_user:
@@ -337,212 +423,201 @@ def is_available() -> bool:
     if _load_failed:
         return False
 
+    return library_installed()
+
+
+class _WorkerModelProxy:
+    """Тонкая обёртка вокруг WorkerHandle, подставляемая как "модель" в
+    get_model() — отвечает интерфейсу SentenceTransformer.encode()
+    (сигнатура и поведение: строка на входе -> 1D вектор, список строк
+    -> 2D массив), которого ждут compute_query_embedding/
+    compute_embedding/compute_embeddings_batch ниже — и который же
+    подменяют существующие тесты через monkeypatch на
+    embedding.get_model (см. tools/promptvault/tests/conftest.py) —
+    сама модель при этом физически живёт в ОТДЕЛЬНОМ подпроцессе (см.
+    embedding_worker.py/embedding_ipc.py), а не в этом процессе.
+
+    Существование этого класса — единственное, что позволило вынести
+    torch в подпроцесс, ПОЛНОСТЬЮ не трогая compute_query_embedding/
+    compute_embedding/compute_embeddings_batch и существующий тестовый
+    seam на get_model(): весь остальной код продолжает думать, что
+    работает с обычным объектом модели.
+    """
+
+    def __init__(self, worker: WorkerHandle) -> None:
+        self._worker = worker
+
+    def encode(
+        self,
+        texts,
+        *,
+        normalize_embeddings: bool = True,  # noqa: ARG002 — нормализация всегда включена на стороне воркера (см. embedding_worker.py), параметр принимается только для совместимости сигнатуры с SentenceTransformer.encode()
+        show_progress_bar: bool = False,  # noqa: ARG002 — то же самое, воркер никогда не показывает прогресс-бар (пишет только в свой stderr, не в UI)
+        batch_size: int = 32,
+    ) -> np.ndarray:
+        single = isinstance(texts, str)
+        text_list = [texts] if single else list(texts)
+        result = self._worker.encode(text_list, batch_size=batch_size)
+        return result[0] if single else result
+
+
+def get_model() -> Any:
+    """Возвращает объект с интерфейсом SentenceTransformer.encode() —
+    сама модель загружается (лениво, при первом обращении) не в этом
+    процессе, а в отдельном подпроцессе-воркере (см. _WorkerModelProxy
+    выше и модуль embedding_worker.py).
+
+    Потокобезопасно на том же основании, что и раньше: WorkerHandle
+    сам сериализует обращения к подпроцессу через внутренний
+    threading.Lock (см. embedding_ipc.py) — здесь отдельная блокировка
+    не нужна.
+    """
+
+    global _load_failed
+
+    if _disabled_by_user:
+        raise RuntimeError("Семантический поиск отключён пользователем")
+
+    if _load_failed:
+        raise RuntimeError("Загрузка модели эмбеддингов ранее уже завершилась ошибкой")
+
+    if not library_installed():
+        _load_failed = True
+        raise RuntimeError(
+            "Пакет sentence-transformers не установлен — семантический "
+            "поиск недоступен (pip install sentence-transformers)"
+        )
+
+    if not _torch_version_compatible():
+        # см. комментарий у _MIN_TORCH_VERSION — не тратим память и
+        # время подпроцесса на заведомо обречённую попытку загрузки:
+        # self-test в embedding_worker._load_model всё равно провалится
+        # на первом реальном forward-проходе при слишком старом torch
+        _load_failed = True
+        logger.error(
+            "Установленная версия torch слишком стара для модели "
+            "эмбеддингов %s (нужен torch>=%d.%d) — семантический "
+            "поиск отключён без попытки загрузки модели, чтобы не "
+            "тратить время впустую. Обновите: pip install --upgrade torch",
+            MODEL_NAME, *_MIN_TORCH_VERSION
+        )
+        raise RuntimeError(
+            f"torch слишком стар для модели эмбеддингов "
+            f"(нужен >= {_MIN_TORCH_VERSION[0]}.{_MIN_TORCH_VERSION[1]})"
+        )
+
+    from comfyui_studio.mem_diagnostics import log_memory
+
+    log_memory("get_model(): до ensure_loaded() в подпроцессе-воркере")
+
+    logger.info("Загрузка модели эмбеддингов (%s)...", MODEL_NAME)
+
     try:
-        import sentence_transformers  # noqa: F401
-    except ImportError:
-        return False
+        actual_device = _worker.ensure_loaded(
+            MODEL_NAME, _device_preference, _QUERY_PREFIX, MAX_SEQ_LENGTH,
+        )
+    except WorkerError as e:
+        # та же природа ошибок, что раньше ловил except Exception вокруг
+        # _load_and_verify_model (нет сети при первом запуске и нет
+        # кэша, повреждённый кеш HuggingFace, несовместимая версия
+        # torch и т.п.) — не должны ронять приложение, только отключать
+        # семантический поиск
+        _load_failed = True
+        logger.error(
+            "Модель эмбеддингов %s не загрузилась в подпроцессе: %s. "
+            "Частая причина — слишком старая версия torch (нужен "
+            "torch>=2.4); проверьте: pip show torch, затем "
+            "pip install --upgrade torch. Семантический поиск будет "
+            "недоступен, приложение продолжит работать в обычном "
+            "текстовом режиме поиска.",
+            MODEL_NAME, e
+        )
+        raise RuntimeError(f"Не удалось загрузить модель эмбеддингов: {e}") from e
 
-    return True
+    log_memory("get_model(): после ensure_loaded() (модель готова в подпроцессе)")
 
-
-def _pick_device() -> str:
-    """Выбор устройства для модели — учитывает пользовательское
-    предпочтение (см. set_device_preference/_device_preference):
-
-    - "cpu": всегда CPU, без проверки CUDA;
-    - "cuda": принудительно GPU — если CUDA на самом деле недоступна
-      (не установлен torch, либо стоит CPU-only сборка), молча
-      откатывается на CPU, а не падает — см. предупреждение в UI
-      (SettingsWindow) о том, что для GPU нужен torch с CUDA-сборкой;
-    - "auto" (по умолчанию): 'cuda', если доступен GPU с CUDA-сборкой
-      torch, иначе 'cpu'.
-
-    ВАЖНО: torch.cuda.is_available() вернёт False не только при
-    отсутствии физической видеокарты, но и если установлена
-    CPU-only сборка torch (стандартный `pip install torch` на Windows
-    без явного указания индекса часто ставит именно её) — в этом
-    случае наличие NVIDIA GPU в системе не поможет, нужно поставить
-    CUDA-сборку явно, например:
-    pip install torch --index-url https://download.pytorch.org/whl/cu121
-    (номер cu1xx зависит от версии драйвера CUDA)."""
-
-    if _device_preference == "cpu":
-        return "cpu"
-
-    try:
-        import torch
-    except ImportError:
-        if _device_preference == "cuda":
-            logger.warning(
-                "Устройство 'cuda' выбрано пользователем, но torch не "
-                "установлен — используется CPU"
-            )
-        return "cpu"
-
-    try:
-        cuda_ok = bool(torch.cuda.is_available())
-    except Exception:  # noqa: BLE001 — не критично, просто остаёмся на CPU
-        logger.debug("Не удалось проверить доступность CUDA", exc_info=True)
-        cuda_ok = False
-
-    if cuda_ok:
-        return "cuda"
-
-    if _device_preference == "cuda":
+    # предупреждение о принудительном "cuda" без реальной CUDA — раньше
+    # логировалось внутри _pick_device (в этом же процессе), теперь сам
+    # выбор устройства происходит в подпроцессе (см.
+    # embedding_worker._pick_device) — сравниваем запрошенное
+    # предпочтение с фактически полученным устройством здесь же, в
+    # вызывающем коде, вместо того чтобы передавать логику логирования
+    # через границу процессов
+    if _device_preference == "cuda" and actual_device != "cuda":
         logger.warning(
             "Устройство 'cuda' выбрано пользователем, но CUDA недоступна "
             "(нужна CUDA-сборка torch) — используется CPU"
         )
 
-    return "cpu"
+    logger.info("Модель эмбеддингов загружена (device=%s)", actual_device)
+
+    return _WorkerModelProxy(_worker)
 
 
-def _load_and_verify_model(device: str) -> Any:
-    """Создаёт SentenceTransformer и сразу проверяет его самопроверочным
-    encode() (см. вызывающий код) — сначала пытается ПОЛНОСТЬЮ ОФЛАЙН,
-    из локального кэша HuggingFace Hub, без единого сетевого запроса.
+def unload_model() -> None:
+    """Останавливает подпроцесс-воркер эмбеддингов (см. embedding_ipc.
+    WorkerHandle.terminate()/embedding_worker.py), если он был запущен —
+    без изменения выбранной модели/устройства и без отключения
+    семантического поиска для пользователя (в отличие от
+    set_enabled(False)/set_model(None), которые заодно меняют
+    настройку). Следующий вызов get_model() поднимет подпроцесс заново.
 
-    HF Hub по умолчанию при каждой загрузке делает HEAD-запросы к
-    huggingface.co на каждый файл метаданных модели, даже если сами
-    веса давно скачаны и лежат в кэше — это добавляет несколько секунд
-    к каждому запуску приложения и требует интернета при старте. Если
-    модель уже когда-то успешно грузилась на этой машине, кэш есть, и
-    в офлайн-режиме (переменная окружения HF_HUB_OFFLINE) загрузка идёт
-    целиком из него, без сети вообще.
+    Вызывающие: _on_child_window_destroyed в comfyui_studio/launcher/
+    ui/settings_page.py (через ON_CLOSE_CALLBACKS в tool_registry.py,
+    см. main.py) при закрытии полного окна PromptVault, и
+    _on_settings_window_destroyed в comfyui_studio/launcher/ui/settings/
+    promptvault_page.py при закрытии одних только настроек PromptVault
+    (оба пути могут независимо довести до загрузки модели — см. кнопку
+    "Recompute embeddings" в SettingsWindow). Плюс подстраховка на
+    atexit чуть выше в файле — на случай standalone-запуска PromptVault
+    (см. main.py), где весь процесс просто завершается сам, без
+    промежуточных Qt-сигналов уничтожения окна.
 
-    Если офлайн не вышло (кэша ещё нет — самый первый запуск на этой
-    машине, либо кэш повреждён/неполон) — молча откатывается на обычную
-    загрузку с сетью, которая при необходимости скачает веса.
+    ПОЧЕМУ ПОДПРОЦЕСС, А НЕ ПРОСТО `_model = None` + `gc.collect()`
+    (как было раньше) -- см. запись в дорожной карте от 2026-08-20 с
+    реальными цифрами из живого прогона на Windows: `import
+    sentence_transformers` (тянет torch) стоит ~475 МБ, сама модель
+    (all-MiniLM-L6-v2) — всего ~70 МБ. `_model = None` + `gc.collect()`
+    (и даже принудительный Windows EmptyWorkingSet поверх них)
+    освобождали только эти ~70 МБ — оставшиеся ~475 МБ оставались
+    "застрявшими" в процессе до самого закрытия ComfyUIStudio: это не
+    освобождённая-но-не-возвращённая память, а ЖИВОЕ внутреннее
+    состояние рантайма torch (пул потоков intra-op parallelism, буферы
+    MKL/OpenMP, таблицы диспетчера операций ATen), которое остаётся
+    referenced, пока модуль `torch` импортирован в процессе — а Python
+    не умеет чисто "выгрузить" уже импортированный C-экстеншен обратно.
+
+    WorkerHandle.terminate() решает это тем, что модель вообще никогда
+    не грузится в ЭТОМ процессе — она живёт в отдельном подпроцессе
+    (см. embedding_worker.py), который здесь просто убивается целиком.
+    Завершение процесса ОС гарантированно забирает 100% его памяти —
+    в отличие от dereference+gc.collect() внутри одного общего
+    процесса, которые физически не могут тронуть внутреннее состояние
+    уже импортированного рантайма (что и подтвердил реальный прогон:
+    EmptyWorkingSet после dereference не сдвинул память ни на килобайт).
     """
 
-    from sentence_transformers import SentenceTransformer
+    global _load_failed
 
-    previous_offline_flag = os.environ.get("HF_HUB_OFFLINE")
-    os.environ["HF_HUB_OFFLINE"] = "1"
+    from comfyui_studio.mem_diagnostics import log_memory
 
-    try:
-        candidate = SentenceTransformer(MODEL_NAME, device=device)
-        candidate.encode(_QUERY_PREFIX + "test", normalize_embeddings=True, show_progress_bar=False)
-        logger.info("Модель эмбеддингов загружена офлайн (из локального кэша)")
-        return candidate
-    except Exception:
-        logger.info(
-            "Модель эмбеддингов не найдена в локальном кэше (или кэш "
-            "неполон) — загружаю с сети (huggingface.co)"
-        )
-    finally:
-        if previous_offline_flag is None:
-            os.environ.pop("HF_HUB_OFFLINE", None)
-        else:
-            os.environ["HF_HUB_OFFLINE"] = previous_offline_flag
+    if not _worker.is_running():
+        log_memory("unload_model(): подпроцесс уже не запущен — нечего выгружать")
+        return
 
-    # офлайн не получилось — обычная загрузка с сетью (при самом первом
-    # запуске на машине скачает веса, ~1.3 ГБ); исключения здесь
-    # намеренно не ловятся — их обрабатывает вызывающий код (get_model)
-    candidate = SentenceTransformer(MODEL_NAME, device=device)
-    candidate.encode(_QUERY_PREFIX + "test", normalize_embeddings=True, show_progress_bar=False)
+    log_memory("unload_model(): до terminate() подпроцесса")
 
-    return candidate
+    _worker.terminate()
 
+    # свежая попытка загрузки (например, после повторного открытия
+    # окна) не должна наследовать флаг ошибки от какого-то предыдущего
+    # сеанса — если он был выставлен, get_model() и так больше не
+    # пытался бы поднимать подпроцесс заново
+    _load_failed = False
 
-def get_model() -> Any:
-    """Возвращает (лениво загружая при первом обращении) единственный
-    на процесс экземпляр SentenceTransformer.
+    log_memory("unload_model(): после terminate() подпроцесса (итог — должно быть близко к базовому уровню без torch)")
 
-    Потокобезопасно: несколько потоков, одновременно запросивших модель
-    впервые, не запустят параллельно несколько загрузок.
-    """
-
-    global _model, _load_failed
-
-    if _model is not None:
-        return _model
-
-    with _model_lock:
-
-        if _model is not None:
-            return _model
-
-        if _disabled_by_user:
-            raise RuntimeError("Семантический поиск отключён пользователем")
-
-        if _load_failed:
-            raise RuntimeError("Загрузка модели эмбеддингов ранее уже завершилась ошибкой")
-
-        try:
-            from sentence_transformers import SentenceTransformer  # noqa: F401
-        except ImportError as e:
-            _load_failed = True
-            raise RuntimeError(
-                "Пакет sentence-transformers не установлен — семантический "
-                "поиск недоступен (pip install sentence-transformers)"
-            ) from e
-
-        if not _torch_version_compatible():
-            # см. комментарий у _MIN_TORCH_VERSION — не тратим ~1.3 ГБ
-            # на заведомо обречённую попытку загрузки: self-test в
-            # _load_and_verify_model всё равно провалится на первом
-            # реальном forward-проходе при слишком старом torch
-            _load_failed = True
-            logger.error(
-                "Установленная версия torch слишком стара для модели "
-                "эмбеддингов %s (нужен torch>=%d.%d) — семантический "
-                "поиск отключён без попытки загрузки модели, чтобы не "
-                "тратить память впустую. Обновите: pip install --upgrade torch",
-                MODEL_NAME, *_MIN_TORCH_VERSION
-            )
-            raise RuntimeError(
-                f"torch слишком стар для модели эмбеддингов "
-                f"(нужен >= {_MIN_TORCH_VERSION[0]}.{_MIN_TORCH_VERSION[1]})"
-            )
-
-        logger.info("Загрузка модели эмбеддингов (%s)...", MODEL_NAME)
-
-        device = _pick_device()
-
-        try:
-            # самопроверка (см. _load_and_verify_model) сразу после
-            # загрузки нужна, потому что конструктор SentenceTransformer
-            # может успешно отработать, даже если модель на самом деле
-            # не сможет считать эмбеддинг — так бывает, например, если
-            # установленный torch слишком стар для установленного
-            # transformers (transformers в этом случае молча отключает
-            # PyTorch-бэкенд, и падение происходит только на первом
-            # реальном forward-проходе, с непонятной ошибкой вроде
-            # "name 'nn' is not defined"). Лучше поймать это здесь один
-            # раз явно, чем логировать одну и ту же загадочную ошибку
-            # на каждый вызов compute_embedding().
-            candidate = _load_and_verify_model(device)
-
-            try:
-                candidate.max_seq_length = MAX_SEQ_LENGTH
-            except Exception:  # noqa: BLE001 — чисто оптимизация, не критично
-                logger.debug("Не удалось увеличить max_seq_length модели", exc_info=True)
-
-        except Exception as e:
-            # именно широкий except: сбои загрузки модели (нет сети при
-            # первом запуске и нет кэша, повреждённый кеш HuggingFace,
-            # нехватка памяти, несовместимая версия torch и т.п.) не
-            # должны ронять приложение — только отключать семантический
-            # поиск
-            _load_failed = True
-            logger.error(
-                "Модель эмбеддингов %s загрузилась, но не работает: %s. "
-                "Частая причина — слишком старая версия torch (нужен "
-                "torch>=2.4); проверьте: pip show torch, затем "
-                "pip install --upgrade torch. Семантический поиск будет "
-                "недоступен, приложение продолжит работать в обычном "
-                "текстовом режиме поиска.",
-                MODEL_NAME, e
-            )
-            raise RuntimeError(f"Не удалось загрузить модель эмбеддингов: {e}") from e
-
-        _model = candidate
-
-        logger.info("Модель эмбеддингов загружена (device=%s)", device)
-
-        return _model
-
+    logger.info("Подпроцесс эмбеддингов остановлен, модель выгружена из памяти")
 
 # верхняя граница числа тегов на одну генерацию — защита от
 # патологически длинных "промптов" (например, если кто-то вставил в

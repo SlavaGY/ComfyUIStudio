@@ -13,8 +13,9 @@ requires-python = ">=3.11"
 # (по смыслу) поиска.
 #
 # numpy здесь НЕ вынесен в опциональную группу `promptvault`, хотя
-# исторически (см. requirements.txt) шёл в одном списке с torch/
-# sentence-transformers — в отличие от них, comfyui_studio/promptvault/
+# исторически (в удалённом requirements.txt, до слияния зависимостей в
+# этот файл) шёл в одном списке с torch/sentence-transformers — в
+# отличие от них, comfyui_studio/promptvault/
 # core/embedding.py импортирует numpy БЕЗУСЛОВНО на уровне модуля
 # (не лениво внутри функций, как torch/sentence_transformers), а
 # GalleryManager импортирует embedding тоже безусловно — то есть

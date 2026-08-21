@@ -52,6 +52,23 @@ def _stub_embedding_model_by_default(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _terminate_embedding_worker_after_test():
+    """embedding.gpu_available()/get_model() (когда явно замокан
+    embedding._worker или сам тест намеренно проверяет реальный путь,
+    см. test_embedding_worker.py) могут поднять настоящий подпроцесс
+    (см. embedding_ipc.WorkerHandle, embedding_worker.py — вынесено
+    туда, чтобы torch/sentence-transformers можно было полностью
+    выгрузить из памяти при закрытии PromptVault, см. дорожную карту,
+    запись от 2026-08-20) — без явного terminate() после теста
+    подпроцесс пережил бы сам тест и продолжал бы висеть отдельным
+    процессом до конца всего прогона pytest (или дольше)."""
+
+    yield
+
+    embedding.unload_model()
+
+
+@pytest.fixture(autouse=True)
 def _reset_embedding_model_and_device_state():
     """embedding.set_model/set_device_preference (задача: выбор модели
     эмбеддинга) мутируют module-level переменные НАПРЯМУЮ (MODEL_NAME,

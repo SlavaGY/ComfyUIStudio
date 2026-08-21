@@ -30,7 +30,16 @@ datas = [
     ('comfyui_studio/promptvault/themes', 'comfyui_studio/promptvault/themes'),
 ]
 binaries = []
-hiddenimports = []
+hiddenimports = [
+    # embedding_worker.py/embedding_ipc.py импортируются лениво/условно
+    # (внутри if в main.py — см. диспетчеризацию в режим подпроцесса
+    # воркера эмбеддингов там) — PyInstaller обычно находит такие через
+    # обычный AST-анализ и без этого, но раз от их отсутствия в сборке
+    # тихо сломался бы весь семантический поиск (а не упал с понятной
+    # ошибкой), лучше перечислить явно, а не полагаться на анализ.
+    "comfyui_studio.promptvault.core.embedding_worker",
+    "comfyui_studio.promptvault.core.embedding_ipc",
+]
 
 # sentence-transformers/transformers/tokenizers тянут немало data-файлов
 # и сабмодулей, которые PyInstaller не всегда видит статическим анализом

@@ -2,6 +2,25 @@ import logging
 import sys
 import traceback
 
+# Диспетчеризация в режим подпроцесса-воркера эмбеддингов -- ДО любых
+# других импортов (PySide6, MainWindow и т.п.), НАМЕРЕННО в самом
+# начале файла, а не в блоке if __name__ == "__main__" внизу: если бы
+# эта проверка стояла там, к моменту её выполнения модуль всё равно уже
+# успел бы импортировать PySide6 и MainWindow сверху (Python исполняет
+# файл целиком до __main__-блока) -- воркеру, который делает только
+# import torch/sentence_transformers и гоняет JSON-протокол, Qt не
+# нужен вообще, и тянуть его в подпроцесс было бы лишней памятью поверх
+# и без того тяжёлого torch. См. подробное объяснение самого механизма
+# в комментарии у аналогичной проверки в корневом main.py (там она
+# устроена иначе — там модуль-уровневых тяжёлых импортов нет, поэтому
+# и не пришлось поднимать её так высоко).
+if len(sys.argv) > 1:
+    from comfyui_studio.promptvault.core.embedding_ipc import WORKER_CLI_FLAG
+    if sys.argv[1] == WORKER_CLI_FLAG:
+        from comfyui_studio.promptvault.core.embedding_worker import run_worker
+        run_worker()
+        sys.exit(0)
+
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 

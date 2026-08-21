@@ -355,7 +355,7 @@ class GalleryManager(QObject):
     def semantic_search_available(self) -> bool:
         """True, если семантический поиск в принципе может заработать
         на этой машине — то есть установлен пакет sentence-transformers
-        (см. embedding.is_available()).
+        (см. embedding.library_installed()).
 
         Отличается от semantic_search_enabled(): "enabled" — это
         пользовательский выбор (сохранённый в QSettings, который имеет
@@ -365,9 +365,17 @@ class GalleryManager(QObject):
         использует именно этот метод, чтобы задизейблить переключатель
         и объяснить пользователю, чего не хватает, вместо того чтобы
         позволить включить настройку, которая не будет иметь эффекта.
+
+        Намеренно НЕ embedding.is_available(): та функция дополнительно
+        учитывает пользовательский выбор (_disabled_by_user), из-за
+        чего выключение семантического поиска само делало бы этот
+        метод False и, следовательно, дизейблило бы сам переключатель
+        в UI — включить поиск обратно стало бы невозможно ни через
+        что, кроме удаления QSettings вручную. library_installed()
+        смотрит только на физическое наличие библиотеки.
         """
 
-        return embedding.is_available()
+        return embedding.library_installed()
 
     def _load_semantic_search_enabled_state(self) -> bool:
 

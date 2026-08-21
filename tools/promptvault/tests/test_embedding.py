@@ -71,8 +71,8 @@ class _FakeModel:
 
 @pytest.fixture(autouse=True)
 def _reset_module_state(monkeypatch):
-    """Сбрасывает ленивый синглтон модели между тестами, чтобы тесты
-    не зависели от порядка выполнения.
+    """Сбрасывает module-level состояние embedding.py между тестами,
+    чтобы тесты не зависели от порядка выполнения.
 
     embedding.set_model/set_device_preference (задача: выбор модели
     эмбеддинга) мутируют MODEL_NAME/EMBEDDING_DIM/префиксы/
@@ -80,15 +80,16 @@ def _reset_module_state(monkeypatch):
     monkeypatch — сбрасываем их к дефолту (e5-large-v2/auto) явным
     вызовом set_model/set_device_preference и на входе, и на выходе,
     чтобы TestModelSelection/TestDevicePreference не просачивались в
-    соседние тесты этого же файла."""
+    соседние тесты этого же файла. "Ленивого синглтона модели" (_model)
+    в этом модуле больше нет — модель живёт в подпроцессе, см.
+    embedding_ipc.WorkerHandle; conftest._terminate_embedding_worker_after_test
+    отвечает за то, чтобы сам подпроцесс не пережил тест."""
 
-    monkeypatch.setattr(embedding, "_model", None)
     monkeypatch.setattr(embedding, "_load_failed", False)
     monkeypatch.setattr(embedding, "_disabled_by_user", False)
     embedding.set_model("e5-large-v2")
     embedding.set_device_preference("auto")
     yield
-    monkeypatch.setattr(embedding, "_model", None)
     monkeypatch.setattr(embedding, "_load_failed", False)
     monkeypatch.setattr(embedding, "_disabled_by_user", False)
     embedding.set_model("e5-large-v2")
@@ -475,134 +476,6 @@ class TestE5Prefixes:
         assert received["texts"] == ["passage: cat", "passage: dog", "passage: forest"]
 
 
-class TestPickDevice:
-
-    def test_returns_cpu_when_torch_not_installed(self, monkeypatch):
-
-        import builtins
-
-        real_import = builtins.__import__
-
-        def _fake_import(name, *args, **kwargs):
-            if name == "torch":
-                raise ImportError("no torch")
-            return real_import(name, *args, **kwargs)
-
-        monkeypatch.setattr(builtins, "__import__", _fake_import)
-
-        assert embedding._pick_device() == "cpu"
-
-    def test_returns_cuda_when_available(self, monkeypatch):
-
-        import types
-
-        fake_torch = types.SimpleNamespace(
-            cuda=types.SimpleNamespace(is_available=lambda: True)
-        )
-
-        import sys
-        monkeypatch.setitem(sys.modules, "torch", fake_torch)
-
-        assert embedding._pick_device() == "cuda"
-
-    def test_returns_cpu_when_cuda_unavailable(self, monkeypatch):
-
-        import types
-
-        fake_torch = types.SimpleNamespace(
-            cuda=types.SimpleNamespace(is_available=lambda: False)
-        )
-
-        import sys
-        monkeypatch.setitem(sys.modules, "torch", fake_torch)
-
-        assert embedding._pick_device() == "cpu"
-
-
-class TestLoadAndVerifyModelOfflineFirst:
-    """_load_and_verify_model пытается загрузить модель офлайн (из
-    локального кэша HF Hub, без сети) первым делом, и только при
-    неудаче откатывается на обычную загрузку с сетью."""
-
-    def _patch_sentence_transformers(self, monkeypatch, factory):
-
-        import sentence_transformers
-
-        monkeypatch.setattr(sentence_transformers, "SentenceTransformer", factory)
-
-    def test_offline_success_sets_and_restores_env_var(self, monkeypatch):
-
-        seen_offline_flag = {}
-
-        class _FakeModel:
-            def encode(self, *a, **kw):
-                seen_offline_flag["value"] = os.environ.get("HF_HUB_OFFLINE")
-                return np.ones(4, dtype=np.float32)
-
-        self._patch_sentence_transformers(monkeypatch, lambda name, device: _FakeModel())
-        monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
-
-        result = embedding._load_and_verify_model("cpu")
-
-        assert result is not None
-        # во время попытки офлайн-загрузки флаг был выставлен...
-        assert seen_offline_flag["value"] == "1"
-        # ...а после успеха — восстановлен обратно (тут: убран, раз его
-        # не было до вызова)
-        assert "HF_HUB_OFFLINE" not in os.environ
-
-    def test_restores_previous_env_var_value(self, monkeypatch):
-
-        class _FakeModel:
-            def encode(self, *a, **kw):
-                return np.ones(4, dtype=np.float32)
-
-        self._patch_sentence_transformers(monkeypatch, lambda name, device: _FakeModel())
-        monkeypatch.setenv("HF_HUB_OFFLINE", "0")
-
-        embedding._load_and_verify_model("cpu")
-
-        assert os.environ.get("HF_HUB_OFFLINE") == "0"
-
-    def test_falls_back_to_online_when_offline_cache_missing(self, monkeypatch):
-
-        calls = []
-
-        class _FailsOfflineModel:
-            def __init__(self):
-                calls.append(os.environ.get("HF_HUB_OFFLINE"))
-                if len(calls) == 1:
-                    raise OSError("не найдено в локальном кэше")
-
-            def encode(self, *a, **kw):
-                return np.ones(4, dtype=np.float32)
-
-        self._patch_sentence_transformers(
-            monkeypatch, lambda name, device: _FailsOfflineModel()
-        )
-        monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
-
-        result = embedding._load_and_verify_model("cpu")
-
-        assert result is not None
-        # первая попытка — офлайн (флаг выставлен), вторая — обычная
-        # (флаг уже снят)
-        assert calls == ["1", None]
-
-    def test_raises_when_both_offline_and_online_fail(self, monkeypatch):
-
-        class _AlwaysFailsModel:
-            def __init__(self, *a, **kw):
-                raise OSError("совсем недоступна")
-
-        self._patch_sentence_transformers(
-            monkeypatch, lambda name, device: _AlwaysFailsModel()
-        )
-
-        with pytest.raises(OSError):
-            embedding._load_and_verify_model("cpu")
-
-
 class TestIsAvailable:
 
     def test_true_when_load_has_not_failed(self):
@@ -686,8 +559,8 @@ class TestSetEnabled:
 
 
 class TestTorchVersionCompatible:
-    """_torch_version_compatible — задача: не выделять память под
-    веса модели (~1.3 ГБ), если самопроверка в _load_and_verify_model
+    """_torch_version_compatible — задача: не тратить время подпроцесса
+    на загрузку, если самопроверка в embedding_worker._load_model
     всё равно гарантированно провалится из-за старого torch."""
 
     def test_compatible_version_returns_true(self, monkeypatch):
@@ -813,14 +686,12 @@ class TestModelSelection:
         assert embedding._QUERY_PREFIX.startswith("Represent this sentence")
         assert embedding._PASSAGE_PREFIX == ""
 
-    def test_set_model_invalidates_cached_instance(self, monkeypatch):
+    def test_set_model_resets_load_failed(self, monkeypatch):
 
-        monkeypatch.setattr(embedding, "_model", object())
         monkeypatch.setattr(embedding, "_load_failed", True)
 
         embedding.set_model("e5-base-v2")
 
-        assert embedding._model is None
         assert embedding._load_failed is False
 
     def test_set_model_none_disables_search(self, monkeypatch):
@@ -849,40 +720,65 @@ class TestModelSelection:
 
 
 class TestDevicePreference:
-    """Задача: выбор устройства (CPU/GPU) — set_device_preference/
-    _pick_device."""
+    """Задача: выбор устройства (CPU/GPU) — здесь только хранение
+    предпочтения (device_preference/set_device_preference); сам выбор
+    фактического устройства (auto/cpu/cuda -> "cpu"/"cuda") теперь
+    целиком в подпроцессе — см. TestPickDevice в
+    test_embedding_worker.py."""
 
     def test_default_preference_is_auto(self):
 
         assert embedding.device_preference() == "auto"
-
-    def test_cpu_preference_always_returns_cpu(self):
-
-        embedding.set_device_preference("cpu")
-        assert embedding._pick_device() == "cpu"
-
-    def test_cuda_preference_falls_back_to_cpu_without_torch(self):
-        """torch не установлен в тестовом окружении — принудительный
-        выбор GPU должен молча откатиться на CPU, а не упасть."""
-
-        embedding.set_device_preference("cuda")
-        assert embedding._pick_device() == "cpu"
 
     def test_invalid_preference_raises(self):
 
         with pytest.raises(ValueError):
             embedding.set_device_preference("tpu")
 
-    def test_set_device_preference_invalidates_cached_instance(self, monkeypatch):
+    def test_set_device_preference_resets_load_failed(self, monkeypatch):
 
-        monkeypatch.setattr(embedding, "_model", object())
         monkeypatch.setattr(embedding, "_load_failed", True)
 
         embedding.set_device_preference("cpu")
 
-        assert embedding._model is None
         assert embedding._load_failed is False
 
+    def test_get_model_passes_device_preference_to_worker(self, monkeypatch):
+        """get_model() больше не выбирает устройство сам — передаёт
+        текущее _device_preference подпроцессу через
+        WorkerHandle.ensure_loaded(), а решение принимает
+        embedding_worker._pick_device (см. test_embedding_worker.py)."""
+
+        monkeypatch.setattr(embedding, "get_model", _REAL_GET_MODEL)
+        monkeypatch.setattr(embedding, "library_installed", lambda: True)
+        monkeypatch.setattr(embedding, "_torch_version_compatible", lambda: True)
+
+        seen = {}
+
+        class _FakeWorker:
+            def ensure_loaded(self, model_name, device_preference, query_prefix, max_seq_length):
+                seen["device_preference"] = device_preference
+                return "cpu"
+
+            def is_running(self):
+                # так conftest._terminate_embedding_worker_after_test
+                # (вызывает embedding.unload_model() в teardown каждого
+                # теста) не пытается ничего останавливать у этой
+                # заглушки после теста
+                return False
+
+        monkeypatch.setattr(embedding, "_worker", _FakeWorker())
+
+        embedding.set_device_preference("cuda")
+        embedding.get_model()
+
+        assert seen["device_preference"] == "cuda"
+
     def test_gpu_available_is_false_without_torch(self):
+        """Спавнит настоящий подпроцесс-воркер (см. embedding_ipc.
+        WorkerHandle.gpu_available) — torch не установлен в тестовом
+        окружении, подпроцесс сам вернёт available=False, а
+        conftest._terminate_embedding_worker_after_test подчистит
+        подпроцесс после теста."""
 
         assert embedding.gpu_available() is False

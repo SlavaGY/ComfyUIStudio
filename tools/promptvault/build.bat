@@ -2,10 +2,17 @@
 setlocal enabledelayedexpansion
 
 :: ==============================================================
-:: build.bat -- сборка PromptVault в распространяемую папку (Windows)
+:: build.bat -- сборка PromptVault standalone-exe (Windows), в обход
+:: единого build_exe.bat в корне репозитория (тот собирает весь
+:: комплект ComfyUIStudio разом, см. "Сборка в один exe" в README.md).
 ::
-:: Кладите этот файл в корень репозитория (рядом с app\, requirements.txt,
-:: pyproject.toml) и запускайте из него.
+:: tools/promptvault/ -- ЛЕГАСИ-папка (см. дорожную карту рефакторинга,
+:: этап 2): исходники PromptVault отсюда перенесены в
+:: comfyui_studio/promptvault/ под общее пространство имён комплекта,
+:: здесь остались только служебные файлы сборки (requirements.txt,
+:: build.bat, PromptVault.spec, TODO.md) -- этот скрипт запускается ИЗ
+:: tools/promptvault/, но собирает исходники двумя уровнями выше
+:: (ROOT_DIR), а не рядом с собой -- отсюда все пути ниже.
 ::
 :: Собирает через PyInstaller в РЕЖИМЕ "one-folder" (по умолчанию у
 :: PyInstaller, без --onefile). Одним .exe не пакуем сознательно:
@@ -19,13 +26,15 @@ setlocal enabledelayedexpansion
 :: раз за разом. one-folder распаковывается один раз (при сборке),
 :: дальше .exe запускается напрямую из уже разложенных файлов.
 ::
-:: Результат: dist\PromptVault\PromptVault.exe и вся папка рядом с ним.
+:: Результат: dist\PromptVault\PromptVault.exe и вся папка рядом с ним
+:: (внутри tools\promptvault\, там же откуда запущен скрипт).
 :: Распространять нужно ВСЮ папку dist\PromptVault целиком (в конце
 :: скрипт сам упаковывает её в dist\PromptVault-<версия>-win64.zip
 :: через встроенный в Windows Compress-Archive) -- не только .exe.
 :: ==============================================================
 
 cd /d "%~dp0"
+set "ROOT_DIR=%~dp0..\.."
 
 echo.
 echo === [1/6] Проверка Python ===
@@ -37,8 +46,10 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if not exist "app\main.py" (
-    echo Не вижу app\main.py -- запускайте build.bat из корня репозитория PromptVault.
+if not exist "%ROOT_DIR%\comfyui_studio\promptvault\main.py" (
+    echo Не вижу comfyui_studio\promptvault\main.py в корне репозитория
+    echo ^(%ROOT_DIR%^) -- запускайте build.bat из tools\promptvault\ внутри
+    echo полной раскладки ComfyUIStudio, не из отдельно скопированной папки.
     exit /b 1
 )
 
@@ -58,30 +69,35 @@ call ".venv-build\Scripts\activate.bat" || exit /b 1
 echo.
 echo === [3/6] Зависимости ===
 
+:: Зависимости ставятся из корневого pyproject.toml (группа
+:: `promptvault` -- torch/sentence-transformers, см. его комментарии),
+:: а не из requirements.txt: этот standalone-инструмент не имеет своего
+:: отдельного набора зависимостей с этапа 2 (перенос под comfyui_studio/
+:: namespace) -- он использует тот же venv-набор, что и весь комплект.
 python -m pip install --upgrade pip >nul
-pip install -r requirements.txt || exit /b 1
+pip install "%ROOT_DIR%[promptvault]" || exit /b 1
 pip install --upgrade pyinstaller || exit /b 1
 
 echo.
 echo === [4/6] Иконка приложения ^(.ico^) ===
 
 set "ICON_ARG="
-if exist "app\resources\icon.ico" (
-    set "ICON_ARG=--icon=app\resources\icon.ico"
-) else if exist "app\resources\icon.png" (
+if exist "%ROOT_DIR%\comfyui_studio\promptvault\resources\icon.ico" (
+    set "ICON_ARG=--icon=%ROOT_DIR%\comfyui_studio\promptvault\resources\icon.ico"
+) else if exist "%ROOT_DIR%\comfyui_studio\promptvault\resources\icon.png" (
     :: PyInstaller на Windows умеет только .ico -- конвертируем
     :: имеющийся .png один раз через Pillow, best-effort: если не
     :: получится (нет сети на pip install, сломанный venv и т.п.),
     :: просто соберём без иконки в .exe, а не роняем всю сборку
     pip install --quiet pillow >nul 2>&1
-    python -c "from PIL import Image; Image.open('app/resources/icon.png').convert('RGBA').save('app/resources/icon.ico', sizes=[(16,16),(32,32),(48,48),(256,256)])" 2>nul
-    if exist "app\resources\icon.ico" (
-        set "ICON_ARG=--icon=app\resources\icon.ico"
+    python -c "from PIL import Image; Image.open(r'%ROOT_DIR%\comfyui_studio\promptvault\resources\icon.png').convert('RGBA').save(r'%ROOT_DIR%\comfyui_studio\promptvault\resources\icon.ico', sizes=[(16,16),(32,32),(48,48),(256,256)])" 2>nul
+    if exist "%ROOT_DIR%\comfyui_studio\promptvault\resources\icon.ico" (
+        set "ICON_ARG=--icon=%ROOT_DIR%\comfyui_studio\promptvault\resources\icon.ico"
     ) else (
         echo   Не удалось сконвертировать icon.png в .ico -- соберу без иконки.
     )
 ) else (
-    echo   app\resources\icon.png не найден -- соберу без иконки.
+    echo   comfyui_studio\promptvault\resources\icon.png не найден -- соберу без иконки.
 )
 
 echo.
@@ -91,38 +107,47 @@ if exist "build" rmdir /s /q "build"
 if exist "dist" rmdir /s /q "dist"
 if exist "PromptVault.spec" del /q "PromptVault.spec"
 
-:: --add-data "app\resources;app\resources" / "app\themes;app\themes":
-:: назначение (после ";") ЗЕРКАЛИТ исходный путь пакета неспроста --
-:: app/config.py и app/themes/theme_manager.py находят свои файлы через
-:: Path(__file__).resolve().parent / "..." (ICON_PATH/TRANSLATIONS_DIR/
-:: THEMES_DIR), а PyInstaller в one-folder режиме подставляет __file__
-:: замороженных модулей как путь ВНУТРИ папки со сборкой (_internal\...
-:: в PyInstaller 6+), с тем же относительным пакетным путём app\... --
-:: если сплющить назначение в корень, эти Path(__file__)-вычисления
-:: перестанут находить resources/themes рядом с собой.
+:: --paths добавляет корень репозитория в sys.path сборки -- иначе
+:: PyInstaller, запущенный из tools\promptvault\, не найдёт пакет
+:: `comfyui_studio` (лежит двумя уровнями выше, не под tools\).
+::
+:: --add-data "...comfyui_studio\promptvault\resources;comfyui_studio\promptvault\resources":
+:: назначение (после ";") ЗЕРКАЛИТ пакетный путь неспроста --
+:: comfyui_studio/promptvault/config.py и .../themes/theme_manager.py
+:: находят свои файлы через Path(__file__).resolve().parent /
+:: "resources" (см. ICON_PATH/TRANSLATIONS_DIR/THEMES_DIR в config.py),
+:: а PyInstaller в one-folder режиме подставляет __file__ замороженных
+:: модулей как путь ВНУТРИ папки со сборкой (_internal\... в
+:: PyInstaller 6+), с тем же относительным пакетным путём
+:: comfyui_studio\promptvault\... -- если сплющить назначение в
+:: корень, эти Path(__file__)-вычисления перестанут находить
+:: resources/themes рядом с собой. Та же раскладка datas уже
+:: используется корневым ComfyUIStudio-full.spec -- см. его комментарии.
 ::
 :: --collect-all на sentence_transformers/transformers/tokenizers:
 :: сами веса модели эмбеддинга (~1.3 ГБ e5-large-v2 по умолчанию, см.
 :: TODO.md) НЕ бандлятся -- они грузятся с HuggingFace Hub и кэшируются
 :: в домашней папке пользователя при первой синхронизации папки с
-:: включённым семантическим поиском (см. app/core/embedding.py), как
-:: и при обычном запуске из исходников. --collect-all здесь только
-:: подтягивает служебные data-файлы/сабмодули самих библиотек, которые
-:: PyInstaller не всегда находит статическим анализом импортов (эти
-:: импорты в app/core/embedding.py лежат внутри функций, а не на
-:: верхнем уровне модуля -- см. docstring embedding.py).
+:: включённым семантическим поиском (см.
+:: comfyui_studio/promptvault/core/embedding.py), как и при обычном
+:: запуске из исходников. --collect-all здесь только подтягивает
+:: служебные data-файлы/сабмодули самих библиотек, которые PyInstaller
+:: не всегда находит статическим анализом импортов (эти импорты в
+:: embedding.py лежат внутри функций, а не на верхнем уровне модуля --
+:: см. docstring embedding.py).
 pyinstaller ^
     --name PromptVault ^
     --noconfirm ^
     --clean ^
     --windowed ^
+    --paths "%ROOT_DIR%" ^
     %ICON_ARG% ^
-    --add-data "app\resources;app\resources" ^
-    --add-data "app\themes;app\themes" ^
+    --add-data "%ROOT_DIR%\comfyui_studio\promptvault\resources;comfyui_studio\promptvault\resources" ^
+    --add-data "%ROOT_DIR%\comfyui_studio\promptvault\themes;comfyui_studio\promptvault\themes" ^
     --collect-all sentence_transformers ^
     --collect-all transformers ^
     --collect-all tokenizers ^
-    app\main.py
+    "%ROOT_DIR%\comfyui_studio\promptvault\main.py"
 
 if errorlevel 1 (
     echo.
@@ -138,7 +163,9 @@ if errorlevel 1 (
 echo.
 echo === [6/6] Упаковка в .zip ===
 
-for /f "delims=" %%v in ('python -c "from app.config import APP_VERSION; print(APP_VERSION)"') do set "PV_VERSION=%%v"
+pushd "%ROOT_DIR%"
+for /f "delims=" %%v in ('python -c "from comfyui_studio.promptvault.config import APP_VERSION; print(APP_VERSION)"') do set "PV_VERSION=%%v"
+popd
 if not defined PV_VERSION set "PV_VERSION=dev"
 
 set "ZIP_NAME=PromptVault-%PV_VERSION%-win64.zip"
@@ -153,6 +180,10 @@ echo ===============================================================
 echo Готово:
 echo   dist\PromptVault\PromptVault.exe   ^(запуск для проверки на месте^)
 echo   dist\%ZIP_NAME%   ^(для распространения -- распаковать целиком^)
+echo.
+echo   Это standalone-сборка ОДНОГО PromptVault -- если нужен весь
+echo   комплект ComfyUIStudio (Launcher + Prompt Builder + PromptVault)
+echo   одним exe, используйте build_exe.bat в корне репозитория.
 echo ===============================================================
 
 endlocal

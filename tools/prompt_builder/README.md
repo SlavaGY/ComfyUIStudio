@@ -1,3 +1,14 @@
+> **Легаси-документ.** Описывает раскладку ДО этапа 2 дорожной карты
+> рефакторинга (`ComfyUIStudio_Refactoring_Roadmap.md`) — исходники с
+> тех пор перенесены в `comfyui_studio/prompt_builder/` (пакет
+> `comfyui_studio.prompt_builder`, а не `prompt_builder`), запускаются
+> из корня репозитория через `python main.py` (единая точка входа
+> комплекта) или `python -m comfyui_studio.prompt_builder`. Актуальная
+> инструкция — README.md в корне репозитория. Здесь остаются только
+> служебные файлы standalone-сборки (`build_windows.bat`, `build.spec`,
+> `requirements.txt`) — они обновлены под новую раскладку, но текст
+> ниже про запуск из исходников — нет.
+
 # Character / Prompt Builder Config Editor (Qt)
 
 GUI-редактор на **PySide6/Qt** (как в присланном референсе PromptVault) для

@@ -458,7 +458,11 @@ class SettingsWindow(QDialog):
         подсказки.
         """
 
+        from comfyui_studio.mem_diagnostics import log_memory
+
+        log_memory("SettingsWindow: до semantic_search_available()")
         available = self.gallery.semantic_search_available()
+        log_memory("SettingsWindow: после semantic_search_available() (должно быть без скачка)")
 
         self.semantic_search_checkbox.setEnabled(available)
         self.embedding_settings_widget.setEnabled(available)

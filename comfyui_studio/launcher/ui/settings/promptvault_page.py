@@ -198,6 +198,23 @@ class PromptVaultSettingsPage(QWidget):
     def _on_settings_window_destroyed(self, repository):
         self._settings_window = None
         repository.close()
+
+        # Это окно настроек PromptVault (а не полное окно PromptVault,
+        # см. SettingsPage._on_child_window_destroyed выше) -- у него
+        # свой ОТДЕЛЬНЫЙ путь закрытия, не проходящий через
+        # ON_CLOSE_CALLBACKS/register_in_process_app. Но кнопка
+        # "Recompute embeddings" (_on_recompute_clicked в
+        # promptvault/ui/settings_window.py) доступна и здесь -- она
+        # тоже может запустить подпроцесс эмбеддингов (см.
+        # embedding.get_model()/embedding_ipc.WorkerHandle). Без явного
+        # unload_model() здесь этот подпроцесс пережил бы закрытие
+        # ОДНИХ ТОЛЬКО настроек PromptVault и продолжал бы висеть в
+        # памяти до закрытия всего ComfyUIStudio -- ровно та утечка,
+        # ради которой и был вынесен весь этот механизм в отдельный
+        # процесс (см. дорожную карту, запись от 2026-08-20).
+        from comfyui_studio.promptvault.core import embedding
+        embedding.unload_model()
+
         # см. аналогичный комментарий в SettingsPage._on_child_window_destroyed
         # (launcher/ui/settings_page.py) -- на объекте окна почти
         # наверняка были цикличные ссылки (сигналы/слоты), обычный

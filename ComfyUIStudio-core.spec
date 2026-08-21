@@ -40,7 +40,16 @@ datas = [
     ('comfyui_studio/promptvault/themes', 'comfyui_studio/promptvault/themes'),
 ]
 binaries = []
-hiddenimports = []
+hiddenimports = [
+    # см. аналогичный комментарий в ComfyUIStudio-full.spec — сами эти
+    # два модуля не тянут torch/sentence_transformers на уровне модуля
+    # (только лениво внутри функций), так что их присутствие здесь не
+    # противоречит excludes ниже; они просто никогда не будут реально
+    # использованы в core-сборке, раз get_model() всё равно откажет
+    # ещё на library_installed() до того, как дойдёт до подпроцесса.
+    "comfyui_studio.promptvault.core.embedding_worker",
+    "comfyui_studio.promptvault.core.embedding_ipc",
+]
 
 # см. комментарий в шапке файла — явное исключение, а не просто расчёт
 # на отсутствие пакетов в venv сборки

@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec для сборки в папку (onedir).
-# Собирать: pyinstaller build.spec   (после pip install pyinstaller)
+# Собирать: pyinstaller build.spec   (после pip install pyinstaller,
+# см. build_windows.bat рядом, который это и делает)
 # Даст dist/PromptConfigEditor/PromptConfigEditor.exe — сам exe маленький
 # и запускается мгновенно, рядом лежат его зависимости отдельными файлами.
 #
@@ -18,14 +19,37 @@
 #      во временной папке залоченными), и тогда процесс остаётся висеть
 #      в памяти, хотя окно уже закрыто. Onedir-сборка так не делает —
 #      exe запускается напрямую, без промежуточного bootloader-процесса.
+#
+# tools/prompt_builder/ -- ЛЕГАСИ-папка (см. дорожную карту
+# рефакторинга, этап 2): исходники Prompt Builder перенесены в
+# comfyui_studio/prompt_builder/ под общее пространство имён комплекта.
+# SPECPATH (стандартная PyInstaller-переменная -- абсолютный путь папки
+# с этим .spec) лежит в tools/prompt_builder/, поэтому ROOT_DIR ниже
+# поднимается на два уровня вверх до корня репозитория, откуда и берутся
+# все datas/Analysis-пути.
+import os
+
+ROOT_DIR = os.path.abspath(os.path.join(SPECPATH, '..', '..'))
+PROMPT_BUILDER_SRC = os.path.join(ROOT_DIR, 'comfyui_studio', 'prompt_builder')
 
 a = Analysis(
-    ['main.py'],
-    pathex=[],
+    [os.path.join(PROMPT_BUILDER_SRC, 'main.py')],
+    # ROOT_DIR (не tools/prompt_builder/) на pathex -- иначе PyInstaller
+    # не найдёт пакет `comfyui_studio`, который лежит в корне
+    # репозитория, а не под tools/.
+    pathex=[ROOT_DIR],
     binaries=[],
     datas=[
-        ('themes', 'themes'),   # *.qss темы — обязательно, иначе темы не найдутся
-        ('assets', 'assets'),   # иконка приложения
+        # Назначение (второй элемент каждого кортежа) ЗЕРКАЛИТ пакетный
+        # путь comfyui_studio/prompt_builder/... неспроста --
+        # theme_manager.py (resource_base()) ищет свои темы/иконку
+        # через Path(sys._MEIPASS) / "comfyui_studio" / "prompt_builder"
+        # при запуске из-под PyInstaller — см. его комментарии; если
+        # сплющить назначение в корень, resource_base() перестанет
+        # находить themes/assets рядом с собой. Та же раскладка datas
+        # используется и в корневом ComfyUIStudio-full.spec.
+        (os.path.join(PROMPT_BUILDER_SRC, 'themes'), os.path.join('comfyui_studio', 'prompt_builder', 'themes')),
+        (os.path.join(PROMPT_BUILDER_SRC, 'assets'), os.path.join('comfyui_studio', 'prompt_builder', 'assets')),
     ],
     hiddenimports=[],
     hookspath=[],
@@ -53,7 +77,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='assets/app_icon.ico',
+    icon=os.path.join(PROMPT_BUILDER_SRC, 'assets', 'app_icon.ico'),
 )
 coll = COLLECT(
     exe,

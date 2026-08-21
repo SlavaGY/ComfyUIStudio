@@ -35,7 +35,7 @@ from ..core.comfy_process import (
 )
 from ..core.config import save_config, validate_portable_root
 from ..core.logging_setup import log
-from ..integration.tool_registry import IN_PROCESS_WINDOW_FACTORIES
+from ..integration.tool_registry import IN_PROCESS_WINDOW_FACTORIES, ON_CLOSE_CALLBACKS
 from .settings.app_settings_dialog import AppSettingsDialog
 from .widgets.log_panel import LogPanel
 from .widgets.resource_bar import ResourceBar
@@ -300,13 +300,19 @@ class SettingsPage(QWidget):
         прячется: WA_DeleteOnClose заставляет Qt реально уничтожить его
         C++-объект после closeEvent, сигнал destroyed чистит запись в
         self._child_windows, а gc.collect() сразу забирает то, что окно
-        держало в памяти (для PromptVault — загруженные модели
-        torch/transformers). Раньше запись из кэша не удалялась никогда,
-        и вся эта память оставалась занятой до закрытия всего приложения,
-        даже если было закрыто только окно инструмента.
+        держало в памяти. Отдельно от самого окна -- через
+        ON_CLOSE_CALLBACKS/register_in_process_app (см.
+        _on_child_window_destroyed ниже) -- освобождается и то, что
+        окну не принадлежит, но переживает его уничтожение: для
+        PromptVault это загруженная модель эмбеддингов
+        (torch/sentence-transformers), которая кешируется как
+        module-level состояние в comfyui_studio/promptvault/core/
+        embedding.py, а не в самом окне (см. embedding.unload_model()).
         """
         window = self._child_windows.get(app.subdir)
         if window is None:
+            from comfyui_studio.mem_diagnostics import log_memory
+            log_memory(f"до открытия окна '{app.subdir}'")
             try:
                 window = factory()
             except Exception as e:
@@ -315,6 +321,7 @@ class SettingsPage(QWidget):
                     status_label.setText(f"Не удалось открыть {app.label}: {e}")
                     status_label.setStyleSheet("color: #d9534f;")
                 return
+            log_memory(f"после factory() окна '{app.subdir}' (окно построено, ещё не показано)")
             window.setAttribute(Qt.WA_DeleteOnClose, True)
             window.destroyed.connect(
                 lambda _obj=None, subdir=app.subdir: self._on_child_window_destroyed(subdir)
@@ -330,11 +337,33 @@ class SettingsPage(QWidget):
             status_label.setStyleSheet("color: #6fbf73;")
 
     def _on_child_window_destroyed(self, subdir):
+        from comfyui_studio.mem_diagnostics import log_memory
+
         self._child_windows.pop(subdir, None)
+        log_memory(f"окно '{subdir}' уничтожено (Qt-объект), до on_close callback")
+
+        # module-level кеши инструмента (например, загруженная модель
+        # эмбеддингов PromptVault, см. embedding.py) не принадлежат
+        # самому Qt-окну и не освобождаются его уничтожением -- см.
+        # ON_CLOSE_CALLBACKS/register_in_process_app в tool_registry.py.
+        # Вызываем ДО gc.collect() ниже, чтобы то, что этот callback
+        # дереференсит (например, `_model = None` в embedding.py),
+        # успело попасть под сборку мусора в этом же проходе.
+        on_close = ON_CLOSE_CALLBACKS.get(subdir)
+        if on_close is not None:
+            try:
+                on_close()
+            except Exception:
+                log.exception(
+                    "on_close callback инструмента '%s' упал", subdir
+                )
+            log_memory(f"после on_close callback для '{subdir}'")
+
         # Явный gc.collect() — на объекте окна почти наверняка были
         # цикличные ссылки (сигналы/слоты, родитель/потомок в Qt), которые
         # обычный refcounting сам по себе не всегда убирает сразу же.
         gc.collect()
+        log_memory(f"после gc.collect() (закрытие '{subdir}', итог)")
         log.info(
             "Окно инструмента '%s' закрыто и удалено из памяти процесса",
             subdir,
