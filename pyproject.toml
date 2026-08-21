@@ -90,22 +90,27 @@ include = ["comfyui_studio*"]
 # --------------------------------------------------------------------------
 # Конфигурация pytest/coverage/ruff/mypy ниже — слита сюда из
 # tools/promptvault/pyproject.toml на этапе 5 дорожной карты рефакторинга
-# ("cleanup"). Пока используется только пакетом comfyui_studio.promptvault
-# (единственная часть комплекта с тестами и полным набором type hints на
-# сегодня) — отсюда testpaths/source/exclude ниже, указывающие именно на
-# него, а не на весь comfyui_studio/. Расширять на Launcher/Prompt Builder
-# по мере появления там своих тестов/типизации.
+# ("cleanup"). Изначально использовалась только пакетом
+# comfyui_studio.promptvault (единственная часть комплекта с тестами и
+# полным набором type hints на тот момент). Этап 6 добавил первые тесты
+# для Launcher (tests/launcher/ — см. комментарий у testpaths ниже);
+# Prompt Builder тестов по-прежнему не имеет — расширять дальше по мере
+# появления.
 # --------------------------------------------------------------------------
 
 [tool.pytest.ini_options]
-# Тесты физически остаются в tools/promptvault/tests/ (этап 2 дорожной
-# карты переносил только сам ИМПОРТИРУЕМЫЙ пакет — бывший app/, теперь
-# comfyui_studio/promptvault/ — под общее пространство имён комплекта;
-# сами тесты никогда не переезжали). Запускать pytest нужно из корня
-# репозитория (там же, где этот pyproject.toml) — `pythonpath = ["."]`
-# добавляет корень в sys.path, чтобы `import comfyui_studio.promptvault`
-# резолвился без отдельной установки пакета.
-testpaths = ["tools/promptvault/tests"]
+# Тесты PromptVault физически остаются в tools/promptvault/tests/ (этап 2
+# дорожной карты переносил только сам ИМПОРТИРУЕМЫЙ пакет — бывший app/,
+# теперь comfyui_studio/promptvault/ — под общее пространство имён
+# комплекта; сами тесты никогда не переезжали). Тесты Launcher (с этапа 6)
+# живут в новом корневом tests/launcher/ — для Launcher нет своего
+# tools/<name>/, в отличие от PromptVault/Prompt Builder, так что нет и
+# унаследованной директории тестов рядом со старым расположением, которую
+# нужно было бы сохранять. Запускать pytest нужно из корня репозитория
+# (там же, где этот pyproject.toml) — `pythonpath = ["."]` добавляет
+# корень в sys.path, чтобы `import comfyui_studio...` резолвился без
+# отдельной установки пакета.
+testpaths = ["tools/promptvault/tests", "tests"]
 pythonpath = ["."]
 qt_api = "pyside6"
 

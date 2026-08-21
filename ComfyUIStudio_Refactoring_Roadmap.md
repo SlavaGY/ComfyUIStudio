@@ -5,6 +5,7 @@
 **Обновлено:** 2026-08-17 — этапы 0–4 выполнены (см. отметки «✅ Выполнено» у каждого этапа), дерево ниже приведено в соответствие с фактическим состоянием репозитория после этапа 4.
 **Обновлено:** 2026-08-19 — задокументирован пост-этап-4 фикс мигания встроенного интерфейса ComfyUI (Native Window Occlusion + UPX ломал Qt6-бинарники), см. конец раздела "4. Единое дерево настроек".
 **Обновлено:** 2026-08-19 — этап 5 (cleanup) выполнен: удалён sys.path-хак в корневом `main.py`, удалены дубли `shared_theme.py`/`shared_language.py` в `prompt_builder/`/`promptvault/` (импортёры переведены на `comfyui_studio.shared_theme`/`shared_language`), подтверждено отсутствие старых `from app.` импортов и что все 32 файла тестов уже на `comfyui_studio.promptvault`, `tools/promptvault/pyproject.toml` слит в корневой `pyproject.toml` (dev-группа + pytest/coverage/ruff/mypy) и удалён, README.md и CONTRIBUTING.md/.pre-commit-config.yaml приведены в соответствие с текущей раскладкой.
+**Обновлено:** 2026-08-22 — этап 6 (`ComfyAPIClient` — HTTP API abstraction) выполнен: `core/comfy_api.py` собрал `fetch_queue_status`/`fetch_history_ids`/`is_port_open` (сохранены как есть — используются внутри класса, а не дублируются) в класс `ComfyAPIClient` (`is_available`, `get_queue`, `get_history_ids`, `get_history(limit=)`, `get_system_stats`, `get_current_workflow`, `get_object_info(node_class=)`); `ResourceMonitor._poll` и `LaunchWatcher._check` переведены на методы клиента, различие "ComfyUI не запущен" (сброс сессии ETA) от "запущен, но опрос не удался" сохранено — порт по-прежнему решает вызывающая сторона, клиент его не кеширует между вызовами в этих двух местах. `get_system_stats()`/`get_object_info()` — новые эндпоинты (`/system_stats`, `/object_info`), не опрашивавшиеся раньше; их точная схема ответа не сверялась с живым ComfyUI (в песочнице разработки он не запущен) — `SystemStats.from_response()` намеренно защищается через `.get()` и не падает на неполном/другом ответе, стоит свериться на реальной машине при первом использовании в этапе 8. Ни одной строчки WebSocket-кода не добавлено (см. этап 7). Добавлены первые тесты для Launcher — `tests/launcher/test_comfy_api.py` (23 теста, чистый Python, сеть замокана через `urllib.request.urlopen`, без Qt) — `testpaths` в `pyproject.toml` расширен с `tools/promptvault/tests` до списка `["tools/promptvault/tests", "tests"]`. По ходу написания тестов обнаружен и исправлен смежный баг: `comfyui_studio/launcher/__init__.py` eagerly импортировал `MainWindow`, из-за чего ЛЮБОЙ импорт из `comfyui_studio.launcher.core` (в т.ч. Qt-независимого `comfy_api.py`) тянул весь `PySide6.QtWebEngineCore` — переведён на ленивый `__getattr__` (PEP 562), публичный API пакета не изменился (проверено, что реальный код нигде не импортирует `MainWindow`/`create_window`/`main` через `comfyui_studio.launcher`, только через `comfyui_studio.launcher.ui.launcher_window` напрямую).
 **Обновлено:** 2026-08-19 (позже тем же днём) — закрыты все три пункта, оставленные открытыми после этапа 5:
 1. **Баг:** чекбокс "Enable semantic search" в `SettingsWindow` невозможно было включить обратно после выключения. Причина — `GalleryManager.semantic_search_available()` (управляет `setEnabled` чекбокса) вызывал `embedding.is_available()`, а та функция сама учитывает пользовательский выбор `_disabled_by_user`: выключение поиска делало `is_available()` → `False` → чекбокс дизейблился → включить обратно было нечем. Добавлена `embedding.library_installed()` — чистая проверка физического наличия `sentence-transformers`, без учёта `_disabled_by_user`/`_load_failed`; `semantic_search_available()` переведён на неё. `is_available()` (используется в `repository.py` для `backfill_missing_embeddings`) не тронут — там как раз нужна полная проверка "активен ли поиск прямо сейчас".
 2. **`requirements.txt` слит с `pyproject.toml`:** корневой `requirements.txt` удалён — `pyproject.toml` (base + `[promptvault]`) остаётся единственным источником правды зависимостей. `build_exe.bat` уже ставил зависимости через `pip install .`/`pip install .[promptvault]` и не менялся. README.md (структура репозитория, раздел "Установка и запуск", раздел ограничений) приведён в соответствие.
@@ -799,7 +800,7 @@ graph accessed before initialization` и деприкейшн-нотисы пр�
 
 ---
 
-## 6. HTTP API abstraction
+## 6. HTTP API abstraction — ✅ Выполнено
 
 Первая половина бывшего единого пункта про ComfyUI API — намеренно отделена от WebSocket-слоя (этап 7), чтобы риски не смешивались: если WebSocket окажется проблемным (нестабильное соединение, несовместимость версий ComfyUI), у вас уже будет рабочее приложение на стабильном HTTP-слое, а не всё сразу в подвешенном состоянии.
 
@@ -820,6 +821,58 @@ comfyui_studio/launcher/core/comfy_api.py
 ### Критерий готовности этапа
 
 Все текущие точки вызова в UI (`ResourceBar`, `LogPanel`, индикатор очереди) переведены с прямых вызовов `fetch_queue_status`/`fetch_history_ids` на методы `ComfyAPIClient`, и **UI полностью работает через API-класс на существующем HTTP-опросе**, без единой строчки WebSocket-кода. Это самостоятельно ценный и стабильный результат сам по себе, даже если этап 7 не начнётся сразу следом.
+
+### По факту реализации
+
+`ComfyAPIClient` — не строго stateless: порт можно один раз задать в
+конструкторе (случай `LaunchWatcher` — фиксирован на всю сессию
+запуска) либо передавать в каждый вызов через `port=` (случай
+`ResourceMonitor` — решает внешний callback `_get_running_port`,
+может быть `None`). Свободные функции (`fetch_queue_status` и т.д.)
+не удалены и не задублированы — `ComfyAPIClient` вызывает их же
+внутри; они и раньше были "чистой логикой без Qt-зависимостей",
+названной в плане этапа 0 первым кандидатом на unit-тесты, и теперь
+наконец покрыты (`tests/launcher/test_comfy_api.py`, 23 теста).
+
+`get_history()` возвращает список записей `{"id": prompt_id, **запись
+ComfyUI}` (а не только id, как старый `fetch_history_ids`) — под это
+внутри добавлен отдельный `get_history_ids()`, которым по-прежнему
+пользуется `ResourceMonitor` для подсчёта "готово за сессию" по
+множествам id (передавать туда весь `get_history()` с графами/outputs
+на каждый тик таймера было бы не нужным трафиком).
+
+`get_current_workflow()` намеренно возвращает `None`, если running
+заданий не одно — тот же принцип осторожности, что уже был у
+`ResourceMonitor._compute_eta_seconds` с `self._current_progress`
+при `len(running_ids) != 1`: угадывать, чей граф отдавать при
+нескольких параллельных заданиях (мульти-GPU), не стали.
+
+`get_system_stats()`/`get_object_info()` — совсем новые эндпоинты
+(`/system_stats`, `/object_info`), ComfyUI живьём в песочнице
+разработки не поднять, чтобы сверить точную форму ответа. `SystemStats`
+поэтому собирается через `.get()` с защитой на каждом поле и не
+падает на неожиданной структуре — при первом реальном использовании
+в этапе 8 стоит свериться с ответом на машине пользователя и при
+необходимости расширить набор именованных полей (сейчас модели
+только `os`/`python_version`/`comfyui_version`/`embedded_python`/
+`devices`, остальное доступно через `.raw`).
+
+Побочно найден и исправлен смежный баг, не описанный изначально в
+плане этапа 6: `comfyui_studio/launcher/__init__.py` eagerly
+импортировал `MainWindow`/`create_window`/`main` из
+`ui.launcher_window`, а тот тянет `ui.browser_page` →
+`PySide6.QtWebEngineCore` — то есть любой импорт хоть чего-то из
+`comfyui_studio.launcher.core` (включая чистый `comfy_api.py`) сначала
+выполнял `__init__.py` пакета и требовал полный QtWebEngine, даже
+если импортируемому коду Qt вообще не нужен. Обнаружено при попытке
+запустить `tests/launcher/test_comfy_api.py` в окружении без
+`QtWebEngineCore`. Исправлено переводом на ленивый `__getattr__`
+(PEP 562) — публичный API пакета (`from comfyui_studio.launcher import
+MainWindow`) не изменился, реальные вызывающие места (`main.py`,
+`prompt_builder/__main__.py`, `promptvault/__main__.py`,
+`mem_diagnostics.py`) и так везде импортировали нужное напрямую из
+`ui.launcher_window`/`core.*`/`integration.*`, а не через этот
+re-export.
 
 ---
 
@@ -878,7 +931,7 @@ ComfyAPIClient (продолжение)
                                           реальной Windows-машине)
                 │
                 ▼
-        6. HTTP API abstraction       ◻ не начат
+        6. HTTP API abstraction       ✅ Выполнено
                 │
                 ▼
         7. WebSocket realtime layer   ◻ не начат
@@ -895,20 +948,23 @@ ComfyAPIClient (продолжение)
 | 3 | `pyproject.toml` + опциональные зависимости + runtime-guard | ✅ Выполнено (см. отступление по `numpy` в тексте этапа) | 2 | низкий |
 | 4 | Дерево настроек `QTreeWidget`/`QStackedWidget` | ✅ Выполнено (см. отступление по разделу PromptVault в тексте этапа) | 2 | низкий — в основном новый UI-код, не трогает существующую логику |
 | 5 | Cleanup / packaging (старые `sys.path` hacks, compat-импорты, дубли `shared_*`, тесты, оба PyInstaller-профиля, единый `requirements.txt`→`pyproject.toml`, standalone-сборки инструментов) | ✅ Выполнено (см. отступление в тексте — все три изначально открытых пункта закрыты) | 3 и 4 (оба должны быть завершены — иначе cleanup придётся делать дважды) | средний — легко случайно удалить что-то ещё используемое; страхуется чек-листом этапа 0 |
-| 6 | `ComfyAPIClient` — HTTP-абстракция (queue/history/system stats/object info) | ◻ Не начат | 5 (нужна чистая структура `comfy_api.py`) | низкий-средний — в основном перенос существующей логики в класс |
+| 6 | `ComfyAPIClient` — HTTP-абстракция (queue/history/system stats/object info) | ✅ Выполнено (см. отступление "По факту реализации" в тексте этапа — включая попутный фикс eager-импорта в `launcher/__init__.py`) | 5 (нужна чистая структура `comfy_api.py`) | низкий-средний — в основном перенос существующей логики в класс |
 | 7 | WebSocket realtime layer поверх `ComfyAPIClient` | ◻ Не начат | 6 (интерфейс класса должен быть стабилен) | средний — новая сетевая логика, нужно тестировать против реального ComfyUI, включая fallback на HTTP |
 | 8 | Новая функциональность (per-workflow ошибки, custom nodes state, model load/unload) | ◻ Не начат | 6 и 7 вместе | средний-высокий — самая содержательная, но и самая объёмная новая логика поверх всего фундамента |
 
-Этапы 0–5 выполнены. Следующий на очереди — этап 6 (`ComfyAPIClient` —
-HTTP-абстракция). Из трёх пунктов, изначально оставленных открытыми
-после этапа 5 (см. отступление в начале документа), в рамках этой
-доработки закрыты все три: `requirements.txt` слит с `pyproject.toml` в
-единый источник правды зависимостей и удалён; standalone-сборки
+Этапы 0–6 выполнены. Следующий на очереди — этап 7 (WebSocket realtime
+layer поверх `ComfyAPIClient`). Из трёх пунктов, изначально оставленных
+открытыми после этапа 5 (см. отступление в начале документа), закрыты
+все три: `requirements.txt` слит с `pyproject.toml` в единый источник
+правды зависимостей и удалён; standalone-сборки
 `tools/prompt_builder/build_windows.bat`/`tools/promptvault/build.bat`
 (+ их `.spec`-файлы) обновлены под актуальную раскладку
 `comfyui_studio/*`. Остаётся открытым только один пункт — ручная
 проверка сборки PyInstaller (`build_exe.bat core`/`full`, а теперь и
 обоих standalone-скриптов инструментов) на реальной Windows-машине: в
-песочнице нет Windows/Qt-окружения для этого.
+песочнице нет Windows/Qt-окружения для этого. У этапа 6 свой открытый
+пункт с тем же корнем причины (нет живого ComfyUI в песочнице) —
+точная схема ответа `/system_stats` не сверялась вживую, см.
+отступление "По факту реализации" в тексте этапа.
 
 Этапы 0–2 — фундамент, без него остальное можно делать, но с большим риском. Этапы 3 и 4 идут параллельно. Этап 5 — единая точка уборки после того, как 3 и 4 закончены, чтобы не выметать мусор дважды. Этапы 6 и 7 разделены сознательно: HTTP-слой даёт рабочий, стабильный `ComfyAPIClient` сам по себе, и только на его основе достраивается более рискованный WebSocket-канал — если он забуксует, откатывать нужно только его, а не весь API-слой.

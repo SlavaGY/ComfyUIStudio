@@ -11,9 +11,9 @@ level_color -- вспомогательные форматтеры, исполь
 
 import re
 
-from PySide6.QtCore import QTimer, Signal, QObject
+from PySide6.QtCore import QObject, QTimer, Signal
 
-from .comfy_api import fetch_history_ids, fetch_queue_status
+from .comfy_api import ComfyAPIClient
 from .constants import APP_NAME
 from .logging_setup import log
 
@@ -47,6 +47,16 @@ class ResourceMonitor(QObject):
     def __init__(self, get_running_port_fn, parent=None):
         super().__init__(parent)
         self._get_running_port = get_running_port_fn
+        # Этап 6 дорожной карты: опрос идёт через ComfyAPIClient, а не
+        # напрямую через fetch_queue_status/fetch_history_ids. Порт
+        # по-прежнему решается снаружи (см. _poll ниже) -- клиент
+        # здесь без собственного порта по умолчанию, чтобы сохранить
+        # различие "ComfyUI не запущен" (self._get_running_port() ->
+        # None, сброс сессии) от "запущен, но опрос не удался"
+        # (get_queue(port=...) -> None, сессия не трогается) — это
+        # различие важно для _session_seen_history_ids ниже и было бы
+        # потеряно, если бы клиент сам решал текущий порт.
+        self._api = ComfyAPIClient()
         self._nvml_ok = False
         self._gpu_handle = None
         self._warned_psutil = False
@@ -275,16 +285,16 @@ class ResourceMonitor(QObject):
 
         port = self._get_running_port()
         if port:
-            queue_info = fetch_queue_status(port)
-            if queue_info is not None:
-                running = queue_info["running"]
-                pending = queue_info["pending"]
-                running_ids = queue_info["running_ids"]
-                step_totals = queue_info["step_totals"]
+            queue_state = self._api.get_queue(port=port)
+            if queue_state is not None:
+                running = queue_state.running
+                pending = queue_state.pending
+                running_ids = queue_state.running_ids
+                step_totals = queue_state.step_totals
                 stats["queue_running"] = running
                 stats["queue_pending"] = pending
 
-                history_ids = fetch_history_ids(port)
+                history_ids = self._api.get_history_ids(port=port)
                 if history_ids is not None:
                     if self._session_seen_history_ids is None:
                         # Первый успешный опрос за это включение ComfyUI --

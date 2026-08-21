@@ -7,7 +7,7 @@
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from ...core.comfy_api import is_port_open
+from ...core.comfy_api import ComfyAPIClient
 from ...core.comfy_process import ComfyProcess
 from ...core.logging_setup import log
 
@@ -28,6 +28,9 @@ class LaunchWatcher(QObject):
         self._port = None
         self._elapsed = 0
         self._process = None
+        # Этап 6 дорожной карты: готовность сервера проверяется через
+        # ComfyAPIClient.is_available(), а не напрямую через is_port_open.
+        self._api = ComfyAPIClient()
 
     def _tr(self, text):
         return self.loc.tr(text) if self.loc is not None else text
@@ -55,7 +58,7 @@ class LaunchWatcher(QObject):
             )
             return
 
-        if is_port_open(self._port):
+        if self._api.is_available(port=self._port):
             self.stop()
             self.ready.emit()
             return
