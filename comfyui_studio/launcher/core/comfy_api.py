@@ -306,3 +306,35 @@ class ComfyAPIClient:
         if node_class:
             path += f"/{node_class}"
         return _fetch_json(f"http://127.0.0.1:{p}{path}", timeout or self.timeout)
+
+    def subscribe_websocket(self, callback=None, port=None):
+        """Возвращает ComfyWebSocketClient (этап 7 дорожной карты) для
+        текущего порта, или None, если порт неизвестен. callback, если
+        передан, подключается к событию ComfyWebSocketClient.event_received
+        (msg_type: str, payload: dict) -- под конкретные типы событий
+        (progress/executing/executed/...) у клиента есть отдельные
+        именованные сигналы, см. comfy_ws.py.
+
+        Импорт comfy_ws -- НАМЕРЕННО внутри метода, а не на уровне
+        модуля: comfy_ws.py тянет PySide6.QtWebSockets, а сам
+        comfy_api.py остаётся Qt-независимым (см. докстринг модуля и
+        tests/launcher/test_comfy_api.py, которые не требуют PySide6
+        вообще) -- ленивый импорт даёт это только тем вызывающим,
+        которым WebSocket-канал реально нужен, не всем, кто просто
+        импортирует ComfyAPIClient ради HTTP-методов.
+
+        Возвращённый клиент создаётся в состоянии "не запущен" --
+        вызывающая сторона должна вызвать у него .start() сама (см.
+        ComfyWebSocketClient.start/stop), чтобы явно управлять его
+        жизненным циклом (например, привязать к тому же условию
+        "ComfyUI сейчас запущен", что и HTTP-опрос -- см.
+        ResourceMonitor)."""
+        p = self._resolve_port(port)
+        if p is None:
+            return None
+        from .comfy_ws import ComfyWebSocketClient
+
+        client = ComfyWebSocketClient(p)
+        if callback is not None:
+            client.event_received.connect(callback)
+        return client

@@ -2,14 +2,20 @@
 Мониторинг ресурсов (CPU/RAM/GPU) и оценка ETA очереди генераций.
 
 Вынесено из comfyui_launcher.py (этап 1 дорожной карты): ResourceMonitor
-опрашивает psutil/pynvml по таймеру и параллельно разбирает строки
-tqdm-прогресса из stdout ComfyUI (см. core.comfy_process.ProcessLogBridge)
-для оценки ETA текущего сэмплинга; format_eta_seconds/format_stats_tooltip/
-level_color -- вспомогательные форматтеры, используемые как здесь, так и
-в ui.widgets.resource_bar.
+опрашивает psutil/pynvml по таймеру. Прогресс текущего сэмплинга для
+ETA приходит из ДВУХ независимых источников, пишущих в одно и то же
+состояние: разбор строк tqdm-прогресса из stdout ComfyUI (см.
+core.comfy_process.ProcessLogBridge, этапы 0-6) и WebSocket-канал
+ComfyUI (core.comfy_ws, этап 7) как дополнение поверх него, а не замена
+-- см. комментарий у self._current_progress в __init__ и feed_log_line
+про то, почему WS сделан именно дополнительным, а не единственным
+источником; format_eta_seconds/format_stats_tooltip/level_color --
+вспомогательные форматтеры, используемые как здесь, так и в
+ui.widgets.resource_bar.
 """
 
 import re
+import time
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
@@ -76,19 +82,37 @@ class ResourceMonitor(QObject):
         self._session_done_ids = set()
 
         # -- ETA всей очереди --
-        # Вместо /ws (не удалось надёжно поймать формат сообщений --
-        # см. историю правок) используем то, что и так уже печатает сам
-        # ComfyUI в свой stdout при сэмплинге -- строку прогресс-бара
-        # tqdm вида "74%|███████▍ | 26/35 [00:24<00:07, 1.21it/s]".
-        # ResourceMonitor.feed_log_line читает её из ProcessLogBridge
-        # (подключается в MainWindow.__init__ к
-        # log_bridge.progress_chunk_received) -- это та же труба, из
-        # которой лаунчер и так читает вывод процесса ComfyUI для лога,
-        # отдельное сетевое соединение не нужно.
-        # Даёт актуальный прогресс только для ОДНОГО, сейчас считающего
-        # шаги сэмплера (это же ограничение и у самого tqdm в консоли) --
-        # для остальных заданий в очереди (pending) объём по-прежнему
-        # берётся из графовой эвристики count_steps_in_prompt().
+        # Этап 7 дорожной карты добавил WebSocket-канал
+        # (ComfyAPIClient.subscribe_websocket, core/comfy_ws.py) как
+        # ДОПОЛНИТЕЛЬНЫЙ источник прогресса поверх stdout-скрейпинга
+        # tqdm (этапы 0-6), а НЕ вместо него -- см.
+        # _ensure_ws_client/_on_ws_progress и feed_log_line ниже.
+        # ИСПРАВЛЕНО после первого прогона на реальной машине: изначально
+        # WS был сделан ОСНОВНЫМ источником, отключающим tqdm-парсинг,
+        # пока подключён (см. историю правок в comfy_ws.py про то, что
+        # более ранняя попытка /ws на самом деле проваливалась на
+        # подключении, а не на разборе сообщений, как ошибочно
+        # предполагалось раньше) -- на практике оказалось, что WS может
+        # успешно ПОДКЛЮЧИТЬСЯ, но не прислать ни одного "progress"
+        # события, и тогда ETA зависал на "оценка..." навсегда вместо
+        # того, чтобы работать через tqdm, как раньше. Теперь оба
+        # источника пишут в одни и те же self._current_progress/
+        # self._avg_sec_per_step без взаимного исключения -- см.
+        # feed_log_line.
+        # ResourceMonitor.feed_log_line читает строку прогресса из
+        # ProcessLogBridge (подключается в MainWindow.__init__ к
+        # log_bridge.progress_chunk_received) -- та же труба, из
+        # которой лаунчер и так читает вывод процесса ComfyUI для лога.
+        # У WS-канала перед stdout-скрейпингом, КОГДА он реально
+        # доставляет progress-события, два практических преимущества:
+        # (1) сообщение "progress" содержит сам prompt_id -- не нужно
+        # гадать по running_ids, как раньше (см. self._progress_for_id
+        # ниже, тот же механизм используется обоими источниками
+        # одинаково); (2) работает даже когда ComfyUI запущен не этим
+        # лаунчером (внешний процесс) -- в этом случае feed_log_line
+        # вообще не вызывается (ProcessLogBridge привязан к именно
+        # ЭТОМУ процессу), а WS подключается к любому ComfyUI на
+        # известном порту независимо от того, кто его запустил.
         self._current_progress = None  # {"done": int, "total": int}
         # prompt_id, к которому ОТНОСИТСЯ self._current_progress (лучшее
         # предположение -- см. _poll: единственный running_id на момент
@@ -102,6 +126,16 @@ class ResourceMonitor(QObject):
         # "< 1 с" на самом деле только начавшихся заданиях.
         self._progress_for_id = None
         self._avg_sec_per_step = None
+        # -- состояние WS-канала (этап 7) --
+        self._ws_client = None  # ComfyWebSocketClient текущей сессии, или None
+        self._ws_port = None  # порт, для которого создан self._ws_client
+        self._ws_connected = False
+        # (prompt_id, value, time.monotonic()) последнего "progress" от
+        # WS -- нужно, чтобы считать скорость шага (avg_sec_per_step) по
+        # разнице между двумя последовательными сообщениями ОДНОГО и
+        # того же задания; WS не присылает готовую скорость (в отличие
+        # от tqdm, который сам её печатает) -- см. _on_ws_progress.
+        self._ws_progress_prev = None
         # Диагностика по КАЖДОМУ заданию отдельно (не только по первому
         # за сессию) -- id заданий, для которых уже залогировали и смену,
         # и первую пойманную строку прогресса. Нужно, чтобы видеть в
@@ -143,6 +177,7 @@ class ResourceMonitor(QObject):
 
     def stop(self):
         self._timer.stop()
+        self._teardown_ws_client()
 
     # -- прогресс сэмплера из stdout ComfyUI (см. комментарий в __init__) --
 
@@ -152,7 +187,33 @@ class ResourceMonitor(QObject):
         оставшихся шагов ТЕКУЩЕГО задания) и self._avg_sec_per_step (по
         rate, который tqdm и так сам считает и сглаживает -- поэтому
         здесь без дополнительного EMA, значение просто заменяется на
-        последнее известное)."""
+        последнее известное).
+
+        ИСПРАВЛЕНО после первого прогона этапа 7 на реальной машине:
+        раньше здесь был ранний return, если self._ws_connected --
+        логика была "WS подключён => доверяем только ему, tqdm не
+        нужен". Это оказалось регрессией: WS может УСПЕШНО подключиться
+        (транспортный уровень), но НЕ прислать ни одного "progress"
+        события -- как выяснилось на втором прогоне и сверке с
+        исходником ComfyUI (см. подробный разбор в comfy_ws.py и в
+        тексте этапа 7 дорожной карты), это не временная неполадка, а
+        архитектурное свойство: ComfyUI шлёт progress/executing/executed
+        только тому WS-клиенту, чей clientId совпадает с clientId,
+        которым конкретное задание было поставлено в очередь через
+        /prompt -- а задания у нас ставит в очередь встроенный браузер
+        под своим clientId, не нашим. Тогда ETA зависал на "оценка..."
+        НАВСЕГДА, что хуже, чем было раньше (chat-история до этапа 0:
+        tqdm-парсинг какое-то время исправно работал сам по себе, без
+        WS вообще). Теперь оба источника просто пишут в одни и те же
+        self._current_progress/
+        self._avg_sec_per_step без взаимного исключения -- если WS
+        реально доставляет прогресс, он будет обновлять эти поля не
+        реже tqdm и на практике доминирует по актуальности сам по себе
+        (плюс у него есть prompt_id, см. _on_ws_progress); если WS
+        молчит (подключён, но без progress-событий) или вовсе
+        недоступен, tqdm как и раньше исправно ведёт ETA сам. Ни
+        одному источнику для этого не нужно знать о существовании
+        другого."""
         clean = _ANSI_ESCAPE_RE.sub("", line)
         m = _TQDM_PROGRESS_RE.search(clean)
         if not m:
@@ -244,6 +305,91 @@ class ResourceMonitor(QObject):
             return None
         return remaining * self._avg_sec_per_step
 
+    # -- WebSocket-канал (этап 7 дорожной карты) --
+
+    def _ensure_ws_client(self, port):
+        """Создаёт и запускает ComfyWebSocketClient для порта, если он
+        ещё не создан именно для этого порта. Вызывается из _poll на
+        каждом тике, пока port известен -- дёшево: при совпадении порта
+        это просто ранний return, реальная работа (создание клиента,
+        запуск переподключения) происходит только при первом
+        обнаружении порта или при его смене (например, порт поменяли в
+        настройках между перезапусками ComfyUI)."""
+        if self._ws_client is not None and self._ws_port == port:
+            return
+        self._teardown_ws_client()
+        self._ws_port = port
+        client = self._api.subscribe_websocket(port=port)
+        if client is None:  # не должно случиться, раз port не None, но на всякий случай
+            return
+        client.connected.connect(self._on_ws_connected)
+        client.disconnected.connect(self._on_ws_disconnected)
+        client.progress_received.connect(self._on_ws_progress)
+        self._ws_client = client
+        client.start()
+
+    def _teardown_ws_client(self):
+        if self._ws_client is not None:
+            self._ws_client.stop()
+            self._ws_client.deleteLater()
+        self._ws_client = None
+        self._ws_port = None
+        self._ws_connected = False
+        self._ws_progress_prev = None
+
+    def _on_ws_connected(self):
+        self._ws_connected = True
+        log.info(
+            "ResourceMonitor: WebSocket-канал ComfyUI подключён (добавляется "
+            "как дополнительный источник прогресса поверх tqdm-разбора "
+            "stdout, а не вместо него -- см. feed_log_line)"
+        )
+
+    def _on_ws_disconnected(self):
+        if self._ws_connected:
+            log.info(
+                "ResourceMonitor: WebSocket-канал ComfyUI отключился -- ETA "
+                "продолжает вестись по разбору stdout, как и раньше (см. "
+                "feed_log_line)"
+            )
+        self._ws_connected = False
+        self._ws_progress_prev = None
+
+    def _on_ws_progress(self, data):
+        """Обработчик ComfyWebSocketClient.progress_received -- см.
+        комментарий у self._ws_progress_prev в __init__ про то, как
+        считается self._avg_sec_per_step. Не полагается на data["node"]
+        или на конкретный набор ключей сверх value/max/prompt_id --
+        схема сообщения "progress" не проверялась вживую (то же
+        соображение, что и у SystemStats в comfy_api.py -- ComfyUI
+        живьём в песочнице разработки не поднять), поэтому здесь тоже
+        всё через .get() и с проверкой типов, без падения на
+        неожиданном формате."""
+        value = data.get("value")
+        total = data.get("max")
+        prompt_id = data.get("prompt_id")
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return
+        if not isinstance(total, (int, float)) or isinstance(total, bool) or total <= 0:
+            return
+
+        now = time.monotonic()
+        prev = self._ws_progress_prev
+        if prev is not None and prev[0] == prompt_id and value > prev[1]:
+            dt = now - prev[2]
+            d_steps = value - prev[1]
+            if dt > 0 and d_steps > 0:
+                self._avg_sec_per_step = dt / d_steps
+        self._ws_progress_prev = (prompt_id, value, now)
+
+        self._current_progress = {"done": int(value), "total": int(total)}
+        if prompt_id:
+            # Не трогаем self._progress_for_id, если сообщение вообще
+            # не содержит prompt_id (более старая версия ComfyUI?) --
+            # тогда его по-прежнему устанавливает эвристика в _poll по
+            # running_ids, как и раньше (этапы 0-6).
+            self._progress_for_id = prompt_id
+
     def _poll(self):
         stats = {}
 
@@ -285,6 +431,7 @@ class ResourceMonitor(QObject):
 
         port = self._get_running_port()
         if port:
+            self._ensure_ws_client(port)
             queue_state = self._api.get_queue(port=port)
             if queue_state is not None:
                 running = queue_state.running
@@ -385,6 +532,7 @@ class ResourceMonitor(QObject):
             # продолжал считать от старого /history (это уже мог быть
             # другой процесс ComfyUI с чистым журналом) и от скорости шага,
             # замеренной в прошлый раз (могла быть другая модель/разрешение).
+            self._teardown_ws_client()
             self._session_seen_history_ids = None
             self._session_done_ids = set()
             self._current_progress = None
