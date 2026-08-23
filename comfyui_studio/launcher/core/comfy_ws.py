@@ -65,6 +65,48 @@ updates are properly isolated between WebSocket clients"). Задания в
 разбора и того, что теоретически могло бы это решить (чтение
 реального clientId браузера через QWebEngineView JS -- отдельная,
 не сделанная здесь задача).
+
+ЭТАП 8, ПЕРВАЯ ПОПЫТКА (отменена после реального прогона): "отдельная,
+не сделанная здесь задача" выше была сделана -- BrowserPage читала
+реальный clientId встроенного фронтенда (sessionStorage/window.name,
+см. src/scripts/api.ts ComfyUI_frontend) и передавала его сюда, а
+ResourceMonitor пересоздавал ComfyWebSocketClient с этим client_id,
+как только он становился известен.
+
+На реальной машине это ЗАРАБОТАЛО в смысле "progress/executing/
+executed стали доходить до ComfyWebSocketClient" -- но ЗАОДНО СЛОМАЛО
+саму страницу embedded-браузера: ноды исполнялись, но живой прогресс
+и превью на самой странице ComfyUI переставали обновляться (помогала
+только полная перезагрузка страницы). Причина -- в обработчике
+websocket_handler самого ComfyUI (server.py): при подключении клиента
+с clientId, УЖЕ занятым в реестре открытых сокетов (self.sockets),
+сервер сначала удаляет оттуда старую запись (`if sid:
+self.sockets.pop(sid, None)`), а потом регистрирует новую под тем же
+id -- то есть ДВА сокета с одним и тем же clientId несовместимы
+принципиально, не потому что мы что-то настроили неправильно: второе
+подключение (наше) вытесняет первое (браузерное) из таблицы
+маршрутизации сервера, и все последующие progress/executing/бинарные
+превью-кадры уходят только новому сокету.
+
+ЭТАП 8, ВТОРАЯ ПОПЫТКА (текущая, реализована): раз ДВА живых
+соединения с одним clientId несовместимы, решение -- не открывать
+второе соединение вообще. См. ComfyEventBridge/_EVENT_BRIDGE_JS в
+ui/browser_page.py: те же события ловятся ИЗНУТРИ уже открытой
+страницы через QWebChannel (window.app.api.addEventListener внутри
+самого фронтенда ComfyUI, который и так их получает по своей
+единственной живой WS) и пересылаются в Python одним JS-вызовом --
+никакого нового сетевого подключения к ComfyUI это не создаёт, вытеснять
+там нечего. ComfyWebSocketClient (этот класс) в актуальной архитектуре
+по-прежнему используется, но ТОЛЬКО с собственным, ни с кем не
+пересекающимся uuid4 (client_id=None) -- ровно как до всех попыток
+этапа 8, безопасно, просто не получает progress/executing/executed
+(и не должен -- это больше не его задача).
+
+Параметр client_id у __init__ ниже НЕ удалён -- это осталась
+легитимная общая возможность класса (например, для активной отправки
+собственных заданий с заранее выбранным id), но вызывающий код
+обязан гарантировать, что этот id больше никем одновременно не
+используется как живое WS-соединение, иначе см. разбор выше.
 """
 
 import json
@@ -154,18 +196,27 @@ class ComfyWebSocketClient(QObject):
     event_received = Signal(str, dict)
     preview_frame_received = Signal(int, bytes)
 
-    def __init__(self, port, parent=None):
+    def __init__(self, port, client_id=None, parent=None):
         super().__init__(parent)
         self.port = port
-        # client_id -- см. докстринг модуля: старая (дочатовая)
-        # реализация подключалась с этим query-параметром, эта
-        # изначально нет. Один uuid4 на весь жизненный цикл клиента
-        # (переживает переподключения) -- если окажется, что ComfyUI
-        # действительно требует стабильный client_id, чтобы считать
-        # соединение "тем же" между реконнектами (а не только чтобы
-        # вообще принять его), так безопаснее, чем генерировать новый
-        # на каждую попытку.
-        self.client_id = str(uuid.uuid4())
+        # client_id -- см. докстринг модуля выше (обе попытки этапа 8,
+        # особенно вторая -- отменённая): передавать сюда реальный
+        # clientId ЖИВОЙ чужой сессии (например, встроенного браузера)
+        # ОПАСНО -- вытесняет её WS-соединение из реестра сокетов
+        # сервера ComfyUI. Параметр остаётся легитимной общей
+        # возможностью (например, для активной отправки собственных
+        # заданий с заранее выбранным id), а не для пассивного
+        # подслушивания чужой сессии.
+        #
+        # client_id=None (по умолчанию) -- обычный, безопасный случай:
+        # генерируем собственный, ни с кем не пересекающийся uuid4,
+        # один на весь жизненный цикл клиента (переживает
+        # переподключения). WS всё равно подключается и получает
+        # "status", просто progress/executing/executed останутся
+        # недоступны, пока вызывающая сторона не пересоздаст клиента с
+        # настоящим id (см. ResourceMonitor._ensure_ws_client).
+        self.client_id = client_id if client_id else str(uuid.uuid4())
+        self._using_external_client_id = bool(client_id)
         self._socket = QWebSocket()
         self._socket.connected.connect(self._on_connected)
         self._socket.disconnected.connect(self._on_disconnected)
@@ -225,7 +276,17 @@ class ComfyWebSocketClient(QObject):
         self._reconnect_delay_ms = min(self._reconnect_delay_ms * 2, RECONNECT_MAX_MS)
 
     def _on_connected(self):
-        log.info("WebSocket ComfyUI подключён (порт %s)", self.port)
+        log.info(
+            "WebSocket ComfyUI подключён (порт %s, clientId %s)",
+            self.port,
+            "передан вызывающей стороной явно (см. предупреждение в "
+            "докстринге __init__ про риск вытеснения чужой сессии)"
+            if self._using_external_client_id
+            else "собственный, сгенерированный (progress/executing/executed "
+                 "по-прежнему не доставляются на этот канал -- см. "
+                 "ResourceMonitor.feed_ws_event/BrowserPage для того, как это "
+                 "решено на практике)",
+        )
         self._is_connected = True
         self._reconnect_delay_ms = RECONNECT_INITIAL_MS
         self.connected.emit()

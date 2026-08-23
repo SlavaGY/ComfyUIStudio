@@ -77,7 +77,6 @@ class MainWindow(QMainWindow):
 
         self.browser_page.settings_requested.connect(self._show_settings_keep_running)
         self.browser_page.stop_requested.connect(self._stop_and_show_settings)
-
         self.theme_manager.theme_applied.connect(self._on_app_theme_applied)
 
         self.stack.setCurrentWidget(self.settings_page)
@@ -100,6 +99,17 @@ class MainWindow(QMainWindow):
         self.log_bridge.progress_chunk_received.connect(
             self.resource_monitor.feed_log_line
         )
+        # Этап 8 (вторая попытка, см. разбор в ui/browser_page.py у
+        # _EVENT_BRIDGE_JS) -- progress/executing/executed/execution_error
+        # приходят через JS-мост внутри уже открытой страницы ComfyUI,
+        # а не через отдельное WS-соединение (первая попытка сделать это
+        # через client_id ломала саму страницу браузера, см. комментарий
+        # там же -- отменено).
+        self.browser_page.comfy_event_received.connect(self.resource_monitor.feed_ws_event)
+        # Последний пункт этапа 8 -- индикатор текущей выполняемой ноды
+        # и баннер ошибки выполнения в BrowserPage.
+        self.resource_monitor.node_execution_changed.connect(self.browser_page.set_executing_node)
+        self.resource_monitor.execution_error_occurred.connect(self.browser_page.show_execution_error)
         self.resource_monitor.start()
 
     # -- лог процесса ComfyUI -----------------------------------------

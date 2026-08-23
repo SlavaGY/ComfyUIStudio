@@ -25,6 +25,7 @@ class ResourceBar(QWidget):
         super().__init__(parent)
         self.loc = loc
         self._last_stats = {}
+        self._last_node_info = None
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
@@ -34,6 +35,8 @@ class ResourceBar(QWidget):
         self.gpu_chip = self._make_chip()
         self.vram_chip = self._make_chip()
         self.queue_chip = self._make_chip()
+        self.node_chip = self._make_chip()
+        self.node_chip.setVisible(False)  # виден только пока что-то реально выполняется
 
         for chip in (
             self.cpu_chip,
@@ -41,6 +44,7 @@ class ResourceBar(QWidget):
             self.gpu_chip,
             self.vram_chip,
             self.queue_chip,
+            self.node_chip,
         ):
             layout.addWidget(chip)
         layout.addStretch(1)
@@ -118,8 +122,25 @@ class ResourceBar(QWidget):
     def _tr(self, text):
         return self.loc.tr(text) if self.loc is not None else text
 
+    def set_executing_node(self, node_info):
+        """Вызывается из MainWindow при ResourceMonitor.node_execution_changed
+        (этап 8, последний пункт -- "текущий workflow, выполняемая
+        нода"). node_info -- {"node","display_node","prompt_id"} или
+        None (сейчас ничего не выполняется -- чип скрывается, а не
+        показывает пустое значение, в отличие от остальных чипов,
+        которые всегда что-то показывают)."""
+        self._last_node_info = node_info
+        if node_info is None:
+            self.node_chip.setVisible(False)
+            return
+        label = node_info.get("display_node") or node_info.get("node") or "?"
+        self.node_chip.setText(f"\u25B6 {self._tr('Нода')}: {label}")
+        self._style_chip(self.node_chip, QUEUE_ACTIVE_COLOR)
+        self.node_chip.setVisible(True)
+
     def retranslate_ui(self):
         self.update_stats(self._last_stats)
+        self.set_executing_node(self._last_node_info)
 
 
 # --------------------------------------------------------------------------

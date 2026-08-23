@@ -365,6 +365,89 @@ TRANSLATIONS = {
             "Закрыть ComfyUI Studio целиком сейчас? Если ComfyUI запущен, "
             "он будет остановлен."
         ): "Quit all of ComfyUI Studio now? If ComfyUI is running, it will be stopped.",
+
+        # -- Этап 8: диалог "Очередь и история" (ui/widgets/
+        # queue_history_dialog.py), открывается кнопкой в верхней панели
+        # BrowserPage --
+        "\U0001F4CB Очередь и история": "\U0001F4CB Queue & History",
+        "Показать очередь заданий и историю генераций ComfyUI": (
+            "Show ComfyUI's job queue and generation history"
+        ),
+        "Очередь и история ComfyUI": "ComfyUI queue & history",
+        "Статус": "Status",
+        "Prompt ID": "Prompt ID",
+        "Шагов": "Steps",
+        "Обновить": "Refresh",
+        "Снять выбранное": "Cancel selected",
+        "Прервать текущее": "Interrupt running",
+        "Очистить очередь": "Clear queue",
+        "Очередь": "Queue",
+        "Изображений": "Images",
+        "Удалить выбранное": "Delete selected",
+        "Очистить историю": "Clear history",
+        "История": "History",
+        "ComfyUI не запущен.": "ComfyUI is not running.",
+        "Не удалось получить очередь -- ComfyUI не отвечает.": (
+            "Couldn't fetch the queue -- ComfyUI is not responding."
+        ),
+        "Выполняется": "Running",
+        "В очереди": "Pending",
+        "Снять все ожидающие задания из очереди? "
+        "Задание, которое уже выполняется, не будет прервано.": (
+            "Cancel all pending jobs from the queue? "
+            "A job that is already running will not be interrupted."
+        ),
+        "Полностью очистить историю генераций ComfyUI?": (
+            "Completely clear ComfyUI's generation history?"
+        ),
+
+        # -- Этап 8: диалог "Модели, VRAM и ноды" (ui/widgets/
+        # models_nodes_dialog.py), открывается кнопкой в верхней панели
+        # BrowserPage --
+        "\U0001F5A5\uFE0F Модели и ноды": "\U0001F5A5\uFE0F Models & nodes",
+        "Показать VRAM по устройствам и список зарегистрированных нод": (
+            "Show per-device VRAM and the list of registered nodes"
+        ),
+        "Модели, VRAM и ноды ComfyUI": "ComfyUI models, VRAM & nodes",
+        "ComfyUI не сообщает, какие именно модели сейчас в VRAM -- "
+        "только суммарную загрузку по устройству. Значения ниже -- "
+        "прокси-сигнал, а не список конкретных моделей.": (
+            "ComfyUI doesn't report which specific models are currently in "
+            "VRAM -- only the total load per device. The values below are "
+            "a proxy signal, not a list of specific models."
+        ),
+        "Устройство": "Device",
+        "Тип": "Type",
+        "VRAM занято / всего": "VRAM used / total",
+        "%": "%",
+        "Модели и VRAM": "Models & VRAM",
+        "Список всех зарегистрированных нод (встроенных и custom "
+        "вместе) -- ComfyUI не сообщает, из какого пакета пришла "
+        "конкретная нода.": (
+            "A list of all registered nodes (built-in and custom together) "
+            "-- ComfyUI doesn't report which package a given node came from."
+        ),
+        "Поиск:": "Search:",
+        "Class type": "Class type",
+        "Название": "Name",
+        "Категория": "Category",
+        "Обновить (может занять время)": "Refresh (may take a while)",
+        "Custom nodes": "Custom nodes",
+        "Не удалось получить статистику -- ComfyUI не отвечает.": (
+            "Couldn't fetch stats -- ComfyUI is not responding."
+        ),
+        "Загружаю список нод...": "Loading node list...",
+        "Не удалось получить список нод -- ComfyUI не отвечает.": (
+            "Couldn't fetch the node list -- ComfyUI is not responding."
+        ),
+        "Всего зарегистрировано нод: {n}": "Total registered nodes: {n}",
+
+        # -- Этап 8, последний пункт: индикатор текущей ноды (ResourceBar)
+        # и баннер ошибки выполнения (BrowserPage) --
+        "Скрыть": "Dismiss",
+        "Нода": "Node",
+        "Ошибка выполнения": "Execution error",
+        "см. лог лаунчера для подробностей": "see launcher log for details",
     }
 }
 

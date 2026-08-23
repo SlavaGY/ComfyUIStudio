@@ -49,6 +49,18 @@ _TQDM_PROGRESS_RE = re.compile(
 
 class ResourceMonitor(QObject):
     stats_updated = Signal(dict)
+    # Этап 8, последний пункт -- "текущий workflow, выполняемая нода,
+    # прогресс и ошибки конкретного workflow" (см. feed_ws_event ниже).
+    # node_execution_changed: dict {"node","display_node","prompt_id"}
+    # когда какая-то нода начала выполняться, None когда прогон
+    # закончился (сервер прислал "executing" с node=None, либо
+    # execution_success/execution_interrupted как подстраховка).
+    node_execution_changed = Signal(object)
+    # execution_error_occurred: dict -- сырой payload события
+    # "execution_error" от ComfyUI (node_id/node_type/
+    # exception_message/exception_type/traceback/...), None -- сигнал
+    # "очистить баннер ошибки" (новый прогон стартовал успешно).
+    execution_error_occurred = Signal(object)
 
     def __init__(self, get_running_port_fn, parent=None):
         super().__init__(parent)
@@ -126,6 +138,22 @@ class ResourceMonitor(QObject):
         # "< 1 с" на самом деле только начавшихся заданиях.
         self._progress_for_id = None
         self._avg_sec_per_step = None
+        # ЭТАП 8 -- ИСТОРИЯ ПРАВОК (см. подробный разбор в ui/browser_page.py
+        # у _EVENT_BRIDGE_JS): первая попытка передавала РЕАЛЬНЫЙ
+        # clientId встроенного браузера в отдельный ComfyWebSocketClient
+        # (второе, параллельное WS-соединение) -- на реальном прогоне
+        # это ломало саму страницу браузера (сервер ComfyUI вытесняет
+        # старое соединение с тем же clientId из своего реестра сокетов
+        # при подключении нового). ОТМЕНЕНО. Сейчас
+        # progress/executing/executed/execution_error приходят через
+        # feed_ws_event() ниже -- JS-мост ИЗНУТРИ уже открытой страницы
+        # (BrowserPage.comfy_event_received), без второго соединения.
+        # self._ws_client ниже -- это ПРЕЖНИЙ, отдельный WS-канал с
+        # собственным (не браузерным) uuid4, безопасный именно потому,
+        # что не совпадает ни с чьим ещё -- он не получает
+        # progress/executing (см. docstring comfy_ws.py), но подключение
+        # само по себе безвредно и оставлено как есть (диагностика/
+        # задел на будущее).
         # -- состояние WS-канала (этап 7) --
         self._ws_client = None  # ComfyWebSocketClient текущей сессии, или None
         self._ws_port = None  # порт, для которого создан self._ws_client
@@ -150,6 +178,18 @@ class ResourceMonitor(QObject):
         # _LogReaderThread" от "просто ещё не было ни одного тика".
         self._stall_polls = 0
         self._logged_stall_warning_for_ids = set()
+        # Диагностика для JS-моста (этап 8, feed_ws_event) -- типы
+        # событий, для которых уже залогировали факт получения (один
+        # раз на тип за всё время жизни ResourceMonitor, не на каждое
+        # сообщение).
+        self._seen_bridge_event_types = set()
+        # Признак того, что сейчас "висит" индикатор ноды/баннер
+        # ошибки (этап 8, последний пункт) -- нужен только чтобы не
+        # слать пустые clear-сигналы на КАЖДЫЙ тик _poll, пока ComfyUI
+        # не запущен, а сделать это один раз при реальном переходе
+        # "было -> не стало".
+        self._node_indicator_active = False
+        self._error_banner_active = False
 
         if pynvml is not None:
             try:
@@ -314,7 +354,18 @@ class ResourceMonitor(QObject):
         это просто ранний return, реальная работа (создание клиента,
         запуск переподключения) происходит только при первом
         обнаружении порта или при его смене (например, порт поменяли в
-        настройках между перезапусками ComfyUI)."""
+        настройках между перезапусками ComfyUI).
+
+        ВАЖНО (см. подробный разбор в ui/browser_page.py у
+        _EVENT_BRIDGE_JS): этот клиент ВСЕГДА подключается с
+        собственным, случайно сгенерированным uuid4 (client_id=None по
+        умолчанию в ComfyWebSocketClient) -- НИКОГДА не с реальным
+        clientId встроенного браузера. Подключение со ЧУЖИМ (совпадающим
+        с браузерным) id вытесняет живое соединение браузера из реестра
+        сокетов ComfyUI и ломает саму страницу -- это выяснилось на
+        реальном прогоне и было отменено. За progress/executing/executed
+        с этапа 8 отвечает не этот канал, а feed_ws_event() ниже (JS-мост
+        внутри уже открытой страницы, см. BrowserPage)."""
         if self._ws_client is not None and self._ws_port == port:
             return
         self._teardown_ws_client()
@@ -389,6 +440,90 @@ class ResourceMonitor(QObject):
             # тогда его по-прежнему устанавливает эвристика в _poll по
             # running_ids, как и раньше (этапы 0-6).
             self._progress_for_id = prompt_id
+
+    # -- JS-мост событий ComfyUI (этап 8, вторая попытка) ------------------
+
+    def feed_ws_event(self, msg_type, payload):
+        """Подключается в MainWindow к BrowserPage.comfy_event_received
+        (см. подробный разбор архитектуры в ui/browser_page.py у
+        _EVENT_BRIDGE_JS): "progress" обрабатываем тем же кодом, что
+        раньше обрабатывал бы прямой WS-канал (_on_ws_progress) -- формат
+        сообщения одинаковый что через собственный /ws, что через
+        window.app.api фронтенда, т.к. это буквально то же самое
+        сообщение сервера ComfyUI, просто переданное через страницу, а
+        не по отдельному сокету.
+
+        "executing"/"execution_start"/"execution_error"/
+        "execution_success"/"execution_interrupted" -- последний пункт
+        этапа 8 (индикатор текущей ноды и ошибок выполнения в UI, см.
+        node_execution_changed/execution_error_occurred выше). Остальные
+        типы (status/progress_state/executed/execution_cached) пока не
+        разбираются предметно -- только диагностика, по одному разу на
+        тип за сессию."""
+        if msg_type == "progress":
+            self._on_ws_progress(payload)
+            return
+
+        if msg_type == "executing":
+            node = payload.get("node") if isinstance(payload, dict) else None
+            if node is None:
+                self._node_indicator_active = False
+                self.node_execution_changed.emit(None)
+            else:
+                self._node_indicator_active = True
+                self.node_execution_changed.emit(
+                    {
+                        "node": node,
+                        "display_node": payload.get("display_node") or node,
+                        "prompt_id": payload.get("prompt_id"),
+                    }
+                )
+            return
+
+        if msg_type == "execution_start":
+            # Новый прогон стартовал -- баннер ошибки от ПРЕДЫДУЩЕГО
+            # прогона (если был) больше не актуален.
+            self._error_banner_active = False
+            self.execution_error_occurred.emit(None)
+            return
+
+        if msg_type == "execution_error":
+            payload = payload if isinstance(payload, dict) else {}
+            log.warning(
+                "ComfyUI: ошибка выполнения workflow (node_id=%s, "
+                "node_type=%s, prompt_id=%s): %s",
+                payload.get("node_id"),
+                payload.get("node_type"),
+                payload.get("prompt_id"),
+                payload.get("exception_message") or payload.get("exception_type"),
+            )
+            self._error_banner_active = True
+            self.execution_error_occurred.emit(payload)
+            return
+
+        if msg_type in ("execution_success", "execution_interrupted"):
+            # Подстраховка: если по какой-то причине не пришло финальное
+            # "executing" с node=None (не должно случаться штатно, но
+            # лучше не оставлять индикатор "выполняется" висеть вечно).
+            self._node_indicator_active = False
+            self.node_execution_changed.emit(None)
+            # execution_interrupted -- пользователь сам прервал прогон
+            # (см. QueueHistoryDialog.interrupt()/этап 8, "Очередь и
+            # история") -- это не ошибка ComfyUI, баннер ошибки чистим,
+            # если он был от чего-то более раннего.
+            if msg_type == "execution_interrupted":
+                self._error_banner_active = False
+                self.execution_error_occurred.emit(None)
+            return
+
+        if msg_type not in self._seen_bridge_event_types:
+            self._seen_bridge_event_types.add(msg_type)
+            log.info(
+                "ResourceMonitor: JS-мост ComfyUI (страница браузера): новый "
+                "тип события '%s' (ключи: %s)",
+                msg_type,
+                sorted(payload.keys()) if isinstance(payload, dict) else "?",
+            )
 
     def _poll(self):
         stats = {}
@@ -542,6 +677,12 @@ class ResourceMonitor(QObject):
             self._logged_progress_for_ids = set()
             self._stall_polls = 0
             self._logged_stall_warning_for_ids = set()
+            if self._node_indicator_active:
+                self._node_indicator_active = False
+                self.node_execution_changed.emit(None)
+            if self._error_banner_active:
+                self._error_banner_active = False
+                self.execution_error_occurred.emit(None)
 
         self.stats_updated.emit(stats)
 
