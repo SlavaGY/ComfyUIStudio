@@ -28,6 +28,13 @@ datas = [
     ('comfyui_studio/prompt_builder/themes', 'comfyui_studio/prompt_builder/themes'),
     ('comfyui_studio/promptvault/resources', 'comfyui_studio/promptvault/resources'),
     ('comfyui_studio/promptvault/themes', 'comfyui_studio/promptvault/themes'),
+    # Imagine (comfyui_studio/imagine/ -- вариант запуска ComfyUI, см.
+    # launcher/core/imagine_process.py) -- фронтенд без сборки (чистые
+    # .html/.css/.js, см. backend/main.py _STATIC_DIR) и бандловый
+    # workflow_template.json (см. backend/workflow.py _ASSETS_DIR) --
+    # ни то ни другое не .py, PyInstaller не подхватит их сам.
+    ('comfyui_studio/imagine/static', 'comfyui_studio/imagine/static'),
+    ('comfyui_studio/imagine/assets', 'comfyui_studio/imagine/assets'),
 ]
 binaries = []
 hiddenimports = [
@@ -39,6 +46,12 @@ hiddenimports = [
     # ошибкой), лучше перечислить явно, а не полагаться на анализ.
     "comfyui_studio.promptvault.core.embedding_worker",
     "comfyui_studio.promptvault.core.embedding_ipc",
+    # comfyui_studio.imagine.__main__ — аналогично: импортируется лениво
+    # внутри if в main.py (диспетчеризация IMAGINE_CLI_FLAG), а сам он
+    # изнутри лениво импортирует uvicorn/backend.main (см. его main()) —
+    # оба уровня лени PyInstaller не обязан пройти статическим анализом.
+    "comfyui_studio.imagine.__main__",
+    "comfyui_studio.imagine.backend.main",
 ]
 
 # sentence-transformers/transformers/tokenizers тянут немало data-файлов
@@ -48,6 +61,20 @@ hiddenimports = [
 # входят: они кэшируются в ~/.cache/huggingface при первом запуске, а
 # не бандлятся в exe.
 for _pkg in ("sentence_transformers", "transformers", "tokenizers"):
+    _datas, _binaries, _hiddenimports = collect_all(_pkg)
+    datas += _datas
+    binaries += _binaries
+    hiddenimports += _hiddenimports
+
+# Imagine (см. datas/hiddenimports выше) -- uvicorn/fastapi/starlette
+# лениво импортируют часть своих протокольных бэкендов и plugin-подобных
+# субмодулей (uvicorn.protocols.*, uvicorn.lifespan.*, uvicorn.loops.*)
+# так, что обычный AST-анализ PyInstaller их не всегда находит --
+# collect_all вместо точечных hiddenimports, тем же приёмом, что и для
+# sentence_transformers/transformers/tokenizers выше. "multipart" --
+# именно так называется импортируемый модуль пакета python-multipart
+# (см. IMAGINE_REQUIRED_MODULES в launcher/core/imagine_process.py).
+for _pkg in ("fastapi", "starlette", "uvicorn", "multipart"):
     _datas, _binaries, _hiddenimports = collect_all(_pkg)
     datas += _datas
     binaries += _binaries

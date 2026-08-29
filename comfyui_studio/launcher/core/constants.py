@@ -52,11 +52,26 @@ DEFAULT_CONFIG = {
     "port": 8188,
     "disable_auto_launch": True,
     "sync_comfy_theme": False,
-    # НОВОЕ (этап 4 дорожной карты, "Единое дерево настроек"):
-    # переменные окружения, добавляемые/переопределяемые поверх
-    # os.environ для процесса ComfyUI -- см. ComfyUISettingsPage
-    # (ui/settings/comfyui_page.py, раздел "Environment") и
-    # ComfyProcess.start() (core/comfy_process.py).
+    # НОВОЕ (imagine-app в комплекте): чем открывать ComfyUI после
+    # запуска -- "comfyui" (как раньше, сырой интерфейс ComfyUI) или
+    # "imagine" (карточный генератор поверх ComfyUI, см.
+    # comfyui_studio/imagine/ и launcher/core/imagine_process.py). См.
+    # раздел "Интерфейс" в ui/settings/comfyui_page.py.
+    "interface": "comfyui",
+    "imagine": {
+        "port": 7860,
+        # Дев-режим Imagine (вкладки "Стили"/"Категории"/"Всегда
+        # LoRA"/"Подключение" редактирования каталога) -- сознательно
+        # НЕТ переключателя внутри самого веб-интерфейса Imagine (см.
+        # его README/backend/main.py: require_dev_mode()), только
+        # здесь, в настройках лаунчера, откуда Imagine и запускается.
+        "dev_mode": False,
+    },
+    # НОВОЕ (этап 4 дорожной карты, "Единое дерево настроек" ->
+    # ComfyUI -> Environment): переменные окружения, добавляемые/
+    # переопределяемые поверх os.environ для процесса ComfyUI -- см.
+    # ComfyUISettingsPage (ui/settings/comfyui_page.py, раздел
+    # "Environment") и ComfyProcess.start() (core/comfy_process.py).
     "env_vars": {},
     # уровень логирования КОНСОЛЬНОГО хендлера (см. core/logging_setup.py,
     # set_console_log_level) -- файловый хендлер лаунчера всегда пишет

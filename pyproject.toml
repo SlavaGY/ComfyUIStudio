@@ -52,6 +52,21 @@ promptvault = [
     "sentence-transformers>=3.0",
 ]
 
+# `pip install .[imagine]` — включает вариант запуска ComfyUI "Imagine"
+# (см. comfyui_studio/imagine/ и launcher/core/imagine_process.py):
+# карточный веб-генератор поверх ComfyUI, встроенный в Studio как
+# альтернатива открытию сырого интерфейса ComfyUI. Без этой группы
+# лаунчер всё равно запускается и работает как раньше — переключатель
+# "Интерфейс: Imagine" в разделе настроек ComfyUI (ui/settings/
+# comfyui_page.py) при попытке запуска покажет понятную ошибку вместо
+# ImportError где-то в глубине imagine_process.py.
+imagine = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2",
+    "python-multipart>=0.0.9",
+]
+
 # Инструменты разработки (pytest/ruff/mypy) — этап 5 дорожной карты
 # рефакторинга ("cleanup") слил сюда группу `dev`, ранее жившую
 # отдельно в tools/promptvault/pyproject.toml (тот файл удалён —
@@ -93,6 +108,12 @@ include = ["comfyui_studio*"]
     "**/*.ico",
     "**/*.qm",
     "**/*.ts",
+    # Imagine (comfyui_studio/imagine/) — фронтенд без сборки и
+    # бандловый workflow_template.json, см. imagine/assets/.
+    "imagine/static/**/*.html",
+    "imagine/static/**/*.css",
+    "imagine/static/**/*.js",
+    "imagine/assets/**/*.json",
 ]
 
 # --------------------------------------------------------------------------

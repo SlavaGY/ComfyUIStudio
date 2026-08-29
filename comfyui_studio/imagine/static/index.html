@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Imagine — локальный генератор</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/themes.css">
+</head>
+<body>
+
+<div class="loading-screen" id="loadingScreen">
+  <span class="loading-screen__mark">◆</span>
+  <div class="loading-screen__spinner"></div>
+  <p data-i18n="Загрузка…">Загрузка…</p>
+</div>
+
+<header class="topbar">
+  <div class="topbar__brand">
+    <span class="topbar__mark">◆</span>
+    <span class="topbar__title">Imagine</span>
+  </div>
+  <div class="topbar__status" id="comfyStatus">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText" data-i18n="проверка ComfyUI…">проверка ComfyUI…</span>
+    <button class="btn-ghost" id="startComfyBtn" hidden data-i18n="Запустить">Запустить</button>
+  </div>
+  <button class="btn-ghost" id="freeMemoryBtn" title="Выгрузить модели из RAM/VRAM" data-i18n="⤓ выгрузить модели" data-i18n-title="Выгрузить модели из RAM/VRAM">⤓ выгрузить модели</button>
+  <button class="btn-ghost topbar__devtoggle" id="devToggle" hidden title="Дев-режим" data-i18n="⚙ дев-режим" data-i18n-title="Дев-режим">⚙ дев-режим</button>
+</header>
+
+<main class="workshop">
+
+  <div class="card promptcard">
+    <div class="promptcard__head">
+      <label for="positivePrompt" data-i18n="Промпт">Промпт</label>
+      <span class="hint" data-i18n="что хотите увидеть">что хотите увидеть</span>
+    </div>
+    <textarea id="positivePrompt" rows="4" placeholder="girl in a sunlit doorway, film grain, medium shot…"></textarea>
+
+    <button class="negative-toggle" id="negativeToggle" type="button">
+      <span class="negative-toggle__arrow">▸</span> <span data-i18n="негативный промпт">негативный промпт</span>
+    </button>
+    <div class="negative-body" id="negativeBody" hidden>
+      <textarea id="negativePrompt" rows="3" placeholder="что нужно исключить из кадра…" data-i18n-placeholder="что нужно исключить из кадра…"></textarea>
+    </div>
+  </div>
+
+  <div class="full-bleed">
+    <div class="card wide-card">
+      <div class="card__label" data-i18n="Стили">Стили</div>
+      <div class="styletilegrid" id="styleTileGrid"></div>
+      <p class="empty-hint" id="styleTileEmptyHint" hidden data-i18n="Каталог стилей пуст — добавьте записи в дев-режиме.">Каталог стилей пуст — добавьте записи в дев-режиме.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card__label" data-i18n="Категории">Категории</div>
+    <div class="styleboxrow" id="styleBoxRow"></div>
+    <p class="empty-hint" id="styleBoxEmptyHint" hidden data-i18n="Категорий пока нет — добавьте их в дев-режиме.">Категорий пока нет — добавьте их в дев-режиме.</p>
+  </div>
+
+  <p class="active-summary" id="activeSummary" hidden></p>
+
+  <div class="card">
+    <div class="card__label" data-i18n="Кадр">Кадр</div>
+    <div class="field-grid field-grid--3">
+      <div class="field">
+        <label for="aspectRatio" data-i18n="Соотношение сторон">Соотношение сторон</label>
+        <select id="aspectRatio"></select>
+      </div>
+      <div class="field">
+        <label for="megapixels" data-i18n="Мегапиксели">Мегапиксели</label>
+        <select id="megapixels"></select>
+      </div>
+      <div class="field">
+        <label for="batchSize" data-i18n="Батч">Батч</label>
+        <input type="number" id="batchSize" min="1" max="16" value="1">
+      </div>
+    </div>
+  </div>
+
+  <details class="card advanced">
+    <summary data-i18n="Технические параметры">Технические параметры</summary>
+    <div class="field-grid mono">
+      <div class="field">
+        <label for="steps" data-i18n="Шаги">Шаги</label>
+        <input type="number" id="steps" min="1" max="150" value="6">
+      </div>
+      <div class="field">
+        <label for="cfg">CFG</label>
+        <input type="number" id="cfg" min="0" max="30" step="0.1" value="1">
+      </div>
+      <div class="field">
+        <label for="samplerName" data-i18n="Сэмплер">Сэмплер</label>
+        <select id="samplerName">
+          <option value="euler_ancestral">euler_ancestral</option>
+          <option value="euler">euler</option>
+          <option value="dpmpp_2m">dpmpp_2m</option>
+          <option value="dpmpp_sde">dpmpp_sde</option>
+          <option value="ddim">ddim</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="seed" data-i18n="Сид">Сид</label>
+        <input type="number" id="seed" placeholder="случайный" data-i18n-placeholder="случайный">
+      </div>
+      <div class="field field--checkbox">
+        <label><input type="checkbox" id="randomizeSeed" checked> <span data-i18n="случайный сид каждый раз">случайный сид каждый раз</span></label>
+      </div>
+    </div>
+  </details>
+
+  <button class="btn-generate" id="generateBtn">
+    <span id="generateBtnLabel" data-i18n="Сгенерировать">Сгенерировать</span>
+  </button>
+  <p class="error-line" id="errorLine" hidden></p>
+  <p class="info-line" id="infoLine" hidden></p>
+
+  <div class="full-bleed">
+    <section class="gallery">
+      <div class="gallery__empty" id="galleryEmpty">
+        <p data-i18n="Здесь появятся результаты.">Здесь появятся результаты.</p>
+      </div>
+      <div class="gallery__grid" id="galleryGrid"></div>
+    </section>
+  </div>
+
+</main>
+
+<!-- DEV MODE DRAWER -->
+<div class="devdrawer" id="devDrawer" hidden>
+  <div class="devdrawer__panel">
+    <div class="devdrawer__head">
+      <h2 data-i18n="Дев-режим">Дев-режим</h2>
+      <button class="btn-ghost" id="devClose" data-i18n="✕ закрыть">✕ закрыть</button>
+    </div>
+
+    <nav class="devtabs">
+      <button class="devtab active" data-tab="styles" data-i18n="Стили">Стили</button>
+      <button class="devtab" data-tab="categories" data-i18n="Категории">Категории</button>
+      <button class="devtab" data-tab="alwaysloras" data-i18n="Всегда LoRA">Всегда LoRA</button>
+      <button class="devtab" data-tab="connection" data-i18n="Подключение">Подключение</button>
+    </nav>
+
+    <!-- Плоские кликабельные стили -->
+    <div class="devpane" id="devPane-styles">
+      <p class="devpane__hint" data-i18n="Каждая плашка — картинка, текст в промпт/негатив, и опционально LoRA (сила может быть отрицательной) с триггер-словами.">Каждая плашка — картинка, текст в промпт/негатив, и опционально LoRA (сила может быть отрицательной) с триггер-словами.</p>
+      <div id="styleList" class="devlist"></div>
+
+      <form id="styleForm" class="devform">
+        <div class="field">
+          <label data-i18n="Название">Название</label>
+          <input type="text" id="newStyleLabel" required>
+        </div>
+        <div class="field">
+          <label data-i18n="Картинка (необязательно)">Картинка (необязательно)</label>
+          <input type="file" id="newStyleImage" accept="image/*">
+          <img id="newStyleImagePreview" class="devform__preview" hidden>
+        </div>
+        <div class="field">
+          <label data-i18n="Куда добавлять текст">Куда добавлять текст</label>
+          <select id="newStyleTarget">
+            <option value="positive" data-i18n="промпт">промпт</option>
+            <option value="negative" data-i18n="негативный промпт">негативный промпт</option>
+          </select>
+        </div>
+        <div class="field">
+          <label data-i18n="Текст промпта (необязательно)">Текст промпта (необязательно)</label>
+          <textarea id="newStyleText" rows="2"></textarea>
+        </div>
+        <div class="field">
+          <label data-i18n="Файл LoRA (необязательно)">Файл LoRA (необязательно)</label>
+          <input type="text" id="newStyleLoraFile" list="loraFileOptions" placeholder="выберите или введите вручную" data-i18n-placeholder="выберите или введите вручную">
+          <datalist id="loraFileOptions"></datalist>
+          <small id="loraFolderHint" class="devform__note"></small>
+        </div>
+        <div class="field">
+          <label data-i18n="Сила LoRA (можно отрицательную)">Сила LoRA (можно отрицательную)</label>
+          <input type="number" id="newStyleStrength" step="0.05" min="-2" max="2" value="0.8">
+        </div>
+        <div class="field">
+          <label data-i18n="Триггер-слова (необязательно, всегда в промпт)">Триггер-слова (необязательно, всегда в промпт)</label>
+          <input type="text" id="newStyleTrigger">
+        </div>
+        <div class="devform__actions">
+          <button type="submit" class="btn-primary" id="styleFormSubmit" data-i18n="Добавить стиль">Добавить стиль</button>
+          <button type="button" class="btn-ghost" id="styleFormCancel" hidden data-i18n="Отмена">Отмена</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Категории и группы категорий (дерево произвольной глубины) -->
+    <div class="devpane" id="devPane-categories" hidden>
+      <p class="devpane__hint" data-i18n="Категория — плашка с выпадающим списком вариантов. Группа — «категория категорий»: плашка без списка, при клике разворачивается в рамку с вложенными категориями/группами внутри. Группу можно вложить в другую группу — без ограничения глубины.">Категория — плашка с выпадающим списком вариантов. Группа — "категория категорий": плашка без списка, при клике разворачивается в рамку с вложенными категориями/группами внутри. Группу можно вложить в другую группу — без ограничения глубины.</p>
+
+      <div id="boxList" class="devlist devlist--boxes"></div>
+
+      <form id="nodeForm" class="devform">
+        <div class="field">
+          <label data-i18n="Тип">Тип</label>
+          <select id="newNodeType">
+            <option value="category" data-i18n="Категория (со списком вариантов)">Категория (со списком вариантов)</option>
+            <option value="group" data-i18n="Группа (контейнер для других категорий/групп)">Группа (контейнер для других категорий/групп)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label data-i18n="Куда добавить">Куда добавить</label>
+          <select id="newNodeParent">
+            <option value="" data-i18n="— верхний уровень —">— верхний уровень —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label data-i18n="Название">Название</label>
+          <input type="text" id="newNodeLabel" placeholder="например: Освещение" data-i18n-placeholder="например: Освещение" required>
+        </div>
+        <div class="devform__actions">
+          <button type="submit" class="btn-primary" id="nodeFormSubmit" data-i18n="Добавить">Добавить</button>
+          <button type="button" class="btn-ghost" id="nodeFormCancel" hidden data-i18n="Отмена">Отмена</button>
+        </div>
+      </form>
+
+      <hr class="devsep">
+
+      <form id="optionForm" class="devform">
+        <div class="field">
+          <label data-i18n="В какую категорию">В какую категорию</label>
+          <select id="optionCategorySelect" required></select>
+        </div>
+        <div class="field">
+          <label data-i18n="Название варианта">Название варианта</label>
+          <input type="text" id="newOptionLabel" required>
+        </div>
+        <div class="field">
+          <label data-i18n="Текст в промпт (необязательно)">Текст в промпт (необязательно)</label>
+          <textarea id="newOptionPositive" rows="2"></textarea>
+        </div>
+        <div class="field">
+          <label data-i18n="Текст в негатив (необязательно)">Текст в негатив (необязательно)</label>
+          <textarea id="newOptionNegative" rows="2"></textarea>
+        </div>
+        <div class="field">
+          <label data-i18n="Файл LoRA (необязательно)">Файл LoRA (необязательно)</label>
+          <input type="text" id="newOptionLoraFile" list="loraFileOptionsCategory" placeholder="выберите или введите вручную" data-i18n-placeholder="выберите или введите вручную">
+          <datalist id="loraFileOptionsCategory"></datalist>
+        </div>
+        <div class="field">
+          <label data-i18n="Сила LoRA (можно отрицательную)">Сила LoRA (можно отрицательную)</label>
+          <input type="number" id="newOptionStrength" step="0.05" min="-2" max="2" value="0.8">
+        </div>
+        <div class="devform__actions">
+          <button type="submit" class="btn-primary" id="optionFormSubmit" data-i18n="Добавить вариант">Добавить вариант</button>
+          <button type="button" class="btn-ghost" id="optionFormCancel" hidden data-i18n="Отмена">Отмена</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- LoRA, подгружаемые всегда, независимо от выбора в Стилях/Категориях -->
+    <div class="devpane" id="devPane-alwaysloras" hidden>
+      <p class="devpane__hint" data-i18n="Эти LoRA применяются к каждой генерации молча, поверх того, что выбрано в «Стилях»/«Категориях». Общий лимит одновременных LoRA (см. «Технические параметры») делится между этим списком и обычным выбором.">Эти LoRA применяются к каждой генерации молча, поверх того, что выбрано в "Стилях"/"Категориях". Общий лимит одновременных LoRA (см. "Технические параметры") делится между этим списком и обычным выбором.</p>
+
+      <div id="alwaysLoraList" class="devlist"></div>
+
+      <form id="alwaysLoraForm" class="devform">
+        <div class="field">
+          <label data-i18n="Название (для себя, на странице не показывается)">Название (для себя, на странице не показывается)</label>
+          <input type="text" id="newAlwaysLoraLabel" required>
+        </div>
+        <div class="field">
+          <label data-i18n="Файл LoRA">Файл LoRA</label>
+          <input type="text" id="newAlwaysLoraFile" list="loraFileOptionsAlways" placeholder="выберите или введите вручную" data-i18n-placeholder="выберите или введите вручную" required>
+          <datalist id="loraFileOptionsAlways"></datalist>
+        </div>
+        <div class="field">
+          <label data-i18n="Сила LoRA (можно отрицательную)">Сила LoRA (можно отрицательную)</label>
+          <input type="number" id="newAlwaysLoraStrength" step="0.05" min="-2" max="2" value="0.8">
+        </div>
+        <div class="field">
+          <label data-i18n="Триггер-слова (необязательно, всегда в промпт)">Триггер-слова (необязательно, всегда в промпт)</label>
+          <input type="text" id="newAlwaysLoraTrigger">
+        </div>
+        <div class="devform__actions">
+          <button type="submit" class="btn-primary" id="alwaysLoraFormSubmit" data-i18n="Добавить">Добавить</button>
+          <button type="button" class="btn-ghost" id="alwaysLoraFormCancel" hidden data-i18n="Отмена">Отмена</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="devpane" id="devPane-connection" hidden>
+      <p class="devpane__hint" data-i18n="Адрес ComfyUI Imagine получает от Studio автоматически при каждом запуске (см. «Интерфейс» в настройках ComfyUI) — здесь настраиваются только путь к .bat запуска и папка с файлами LoRA (сканируется рекурсивно).">Адрес ComfyUI Imagine получает от Studio автоматически при каждом запуске (см. "Интерфейс" в настройках ComfyUI) — здесь настраиваются только путь к .bat запуска и папка с файлами LoRA (сканируется рекурсивно).</p>
+      <form id="connectionForm" class="devform">
+        <div class="field">
+          <label data-i18n="Путь к run_*.bat (необязательно)">Путь к run_*.bat (необязательно)</label>
+          <input type="text" id="connBatPath" placeholder="D:\AI\ComfyUI_windows_portable\run_nvidia_gpu.bat">
+        </div>
+        <div class="field">
+          <label data-i18n="Папка с LoRA (для сканирования)">Папка с LoRA (для сканирования)</label>
+          <input type="text" id="connLoraFolder" placeholder="D:\AI\ComfyUI_windows_portable\ComfyUI\models\loras">
+        </div>
+        <button type="submit" class="btn-primary" data-i18n="Сохранить">Сохранить</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Лайтбокс: просмотр сгенерированного изображения на весь экран -->
+<div class="lightbox" id="lightbox" hidden>
+  <button class="lightbox__close" id="lightboxClose" title="Закрыть (Esc)" data-i18n-title="Закрыть (Esc)">✕</button>
+  <button class="lightbox__nav lightbox__nav--prev" id="lightboxPrev" title="Предыдущее (←)" data-i18n-title="Предыдущее (←)">‹</button>
+  <button class="lightbox__nav lightbox__nav--next" id="lightboxNext" title="Следующее (→)" data-i18n-title="Следующее (→)">›</button>
+  <div class="lightbox__viewport" id="lightboxViewport">
+    <img class="lightbox__img" id="lightboxImg" alt="generated" draggable="false">
+  </div>
+  <div class="lightbox__zoom">
+    <span class="lightbox__zoom-label">−</span>
+    <input type="range" id="lightboxZoom" min="100" max="400" step="5" value="100">
+    <span class="lightbox__zoom-label">+</span>
+    <span class="lightbox__zoom-value" id="lightboxZoomValue">100%</span>
+  </div>
+</div>
+
+<script src="/js/i18n.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

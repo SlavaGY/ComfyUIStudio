@@ -17,13 +17,14 @@ from comfyui_studio.i18n import LocalizationManager
 from ..core.comfy_process import ComfyProcess, ProcessLogBridge
 from ..core.config import build_extra_launch_args, load_config, prepare_launch_script
 from ..core.constants import APP_NAME, PROJECT_ROOT
+from ..core.imagine_process import ImagineProcess
 from ..core.logging_setup import ICON_PATH, log, set_console_log_level
 from ..core.system_monitor import ResourceMonitor
 from ..integration.comfy_theme import COMFY_PALETTE_MAP, sync_comfyui_color_palette
 from .browser_page import BrowserPage
 from .settings_page import SettingsPage
 from .tray import TrayIcon
-from .widgets.launch_watcher import LaunchWatcher
+from .widgets.launch_watcher import ImagineLaunchWatcher, LaunchWatcher
 
 
 class MainWindow(QMainWindow):
@@ -42,6 +43,11 @@ class MainWindow(QMainWindow):
         # core/logging_setup.set_console_log_level (этап 4 дорожной карты)
         set_console_log_level(self.cfg.get("log_level", "INFO"))
         self.comfy_process = None
+        # НОВОЕ: процесс Imagine (см. "Интерфейс" в ui/settings/
+        # comfyui_page.py, core/imagine_process.py) -- существует только
+        # когда cfg["interface"] == "imagine"; None во всех остальных
+        # случаях, в т.ч. пока ComfyUI ещё запускается.
+        self.imagine_process = None
         self._quitting = False
         # НОВОЕ: см. restart_studio()/closeEvent() ниже -- этап 4
         # дорожной карты, доработка по замечанию пользователя (кнопки
@@ -75,8 +81,18 @@ class MainWindow(QMainWindow):
         self.launch_watcher.failed.connect(self._on_server_failed)
         self.launch_watcher.progress.connect(self.settings_page.update_launch_progress)
 
+        # НОВОЕ: второй watcher, включается в цепочку ТОЛЬКО когда
+        # cfg["interface"] == "imagine" -- см. _on_server_ready() ниже,
+        # который либо сразу открывает браузер на ComfyUI (как раньше),
+        # либо сначала поднимает Imagine и ждёт вот этот watcher.
+        self.imagine_launch_watcher = ImagineLaunchWatcher(loc=self.loc, parent=self)
+        self.imagine_launch_watcher.ready.connect(self._on_imagine_ready)
+        self.imagine_launch_watcher.failed.connect(self._on_imagine_failed)
+        self.imagine_launch_watcher.progress.connect(self.settings_page.update_launch_progress)
+
         self.browser_page.settings_requested.connect(self._show_settings_keep_running)
         self.browser_page.stop_requested.connect(self._stop_and_show_settings)
+
         self.theme_manager.theme_applied.connect(self._on_app_theme_applied)
 
         self.stack.setCurrentWidget(self.settings_page)
@@ -99,17 +115,6 @@ class MainWindow(QMainWindow):
         self.log_bridge.progress_chunk_received.connect(
             self.resource_monitor.feed_log_line
         )
-        # Этап 8 (вторая попытка, см. разбор в ui/browser_page.py у
-        # _EVENT_BRIDGE_JS) -- progress/executing/executed/execution_error
-        # приходят через JS-мост внутри уже открытой страницы ComfyUI,
-        # а не через отдельное WS-соединение (первая попытка сделать это
-        # через client_id ломала саму страницу браузера, см. комментарий
-        # там же -- отменено).
-        self.browser_page.comfy_event_received.connect(self.resource_monitor.feed_ws_event)
-        # Последний пункт этапа 8 -- индикатор текущей выполняемой ноды
-        # и баннер ошибки выполнения в BrowserPage.
-        self.resource_monitor.node_execution_changed.connect(self.browser_page.set_executing_node)
-        self.resource_monitor.execution_error_occurred.connect(self.browser_page.show_execution_error)
         self.resource_monitor.start()
 
     # -- лог процесса ComfyUI -----------------------------------------
@@ -161,7 +166,16 @@ class MainWindow(QMainWindow):
         self.launch_watcher.start(cfg["port"], self.comfy_process)
 
     def _on_server_ready(self):
-        log.info("Сервер ComfyUI поднялся, открываю встроенный браузер")
+        log.info("Сервер ComfyUI поднялся")
+
+        if self.cfg.get("interface") == "imagine":
+            self._start_imagine()
+            return
+
+        self._show_comfyui_browser()
+
+    def _show_comfyui_browser(self):
+        log.info("Открываю встроенный браузер на ComfyUI")
         self.settings_page.hide_launch_progress()
         self.browser_page.load(self.cfg["port"])
         self.stack.setCurrentWidget(self.browser_page)
@@ -173,6 +187,55 @@ class MainWindow(QMainWindow):
         # фактическим стартом сервера.
         if self.cfg.get("sync_comfy_theme"):
             self.browser_page._page.loadFinished.connect(self._sync_comfy_theme_once)
+
+    def _start_imagine(self):
+        """Поднимает Imagine, направленный на уже запущенный этим же
+        лаунчером ComfyUI (self.cfg["port"]) -- см. "Интерфейс" в
+        ui/settings/comfyui_page.py и core/imagine_process.py. Вызывается
+        только когда cfg["interface"] == "imagine", из _on_server_ready()
+        выше (после того, как ComfyUI уже готов) — Imagine не поднимает
+        ComfyUI сам, в отличие от того, как это умеет делать в
+        самостоятельном режиме (см. комментарий в imagine/__init__.py)."""
+        imagine_cfg = self.cfg.get("imagine", {})
+        imagine_port = imagine_cfg.get("port", 7860)
+        self.settings_page.show_launch_progress(
+            self.settings_page._tr("Запуск Imagine, ожидание сервера...")
+        )
+        self.imagine_process = ImagineProcess(
+            host="127.0.0.1",
+            port=imagine_port,
+            comfy_host="127.0.0.1",
+            comfy_port=self.cfg["port"],
+            dev_mode=bool(imagine_cfg.get("dev_mode", False)),
+        )
+        try:
+            self.imagine_process.start()
+        except RuntimeError as e:
+            self._on_imagine_failed(
+                self.settings_page._tr("Не удалось запустить Imagine: {}").format(e)
+            )
+            return
+        self.imagine_launch_watcher.start(imagine_port, self.imagine_process)
+
+    def _on_imagine_ready(self):
+        log.info("Сервер Imagine поднялся, открываю встроенный браузер")
+        self.settings_page.hide_launch_progress()
+        self.browser_page.load(self.cfg["imagine"].get("port", 7860))
+        self.stack.setCurrentWidget(self.browser_page)
+
+    def _on_imagine_failed(self, message):
+        # Imagine не поднялся -- откатываемся полностью (останавливаем и
+        # ComfyUI тоже), а не остаёмся в подвешенном состоянии "ComfyUI
+        # работает, но показать нечего": пользователь выбрал интерфейс
+        # Imagine, у него нет причин ожидать, что в таком случае
+        # ComfyUI продолжит крутиться в фоне без видимого интерфейса.
+        if self.imagine_process:
+            self.imagine_process.stop()
+        if self.comfy_process:
+            self.comfy_process.stop()
+        self.settings_page.hide_launch_progress()
+        self.settings_page.set_status(message)
+        self.settings_page.set_server_running(False)
 
     def _sync_comfy_theme_once(self, ok):
         if ok:
@@ -197,6 +260,10 @@ class MainWindow(QMainWindow):
 
     def _on_launch_cancelled(self):
         self.launch_watcher.stop()
+        self.imagine_launch_watcher.stop()
+        if self.imagine_process:
+            self.imagine_process.stop()
+            self.imagine_process = None
         if self.comfy_process:
             self.comfy_process.stop()
         self.settings_page.hide_launch_progress()
@@ -215,6 +282,9 @@ class MainWindow(QMainWindow):
 
     def _stop_and_show_settings(self):
         self.browser_page.unload()
+        if self.imagine_process:
+            self.imagine_process.stop()
+            self.imagine_process = None
         if self.comfy_process:
             self.comfy_process.stop()
         self.settings_page.set_status("")
@@ -318,6 +388,9 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 self._quitting = False
                 return
+            if self.imagine_process:
+                self.imagine_process.stop()
+                self.imagine_process = None
             self.comfy_process.stop()
 
         self.resource_monitor.stop()

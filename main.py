@@ -176,4 +176,20 @@ if __name__ == "__main__":
             run_worker()
             sys.exit(0)
 
+    # Та же диспетчеризация, тем же принципом -- для Imagine (см.
+    # comfyui_studio/imagine/, launcher/core/imagine_process.py): из
+    # исходников лаунчер спавнит `python -m comfyui_studio.imagine`
+    # (отдельный процесс системного python, эта проверка не сработает),
+    # а из собранного exe -- сам себя же со скрытым IMAGINE_CLI_FLAG,
+    # ловится здесь до QApplication и до любых Qt-импортов. В отличие от
+    # воркера эмбеддингов, у Imagine есть свои аргументы командной
+    # строки (--host/--port/--comfy-host/--comfy-port/--dev) -- они
+    # передаются дальше как есть, __main__.main() сам их разбирает.
+    if len(sys.argv) > 1:
+        from comfyui_studio.imagine.__main__ import IMAGINE_CLI_FLAG
+        if sys.argv[1] == IMAGINE_CLI_FLAG:
+            from comfyui_studio.imagine.__main__ import main as imagine_main
+            imagine_main(sys.argv[2:])
+            sys.exit(0)
+
     main()

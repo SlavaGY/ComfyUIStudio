@@ -38,6 +38,16 @@ setlocal enabledelayedexpansion
 :: Распространять нужно ВСЮ папку dist\ComfyUIStudio целиком (скрипт
 :: сам упаковывает её в dist\ComfyUIStudio-win64-<профиль>.zip) -- не
 :: только .exe.
+::
+:: Imagine (comfyui_studio/imagine/ -- вариант запуска ComfyUI, см.
+:: "Интерфейс" в настройках ComfyUI) — ЧАСТЬ ТОГО ЖЕ ComfyUIStudio.exe,
+:: отдельного exe/спека для него нет: собранный exe запускает сам себя
+:: подпроцессом со скрытым флагом (см. main.py и launcher/core/
+:: imagine_process.py) — тот же приём, что уже используется для
+:: подпроцесса-воркера эмбеддингов PromptVault. Зависимости Imagine
+:: (fastapi/uvicorn/pydantic/python-multipart, extras 'imagine' в
+:: pyproject.toml) ставятся ниже в ОБОИХ профилях автоматически --
+:: отдельно накатывать их после сборки не нужно.
 :: ==============================================================
 
 cd /d "%~dp0"
@@ -100,14 +110,23 @@ echo === [3/6] Зависимости ^(pyproject.toml, профиль: %PROFILE
 
 python -m pip install --upgrade pip >nul
 
+:: ВАЖНО: комментарии с круглыми скобками внутри if/else (...) ниже
+:: ломают парсер cmd.exe, если скобка открывается на одной строке ::
+:: комментария и закрывается на другой (классическая ловушка cmd.exe
+:: с "::" внутри скобочных блоков) -- отсюда и вынесено сюда, ДО
+:: блока, а не внутрь его веток.
+::
+:: core: БЕЗ [promptvault] -- venv физически не увидит torch/
+:: sentence-transformers/transformers, поэтому даже если бы excludes в
+:: ComfyUIStudio-core.spec где-то не сработал, собрать их всё равно
+:: было бы не из чего (см. комментарии в самом .spec).
+:: [imagine] ставится в ОБОИХ профилях -- Imagine не тянет ничего
+:: тяжёлого (fastapi/uvicorn/pydantic/python-multipart, без torch),
+:: поэтому не завязан на core/full так, как PromptVault.
 if /i "%PROFILE%"=="core" (
-    :: БЕЗ [promptvault] -- venv физически не увидит torch/
-    :: sentence-transformers/transformers, поэтому даже если бы
-    :: excludes в ComfyUIStudio-core.spec где-то не сработал, собрать
-    :: их всё равно было бы не из чего (см. комментарии в самом .spec)
-    pip install . || exit /b 1
+    pip install .[imagine] || exit /b 1
 ) else (
-    pip install .[promptvault] || exit /b 1
+    pip install .[promptvault,imagine] || exit /b 1
 )
 
 pip install --upgrade pyinstaller || exit /b 1

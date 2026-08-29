@@ -38,6 +38,9 @@ datas = [
     ('comfyui_studio/prompt_builder/themes', 'comfyui_studio/prompt_builder/themes'),
     ('comfyui_studio/promptvault/resources', 'comfyui_studio/promptvault/resources'),
     ('comfyui_studio/promptvault/themes', 'comfyui_studio/promptvault/themes'),
+    # Imagine -- см. тот же блок и комментарий в ComfyUIStudio-full.spec.
+    ('comfyui_studio/imagine/static', 'comfyui_studio/imagine/static'),
+    ('comfyui_studio/imagine/assets', 'comfyui_studio/imagine/assets'),
 ]
 binaries = []
 hiddenimports = [
@@ -49,11 +52,28 @@ hiddenimports = [
     # ещё на library_installed() до того, как дойдёт до подпроцесса.
     "comfyui_studio.promptvault.core.embedding_worker",
     "comfyui_studio.promptvault.core.embedding_ipc",
+    # Imagine -- см. тот же комментарий в ComfyUIStudio-full.spec.
+    "comfyui_studio.imagine.__main__",
+    "comfyui_studio.imagine.backend.main",
 ]
 
 # см. комментарий в шапке файла — явное исключение, а не просто расчёт
 # на отсутствие пакетов в venv сборки
 excludes = ["torch", "sentence_transformers", "transformers", "tokenizers"]
+
+# Imagine (см. datas/hiddenimports выше) -- тот же collect_all, что и в
+# ComfyUIStudio-full.spec, той же причине (uvicorn/fastapi/starlette
+# лениво импортируют часть своих субмодулей мимо обычного AST-анализа
+# PyInstaller). В отличие от sentence_transformers/transformers/
+# tokenizers эти пакеты нужны В ОБОИХ профилях -- core-сборка их не
+# исключает.
+from PyInstaller.utils.hooks import collect_all
+
+for _pkg in ("fastapi", "starlette", "uvicorn", "multipart"):
+    _datas, _binaries, _hiddenimports = collect_all(_pkg)
+    datas += _datas
+    binaries += _binaries
+    hiddenimports += _hiddenimports
 
 
 a = Analysis(

@@ -1,0 +1,810 @@
+/* ============================================================
+   Imagine — design tokens
+   Базовая (:root) тема — GitHub Dark, палитра 1:1 с
+   comfyui_studio/themes/github_dark.qss (та же тема, что в Studio) —
+   применяется, пока JS ещё не выставил data-theme (см. themes.css,
+   js/theme.js) и как раз тот же выбор, что был единственным до
+   появления переключателя тем. Остальные 5 тем комплекта (Dark,
+   Light, Nord, Catppuccin Mocha, Dracula) — в themes.css, тем же
+   способом переопределения custom properties через
+   [data-theme="..."], одно значение на всю палитру темы.
+   ============================================================ */
+
+:root {
+  --bg:            #0d1117;
+  --bg-panel:      #161b22;
+  --bg-input:      #0d1117;
+  --bg-raised:     #21262d;
+  --border:        #30363d;
+  --border-hover:  #484f58;
+
+  --text:          #c9d1d9;
+  --text-muted:    #8b949e;
+  --text-faint:    #6e7681;
+  --text-on-accent:#ffffff;
+
+  --accent:        #58a6ff;
+  --accent-strong: #1f6feb;
+  --danger:        #e74c3c;
+
+  --font-display: 'Space Grotesk', 'Segoe UI', sans-serif;
+  --font-body:    'Inter', 'Segoe UI', sans-serif;
+  --font-mono:    'IBM Plex Mono', 'Consolas', monospace;
+
+  --radius: 5px;
+  --radius-lg: 6px;
+}
+
+* { box-sizing: border-box; }
+
+/* Некоторые элементы (.devdrawer, .gallery__empty) сами задают
+   display: flex — без этого правила оно перебивает встроенное
+   браузерное [hidden] { display: none }, и element.hidden = true
+   перестаёт что-либо скрывать. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* НОВОЕ: скроллбар всей страницы раньше не был темизирован (только
+   .styletilegrid ниже -- горизонтальная полоса стилей) и рендерился
+   нативным цветом браузерного движка (QtWebEngine/Chromium), не
+   реагируя на смену темы -- см. themes.css. Firefox-свойства
+   (scrollbar-width/scrollbar-color) добавлены "на будущее" на случай
+   показа страницы вне QtWebEngine; в самом Imagine рендерит именно
+   Chromium, для него важны -webkit-* правила ниже. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) var(--bg);
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+  border: 2px solid var(--bg);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: var(--bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------------- topbar ---------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: 0.02em;
+}
+.topbar__mark { color: var(--accent); font-size: 14px; }
+
+.topbar__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-right: auto;
+}
+
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text-faint);
+}
+.status-dot.alive { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.status-dot.dead  { background: var(--danger); }
+
+.topbar__devtoggle { font-family: var(--font-mono); font-size: 12px; }
+
+.btn-ghost {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.btn-ghost:hover { background: var(--border); }
+
+/* ---------------- centered workshop layout ---------------- */
+
+.workshop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 24px 24px 48px;
+}
+
+.workshop > * {
+  width: 100%;
+  max-width: 640px;
+}
+
+/* Секции, которым явно велено занимать весь экран ("Стили" и
+   галерея результатов) — остальное остаётся центрированной узкой
+   колонкой настроек. */
+.workshop > .full-bleed {
+  max-width: 100%;
+}
+
+.wide-card { padding: 16px 24px; }
+
+.card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+
+.card__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+
+/* ---------------- prompt card ---------------- */
+
+.promptcard__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.promptcard__head label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+}
+.hint { font-size: 11px; color: var(--text-faint); }
+
+textarea, input[type="text"], input[type="number"], select {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 9px 10px;
+  resize: vertical;
+  transition: border-color 0.15s;
+}
+textarea:focus, input:focus, select:focus { border-color: var(--accent); }
+
+.negative-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+.negative-toggle:hover { color: var(--text-muted); }
+.negative-toggle__arrow { transition: transform 0.15s; display: inline-block; }
+.negative-toggle.open .negative-toggle__arrow { transform: rotate(90deg); }
+
+.negative-body { margin-top: 10px; }
+
+/* ---------------- style tiles: плоские кликабельные плашки (картинка + LoRA/промпт) ---------------- */
+
+.styletilegrid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+.styletilegrid::-webkit-scrollbar { height: 6px; }
+.styletilegrid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.styletilegrid::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+.styletile {
+  flex: 0 0 auto;
+  width: 96px;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.styletile:hover { border-color: var(--border-hover); }
+.styletile.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.styletile__thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+  background: var(--bg-panel);
+}
+.styletile__thumb--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.styletile__label {
+  font-size: 11px;
+  padding: 6px 6px 4px;
+  text-align: center;
+  line-height: 1.25;
+}
+
+/* ---------------- style boxes: категории с выпадающим списком ---------------- */
+
+.styleboxrow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+@media (max-width: 520px) { .styleboxrow { grid-template-columns: 1fr; } }
+
+.stylebox {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.stylebox.has-selection { border-color: var(--accent); }
+
+.stylebox__label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* Плашка группы в свёрнутом виде -- та же плашка, но кликабельная
+   целиком, без select, пунктирная граница отличает её от категории. */
+.stylebox--group {
+  cursor: pointer;
+  border-style: dashed;
+  transition: border-color 0.15s;
+}
+.stylebox--group:hover { border-color: var(--border-hover); }
+
+/* Развёрнутая группа -- занимает всю строку грида (сколько бы колонок
+   ни было), внутри своя грид-сетка с точно такой же вёрсткой плашек,
+   поэтому вложенные группы разворачиваются ровно так же рекурсивно. */
+.stylegroup {
+  grid-column: 1 / -1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.stylegroup__header {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.stylegroup__header:hover { color: var(--accent); }
+.stylegroup__children {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+@media (max-width: 520px) { .stylegroup__children { grid-template-columns: 1fr; } }
+
+.empty-hint { color: var(--text-faint); font-size: 12px; margin: 0; }
+
+/* ---------------- field grid ---------------- */
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.field-grid--3 { grid-template-columns: 1fr 1fr 1fr; }
+@media (max-width: 520px) { .field-grid--3 { grid-template-columns: 1fr 1fr; } }
+.field-grid.mono input, .field-grid.mono select { font-family: var(--font-mono); }
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 11px; color: var(--text-muted); }
+.field--checkbox { grid-column: 1 / -1; flex-direction: row; align-items: center; }
+.field--checkbox label { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+
+.advanced summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.advanced[open] summary { margin-bottom: 12px; }
+
+/* ---------------- generate button ---------------- */
+
+.btn-generate {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-generate:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+.btn-generate:active { filter: brightness(0.95); }
+.btn-generate:disabled { opacity: 0.6; cursor: progress; }
+
+.error-line {
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin: 0;
+}
+.info-line {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin: 0;
+}
+.active-summary {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  margin: -8px 0 0;
+}
+
+/* ---------------- gallery ---------------- */
+
+.gallery__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.gallery__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: start;
+  gap: 14px;
+}
+@media (max-width: 1100px) { .gallery__grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 800px)  { .gallery__grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px)  { .gallery__grid { grid-template-columns: 1fr; } }
+
+.plate {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.plate:not(.plate--pending) {
+  cursor: zoom-in;
+}
+.plate:not(.plate--pending):hover {
+  border-color: var(--border-hover);
+}
+
+.plate img {
+  width: 100%;
+  height: auto;
+  display: block;
+  opacity: 0;
+  transform: scale(1.02);
+  animation: reveal 0.5s ease-out forwards;
+}
+
+@keyframes reveal {
+  from { opacity: 0; transform: scale(1.02); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.plate--pending {
+  aspect-ratio: 1 / 1; /* пока нет самого изображения, размер плейсхолдера не из чего вывести */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  gap: 8px;
+  flex-direction: column;
+}
+
+.plate--pending .tray-ripple {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------------- loading screen ---------------- */
+
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  opacity: 1;
+  transition: opacity 0.25s ease-out;
+}
+.loading-screen.loading-screen--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-screen__mark {
+  color: var(--accent);
+  font-size: 22px;
+}
+
+.loading-screen__spinner {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+
+.loading-screen p {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin: 0;
+}
+
+/* ---------------- lightbox (просмотр изображения на весь экран) ---------------- */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(1, 4, 9, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 32px 16px;
+  gap: 12px;
+}
+
+.lightbox__viewport {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  /* НЕ align-items/justify-content: center -- у центрирования через
+     flex-alignment есть "safe" зажим, из-за которого прокрутка не
+     пускает за стартовый (левый/верхний) край, даже когда там есть
+     содержимое (именно так и проявлялся баг с недоступной частью
+     увеличенной картинки). margin: auto на самой картинке центрирует
+     точно так же, но участвует в области прокрутки честно, без этого
+     ограничения. */
+  cursor: zoom-out;
+}
+
+.lightbox__img {
+  margin: auto;
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius);
+  cursor: grab;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  /* Масштаб от ползунка задаётся из JS через реальные width/height в
+     пикселях (а не CSS transform: scale()) -- transform не меняет
+     layout-размер элемента, только его отрисовку, и то, войдёт ли это
+     визуальное превышение в область прокрутки overflow:auto, зависит от
+     браузера и надёжно не работает (это и было причиной "не пускает за
+     левый/верхний край", даже после исправления центрирования через
+     margin: auto). Реальный размер элемента прокручивается штатно, без
+     исключений. max-width/max-height здесь -- только откат на случай,
+     пока JS ещё не успел посчитать размер (до onload). */
+}
+.lightbox__img--grabbing {
+  cursor: grabbing;
+}
+
+.lightbox__close {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.lightbox__close:hover { border-color: var(--border-hover); }
+
+.lightbox__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.lightbox__nav:hover { border-color: var(--border-hover); }
+.lightbox__nav:disabled { opacity: 0.3; cursor: default; }
+.lightbox__nav:disabled:hover { border-color: var(--border); }
+.lightbox__nav--prev { left: 16px; }
+.lightbox__nav--next { right: 16px; }
+
+.lightbox__zoom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(100%, 360px);
+  flex-shrink: 0;
+  padding: 8px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+}
+.lightbox__zoom-label {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  user-select: none;
+  flex-shrink: 0;
+}
+.lightbox__zoom input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.lightbox__zoom-value {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  width: 42px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ---------------- dev drawer ---------------- */
+
+.devdrawer {
+  position: fixed;
+  inset: 0;
+  background: rgba(1, 4, 9, 0.65);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 50;
+}
+
+.devdrawer__panel {
+  width: min(420px, 100%);
+  height: 100%;
+  background: var(--bg-panel);
+  border-left: 2px solid var(--accent-strong);
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.devdrawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.devdrawer__head h2 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  margin: 0;
+}
+
+.devtabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.devtab {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.devtab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+.devpane__hint {
+  color: var(--text-faint);
+  font-size: 12px;
+  margin: 0 0 12px;
+}
+
+.devsep { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
+.devlist { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
+
+.devlist__box {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  background: var(--bg-input);
+}
+.devlist__box-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 13px;
+}
+.devlist__box-headmain {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+.devlist__box-toggle {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  width: 14px;
+  flex-shrink: 0;
+}
+.devlist__box-headlabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.devlist__box-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.devlist__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.devlist__item small { display: block; color: var(--text-faint); font-family: var(--font-mono); }
+.devlist__item-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.devlist__remove {
+  background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 14px;
+}
+.devlist__remove:hover { color: var(--danger); }
+.devlist__edit {
+  background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 13px;
+}
+.devlist__edit:hover { color: var(--accent); }
+
+.devform { display: flex; flex-direction: column; gap: 10px; }
+.devform textarea { resize: vertical; }
+.devform__actions { display: flex; gap: 8px; align-items: center; }
+.devform__actions .btn-primary { flex: 1; }
+.devform__preview {
+  max-width: 100%;
+  max-height: 120px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  margin-top: 6px;
+  object-fit: cover;
+}
+.devform__note {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }

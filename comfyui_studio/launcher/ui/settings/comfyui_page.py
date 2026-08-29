@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSpinBox,
     QTableWidget,
@@ -121,6 +122,64 @@ class ComfyUISettingsPage(QWidget):
 
         root.addWidget(install_box)
 
+        # -- Interface (НОВОЕ: imagine-app как вариант запуска ComfyUI) ----
+        interface_box = QGroupBox(self._tr("Интерфейс"))
+        self.interface_box = interface_box
+        interface_form = QFormLayout(interface_box)
+
+        self.interface_hint = QLabel(
+            self._tr(
+                "Чем открыть ComfyUI после запуска: его собственным веб-"
+                "интерфейсом (как раньше) или Imagine — карточным "
+                "генератором поверх того же ComfyUI, запущенного этим же "
+                "лаунчером."
+            )
+        )
+        self.interface_hint.setWordWrap(True)
+        self.interface_hint.setObjectName("mutedLabel")
+        interface_form.addRow(self.interface_hint)
+
+        interface_row = QHBoxLayout()
+        self.interface_comfyui_radio = QRadioButton(self._tr("ComfyUI"))
+        self.interface_imagine_radio = QRadioButton(self._tr("Imagine"))
+        interface_row.addWidget(self.interface_comfyui_radio)
+        interface_row.addWidget(self.interface_imagine_radio)
+        interface_row.addStretch(1)
+        if cfg.get("interface") == "imagine":
+            self.interface_imagine_radio.setChecked(True)
+        else:
+            self.interface_comfyui_radio.setChecked(True)
+        self.interface_comfyui_radio.toggled.connect(self._on_interface_toggled)
+        self.interface_comfyui_radio.toggled.connect(self._on_field_changed)
+        interface_form.addRow(interface_row)
+
+        imagine_cfg = cfg.get("imagine", {})
+
+        self.imagine_port_spin = QSpinBox()
+        self.imagine_port_spin.setRange(1, 65535)
+        self.imagine_port_spin.setValue(int(imagine_cfg.get("port", 7860)))
+        self.imagine_port_spin.valueChanged.connect(self._on_field_changed)
+        self.imagine_port_row_label = QLabel(self._tr("Порт Imagine:"))
+        interface_form.addRow(self.imagine_port_row_label, self.imagine_port_spin)
+
+        self.imagine_dev_mode_check = QCheckBox(
+            self._tr("Запускать Imagine в дев-режиме (редактирование каталога стилей)")
+        )
+        self.imagine_dev_mode_check.setToolTip(
+            self._tr(
+                "В интерфейсе самого Imagine нет переключателя дев-режима "
+                "(осознанное решение — см. его документацию): дев-режим "
+                "включается только здесь, тумблером, при запуске из "
+                "Studio."
+            )
+        )
+        self.imagine_dev_mode_check.setChecked(bool(imagine_cfg.get("dev_mode", False)))
+        self.imagine_dev_mode_check.stateChanged.connect(self._on_field_changed)
+        interface_form.addRow(self.imagine_dev_mode_check)
+
+        self._on_interface_toggled()
+        root.addWidget(interface_box)
+
         # -- Arguments (бывший LaunchArgsDialog) ---------------------------
         args_box = QGroupBox(self._tr("Аргументы запуска ComfyUI"))
         self.args_box = args_box
@@ -201,6 +260,17 @@ class ComfyUISettingsPage(QWidget):
         self._refresh_scripts()
 
     # -- Installation / scripts -----------------------------------------
+
+    # -- Interface (imagine) --------------------------------------------
+
+    def _on_interface_toggled(self, *_args):
+        """Порт/дев-режим Imagine имеют смысл, только когда выбран
+        интерфейс Imagine -- дизейблим их же, не только визуально
+        затемняем, чтобы не создавать впечатление, что они на что-то
+        влияют, пока выбран ComfyUI."""
+        enabled = self.interface_imagine_radio.isChecked()
+        self.imagine_port_spin.setEnabled(enabled)
+        self.imagine_dev_mode_check.setEnabled(enabled)
 
     def _browse(self):
         chosen = QFileDialog.getExistingDirectory(
@@ -296,6 +366,11 @@ class ComfyUISettingsPage(QWidget):
             "port": self.port_spin.value(),
             "disable_auto_launch": self.disable_auto_launch_check.isChecked(),
             "sync_comfy_theme": self.sync_comfy_theme_check.isChecked(),
+            "interface": "imagine" if self.interface_imagine_radio.isChecked() else "comfyui",
+            "imagine": {
+                "port": self.imagine_port_spin.value(),
+                "dev_mode": self.imagine_dev_mode_check.isChecked(),
+            },
             "launch_args": self.collect_launch_args(),
             "env_vars": self.collect_env_vars(),
         }
@@ -304,8 +379,17 @@ class ComfyUISettingsPage(QWidget):
 
     def set_editable(self, editable: bool) -> None:
         for w in (self.path_edit, self.browse_btn, self.script_combo, self.port_spin,
-                  self.disable_auto_launch_check, self.sync_comfy_theme_check):
+                  self.disable_auto_launch_check, self.sync_comfy_theme_check,
+                  self.interface_comfyui_radio, self.interface_imagine_radio):
             w.setEnabled(editable)
+        # Порт/дев-режим Imagine остаются под двойным условием даже при
+        # editable=True -- см. _on_interface_toggled(): нет смысла их
+        # включать, если сейчас выбран интерфейс ComfyUI.
+        if editable:
+            self._on_interface_toggled()
+        else:
+            self.imagine_port_spin.setEnabled(False)
+            self.imagine_dev_mode_check.setEnabled(False)
         for widgets in self.arg_widgets.values():
             widgets["check"].setEnabled(editable)
             if widgets["value"] is not None:
@@ -340,6 +424,29 @@ class ComfyUISettingsPage(QWidget):
                 "(Comfy.ColorPalette) с темой приложения — вживую, пока "
                 "ComfyUI уже открыт, и при следующем запуске. Не идентично "
                 "Qt-теме — у ComfyUI своя цветовая система узлов."
+            )
+        )
+        self.interface_box.setTitle(self._tr("Интерфейс"))
+        self.interface_hint.setText(
+            self._tr(
+                "Чем открыть ComfyUI после запуска: его собственным веб-"
+                "интерфейсом (как раньше) или Imagine — карточным "
+                "генератором поверх того же ComfyUI, запущенного этим же "
+                "лаунчером."
+            )
+        )
+        self.interface_comfyui_radio.setText(self._tr("ComfyUI"))
+        self.interface_imagine_radio.setText(self._tr("Imagine"))
+        self.imagine_port_row_label.setText(self._tr("Порт Imagine:"))
+        self.imagine_dev_mode_check.setText(
+            self._tr("Запускать Imagine в дев-режиме (редактирование каталога стилей)")
+        )
+        self.imagine_dev_mode_check.setToolTip(
+            self._tr(
+                "В интерфейсе самого Imagine нет переключателя дев-режима "
+                "(осознанное решение — см. его документацию): дев-режим "
+                "включается только здесь, тумблером, при запуске из "
+                "Studio."
             )
         )
         self.args_box.setTitle(self._tr("Аргументы запуска ComfyUI"))

@@ -1,0 +1,262 @@
+{
+  "201": {
+    "inputs": {
+      "clip_name1": "clip_l.safetensors",
+      "clip_name2": "SD3\\t5xxl_fp8_e4m3fn.safetensors",
+      "type": "flux",
+      "device": "default"
+    },
+    "class_type": "DualCLIPLoader",
+    "_meta": {
+      "title": "Двойной загрузчик CLIP"
+    }
+  },
+  "202": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Загрузить VAE"
+    }
+  },
+  "204": {
+    "inputs": {
+      "text": [
+        "220",
+        0
+      ],
+      "clip": [
+        "222",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Кодирование текста CLIP (Запрос)"
+    }
+  },
+  "205": {
+    "inputs": {
+      "width": [
+        "221",
+        0
+      ],
+      "height": [
+        "221",
+        1
+      ],
+      "batch_size": 8
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "Пустой SD3LatentImage"
+    }
+  },
+  "207": {
+    "inputs": {
+      "samples": [
+        "209",
+        0
+      ],
+      "vae": [
+        "202",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "Декодировать VAE"
+    }
+  },
+  "209": {
+    "inputs": {
+      "add_noise": true,
+      "noise_seed": 484100840253204,
+      "cfg": 1,
+      "positive_text": [
+        "220",
+        0
+      ],
+      "negative_text": [
+        "224",
+        0
+      ],
+      "model_name": [
+        "219",
+        1
+      ],
+      "model": [
+        "222",
+        0
+      ],
+      "positive": [
+        "204",
+        0
+      ],
+      "negative": [
+        "225",
+        0
+      ],
+      "sampler": [
+        "210",
+        0
+      ],
+      "sigmas": [
+        "214",
+        0
+      ],
+      "latent_image": [
+        "205",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomWithSeed",
+    "_meta": {
+      "title": "Sampler Custom"
+    }
+  },
+  "210": {
+    "inputs": {
+      "sampler_name": "euler_ancestral"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "Выбор KSampler"
+    }
+  },
+  "213": {
+    "inputs": {
+      "prefix": "Flux",
+      "output_subdir": "Flux",
+      "images": [
+        "207",
+        0
+      ],
+      "gen_info": [
+        "209",
+        2
+      ],
+      "lora_info": [
+        "222",
+        2
+      ]
+    },
+    "class_type": "SaveWithPrompt",
+    "_meta": {
+      "title": "Сохранялка"
+    }
+  },
+  "214": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 6,
+      "denoise": 1,
+      "model": [
+        "219",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "Основной scheduler"
+    }
+  },
+  "219": {
+    "inputs": {
+      "unet_name": "FLUX\\fluxUnchainedBySCG_schnfuV13Unet4step.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "DiffusionModelLoaderWithName",
+    "_meta": {
+      "title": "Diffusion Model Loader"
+    }
+  },
+  "220": {
+    "inputs": {
+      "text": "girl"
+    },
+    "class_type": "Text Multiline",
+    "_meta": {
+      "title": "Text Multiline"
+    }
+  },
+  "221": {
+    "inputs": {
+      "aspect_ratio": "1:1 (Square)",
+      "megapixels": 0.4,
+      "multiple": 64
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "Выбор разрешения"
+    }
+  },
+  "222": {
+    "inputs": {
+      "lora_1": "flux\\Challenge_Winnifier_ENTERPRISE_EDITION_epoch_5.safetensors",
+      "strength_1": 0,
+      "lora_2": "none",
+      "strength_2": 1,
+      "lora_3": "none",
+      "strength_3": 1,
+      "lora_4": "none",
+      "strength_4": 1,
+      "lora_5": "none",
+      "strength_5": 1,
+      "model": [
+        "219",
+        0
+      ],
+      "clip": [
+        "201",
+        0
+      ],
+      "lora_list": [
+        "223",
+        0
+      ]
+    },
+    "class_type": "MultiLoraLoader",
+    "_meta": {
+      "title": "Multi LoRA Loader"
+    }
+  },
+  "223": {
+    "inputs": {
+      "text": [
+        "220",
+        0
+      ]
+    },
+    "class_type": "LoraTextParser",
+    "_meta": {
+      "title": "LoRA Text Parser"
+    }
+  },
+  "224": {
+    "inputs": {
+      "text": ""
+    },
+    "class_type": "Text Multiline",
+    "_meta": {
+      "title": "Text Multiline"
+    }
+  },
+  "225": {
+    "inputs": {
+      "text": [
+        "224",
+        0
+      ],
+      "clip": [
+        "222",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Кодирование текста CLIP (Запрос)"
+    }
+  }
+}

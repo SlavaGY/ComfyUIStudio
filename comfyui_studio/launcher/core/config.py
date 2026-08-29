@@ -156,9 +156,27 @@ def build_extra_launch_args(cfg):
     """Собирает итоговый список CLI-флагов из cfg["launch_args"]
     (заполняется разделом "Arguments" ComfyUISettingsPage, см.
     ui/settings/comfyui_page.py -- этап 4 дорожной карты, было
-    LaunchArgsDialog) плюс отдельно хранящийся disable_auto_launch —
-    единый список строк для prepare_launch_script."""
+    LaunchArgsDialog) плюс отдельно хранящийся disable_auto_launch и
+    cfg["port"] -- единый список строк для prepare_launch_script.
+
+    ИСПРАВЛЕНО: cfg["port"] раньше вообще не попадал в аргументы
+    запуска -- поле "Порт" в настройках влияло (get_running_port и весь
+    HTTP/WS-опрос отсюда) на то, где студия ИЩЕТ уже запущенный
+    ComfyUI, но не на то, на каком порту сам ComfyUI реально стартует
+    (тот всегда поднимался на порту по умолчанию -- 8188, либо на том,
+    что зашит в самом .bat, если он его переопределяет). Если
+    пользователь менял порт в настройках на что-то отличное от 8188,
+    ComfyUI поднимался на 8188, а студия опрашивала другой порт --
+    ничего не находила. Теперь --port {cfg["port"]} добавляется явно,
+    всегда (не только когда отличается от 8188 -- проще и без
+    сюрпризов, если дефолт ComfyUI когда-нибудь изменится) и раньше
+    остальных флагов, чтобы порядок в .bat совпадал с порядком полей
+    в самих настройках (Порт -- отдельное поле над разделом
+    Arguments, не один из его чекбоксов)."""
     args = []
+    port = cfg.get("port")
+    if port:
+        args.append(f"--port {port}")
     if cfg.get("disable_auto_launch"):
         args.append("--disable-auto-launch")
     launch_args = cfg.get("launch_args", {})

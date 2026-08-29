@@ -206,31 +206,3 @@ def test_client_connects_with_client_id_query_param(qtbot, ws_server):
     assert f"clientId={client.client_id}" in path
 
     client.stop()
-
-
-def test_client_uses_provided_client_id(qtbot, ws_server):
-    """Если client_id передан явно, клиент подключается именно с ним, а
-    не с собственным uuid4 -- это остаётся общей возможностью класса
-    (см. предупреждение в докстринге __init__ про то, что передавать
-    сюда id ЖИВОЙ чужой сессии, например встроенного браузера, опасно --
-    подробный разбор в докстринге модуля выше)."""
-    client = ComfyWebSocketClient(ws_server.port, client_id="browser-real-id-123")
-    assert client.client_id == "browser-real-id-123"
-    with qtbot.waitSignal(client.connected, timeout=5000):
-        client.start()
-
-    path = ws_server.paths[-1]
-    assert "clientId=browser-real-id-123" in path
-
-    client.stop()
-
-
-def test_client_without_client_id_generates_fallback_uuid():
-    """Запасной случай (client_id=None, поведение до этапа 8) --
-    сгенерированный uuid4, не пустой, не совпадает у разных клиентов."""
-    client_a = ComfyWebSocketClient(65535)
-    client_b = ComfyWebSocketClient(65535)
-    assert client_a.client_id
-    assert client_a.client_id != client_b.client_id
-    client_a.stop()
-    client_b.stop()

@@ -1,0 +1,127 @@
+/* ============================================================
+   Imagine — темы оформления (Studio parity)
+   ============================================================
+   Каждая тема — переопределение тех же custom properties, что
+   заданы в :root в style.css (палитра GitHub Dark по умолчанию).
+   Значения цветов взяты из соответствующих .qss файлов Studio
+   (comfyui_studio/themes/*.qss): фон окна -> --bg, фон кнопки ->
+   --bg-panel/--bg-raised, граница кнопки -> --border, цвет при
+   QPushButton:pressed -> --accent (тот же принцип акцента, что и в
+   Qt-темах), основной текст -> --text. --danger везде общий
+   (#e74c3c, см. README самого Imagine) — ни у одной Qt-темы нет
+   отдельного "цвета ошибки" в .qss, это чисто веб-добавление,
+   единое для всех тем.
+
+   data-theme хранит РОВНО те же строки, что theme_manager.py
+   (AVAILABLE_THEMES) пишет в %APPDATA%\ComfyUIStudio\theme.json —
+   см. js/theme.js: значение оттуда применяется без какого-либо
+   маппинга имён.
+   ============================================================ */
+
+[data-theme="Dark"] {
+  --bg:             #1e1e1e;
+  --bg-panel:       #252526;
+  --bg-input:       #1e1e1e;
+  --bg-raised:      #2d2d30;
+  --border:         #3c3c3c;
+  --border-hover:   #545454;
+
+  --text:           #e0e0e0;
+  --text-muted:     #a0a0a0;
+  --text-faint:     #7a7a7a;
+  --text-on-accent: #0d0d0d;
+
+  --accent:         #4fc3f7;
+  --accent-strong:  #29b6f6;
+  --danger:         #e74c3c;
+}
+
+[data-theme="Light"] {
+  --bg:             #f5f5f5;
+  --bg-panel:       #ececec;
+  --bg-input:       #ffffff;
+  --bg-raised:      #e2e2e2;
+  --border:         #d0d0d0;
+  --border-hover:   #b5b5b5;
+
+  --text:           #1e1e1e;
+  --text-muted:     #4a4a4a;
+  --text-faint:     #767676;
+  --text-on-accent: #ffffff;
+
+  --accent:         #1976d2;
+  --accent-strong:  #145a9e;
+  --danger:         #c0392b;
+}
+
+[data-theme="Nord"] {
+  --bg:             #2E3440;
+  --bg-panel:       #3B4252;
+  --bg-input:       #2E3440;
+  --bg-raised:      #434C5E;
+  --border:         #4C566A;
+  --border-hover:   #5f6b83;
+
+  --text:           #ECEFF4;
+  --text-muted:     #C4CAD6;
+  --text-faint:     #8f97a8;
+  --text-on-accent: #2E3440;
+
+  --accent:         #88C0D0;
+  --accent-strong:  #6ba6b8;
+  --danger:         #BF616A;
+}
+
+[data-theme="Catppuccin Mocha"] {
+  --bg:             #1e1e2e;
+  --bg-panel:       #24273a;
+  --bg-input:       #1e1e2e;
+  --bg-raised:      #313244;
+  --border:         #45475a;
+  --border-hover:   #5a5d78;
+
+  --text:           #cdd6f4;
+  --text-muted:     #a6adc8;
+  --text-faint:     #7c8296;
+  --text-on-accent: #1e1e2e;
+
+  --accent:         #89b4fa;
+  --accent-strong:  #6f9ff2;
+  --danger:         #f38ba8;
+}
+
+[data-theme="Dracula"] {
+  --bg:             #282a36;
+  --bg-panel:       #2f3140;
+  --bg-input:       #282a36;
+  --bg-raised:      #343746;
+  --border:         #44475a;
+  --border-hover:   #5b5f78;
+
+  --text:           #f8f8f2;
+  --text-muted:     #c2c2ba;
+  --text-faint:     #8c8c86;
+  --text-on-accent: #282a36;
+
+  --accent:         #bd93f9;
+  --accent-strong:  #a374f5;
+  --danger:         #ff5555;
+}
+
+[data-theme="GitHub Dark"] {
+  --bg:             #0d1117;
+  --bg-panel:       #161b22;
+  --bg-input:       #0d1117;
+  --bg-raised:      #21262d;
+  --border:         #30363d;
+  --border-hover:   #484f58;
+
+  --text:           #c9d1d9;
+  --text-muted:     #8b949e;
+  --text-faint:     #6e7681;
+  --text-on-accent: #ffffff;
+
+  --accent:         #58a6ff;
+  --accent-strong:  #1f6feb;
+  --danger:         #e74c3c;
+}
