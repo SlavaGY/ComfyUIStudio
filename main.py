@@ -192,4 +192,21 @@ if __name__ == "__main__":
             imagine_main(sys.argv[2:])
             sys.exit(0)
 
+    # Та же диспетчеризация, тем же принципом -- для Remote (см.
+    # comfyui_studio/remote/, launcher/core/remote_process.py, дорожную
+    # карту ComfyUIStudio_Remote_Roadmap.md, этап 1): из исходников
+    # лаунчер спавнит `python -m comfyui_studio.remote` (отдельный
+    # процесс системного python, эта проверка не сработает), а из
+    # собранного exe -- сам себя же со скрытым REMOTE_CLI_FLAG, ловится
+    # здесь до QApplication и до любых Qt-импортов. У Remote свои
+    # аргументы командной строки (--host/--port/--comfy-host/
+    # --comfy-port/--imagine-port/--dev) -- передаются дальше как есть,
+    # __main__.main() сам их разбирает.
+    if len(sys.argv) > 1:
+        from comfyui_studio.remote.__main__ import REMOTE_CLI_FLAG
+        if sys.argv[1] == REMOTE_CLI_FLAG:
+            from comfyui_studio.remote.__main__ import main as remote_main
+            remote_main(sys.argv[2:])
+            sys.exit(0)
+
     main()

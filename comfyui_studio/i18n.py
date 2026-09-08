@@ -402,6 +402,68 @@ TRANSLATIONS = {
             "Подробности — в лог-файле: {}"
         ): "The Imagine process exited unexpectedly (exit code: {}). See the log file for details: {}",
         "Не удалось запустить Imagine: {}": "Failed to start Imagine: {}",
+        # НОВОЕ (Remote, этап 1 дорожной карты
+        # ComfyUIStudio_Remote_Roadmap.md) -- ui/settings/remote_page.py
+        "Удалённый доступ": "Remote access",
+        (
+            "Доступ к ComfyUI Studio с телефона в той же локальной "
+            "сети (Remote API, этапы 1–4 дорожной карты) — pairing, "
+            "realtime-статус и «терминал» с Imagine внутри уже "
+            "работают, Android-приложения пока нет (см. README)."
+        ): (
+            "Access ComfyUI Studio from your phone on the same local "
+            "network (Remote API, roadmap stages 1-4) — pairing, "
+            "realtime status, and a built-in Imagine \"terminal\" already "
+            "work; there's no Android app yet (see README)."
+        ),
+        "Включить удалённый доступ": "Enable remote access",
+        "Порт Remote:": "Remote port:",
+        "Разрешить доступ по локальной сети (не только с этого ПК)":
+            "Allow access from the local network (not just this PC)",
+        (
+            "Remote начнёт слушать все сетевые интерфейсы этого ПК, "
+            "а не только localhost -- любое устройство в той же "
+            "локальной сети сможет обращаться к нему (без токена "
+            "устройства доступа к данным всё равно не получит, см. "
+            "pairing выше). Также может понадобиться разрешить порт "
+            "в брандмауэре Windows."
+        ): (
+            "Remote will start listening on all network interfaces of "
+            "this PC, not just localhost — any device on the same local "
+            "network will be able to reach it (it still won't get any "
+            "data without a paired device token, see pairing above). You "
+            "may also need to allow the port through Windows Firewall."
+        ),
+        "Адрес для телефона (в этой же сети): {}": "Address for your phone (same network): {}",
+        "Остановлен.": "Stopped.",
+        (
+            "Запущен, порт {}. Изменения порта/сети применятся "
+            "после перезапуска -- выключите и включите переключатель выше."
+        ): (
+            "Running, port {}. Port/network changes take effect after a "
+            "restart — toggle the switch above off and back on."
+        ),
+        "Ошибка запуска: {}": "Failed to start: {}",
+        "Подключить телефон": "Connect a phone",
+        "Получить код для телефона": "Get a code for your phone",
+        (
+            "Код: {} (действителен до {}, осталось попыток: {}). "
+            "Введите его в приложении на телефоне."
+        ): (
+            "Code: {} (valid until {}, attempts left: {}). Enter it in "
+            "the app on your phone."
+        ),
+        "Не удалось получить код: {}": "Failed to get a code: {}",
+        "Сопряжённые устройства": "Paired devices",
+        "Имя": "Name",
+        "Создано": "Created",
+        "Последний раз в сети": "Last seen",
+        "Статус": "Status",
+        "Отозвано": "Revoked",
+        "Активно": "Active",
+        "Обновить": "Refresh",
+        "Отозвать выбранные": "Revoke selected",
+        "Не удалось получить список устройств: {}": "Failed to get the device list: {}",
     }
 }
 

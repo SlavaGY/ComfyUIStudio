@@ -43,7 +43,7 @@ from .logging_setup import log
 from ...imagine.__main__ import IMAGINE_CLI_FLAG
 
 IMAGINE_MODULE_NAME = "comfyui_studio.imagine"
-IMAGINE_REQUIRED_MODULES = ("fastapi", "uvicorn", "pydantic", "multipart")
+IMAGINE_REQUIRED_MODULES = ("fastapi", "uvicorn", "pydantic", "multipart", "websockets")
 
 
 def _missing_imagine_dependencies():
@@ -65,12 +65,18 @@ def _missing_imagine_dependencies():
     return missing
 
 
-def resolve_imagine_launch(host, port, comfy_host, comfy_port, dev_mode):
+def resolve_imagine_launch(host, port, comfy_host, comfy_port, dev_mode, remote_port=None):
     """Аналог resolve_external_launch() из comfy_process.py, но для
     Imagine и с прокидыванием аргументов запуска (host/port/comfy-*/dev)
     вместо простого списка без параметров -- у prompt_builder/
     promptvault параметров командной строки нет, у Imagine они есть, и
     нужны И собранному exe, И запуску из исходников одинаково.
+
+    remote_port -- НОВОЕ (этап 3 дорожной карты Remote): порт Remote,
+    куда фоновая задача progress_forwarder.py внутри Imagine пересылает
+    generation.progress (см. её докстринг). Необязателен -- если Remote
+    выключен в настройках, просто не передаётся, Imagine работает как
+    раньше.
 
     Возвращает (cmd: list[str], cwd: str, error: None) либо
     (None, None, error: str).
@@ -80,6 +86,8 @@ def resolve_imagine_launch(host, port, comfy_host, comfy_port, dev_mode):
         extra_args += ["--comfy-host", comfy_host]
     if comfy_port:
         extra_args += ["--comfy-port", str(comfy_port)]
+    if remote_port:
+        extra_args += ["--remote-port", str(remote_port)]
     if dev_mode:
         extra_args.append("--dev")
 
@@ -130,17 +138,19 @@ class ImagineProcess:
     него пока нет; вывод просто уходит в DEVNULL, как у prompt_builder/
     promptvault через launch_external_app)."""
 
-    def __init__(self, host, port, comfy_host, comfy_port, dev_mode=False):
+    def __init__(self, host, port, comfy_host, comfy_port, dev_mode=False, remote_port=None):
         self.host = host
         self.port = port
         self.comfy_host = comfy_host
         self.comfy_port = comfy_port
         self.dev_mode = dev_mode
+        self.remote_port = remote_port
         self.proc = None
 
     def start(self):
         cmd, cwd, error = resolve_imagine_launch(
-            self.host, self.port, self.comfy_host, self.comfy_port, self.dev_mode
+            self.host, self.port, self.comfy_host, self.comfy_port, self.dev_mode,
+            remote_port=self.remote_port,
         )
         if error:
             raise RuntimeError(error)

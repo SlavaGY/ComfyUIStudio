@@ -13,6 +13,11 @@
    %APPDATA%\ComfyUIStudio\theme.json/language.json, что читают и
    пишут shared_theme.py/shared_language.py у лаунчера, Prompt Config
    Editor и PromptVault. Открытое здесь значение при следующем запуске
+
+   ВАЖНО: fetch("api/ui-prefs", ...) ниже -- ОТНОСИТЕЛЬНЫЙ путь (без
+   ведущего "/"), не "/api/ui-prefs" -- см. подробное объяснение в
+   шапке app.js (reverse-proxy Remote, этап 4 дорожной карты Remote,
+   comfyui_studio/remote/imagine_proxy.py).
    применится и в них, и наоборот — если сначала сменить тему в
    любом из Qt-приложений, а потом открыть/перезагрузить Imagine.
    Постоянного файлового watcher'а (как QFileSystemWatcher у Qt-
@@ -224,7 +229,7 @@
         localStorage.setItem("imagine.language", CURRENT_LANG);
       } catch (e) { /* localStorage недоступен (приватный режим) -- не критично */ }
       if (!opts || !opts.skipSync) {
-        fetch("/api/ui-prefs", {
+        fetch("api/ui-prefs", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ language: CURRENT_LANG }),
@@ -243,7 +248,7 @@
         localStorage.setItem("imagine.theme", name);
       } catch (e) { /* см. выше */ }
       if (!opts || !opts.skipSync) {
-        fetch("/api/ui-prefs", {
+        fetch("api/ui-prefs", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ theme: name }),
@@ -286,7 +291,7 @@
 
     async _syncFromServer() {
       try {
-        const resp = await fetch("/api/ui-prefs");
+        const resp = await fetch("api/ui-prefs");
         if (resp.ok) {
           const prefs = await resp.json();
           if (prefs.language && prefs.language !== CURRENT_LANG) {

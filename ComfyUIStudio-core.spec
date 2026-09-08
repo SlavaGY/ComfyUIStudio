@@ -55,6 +55,10 @@ hiddenimports = [
     # Imagine -- см. тот же комментарий в ComfyUIStudio-full.spec.
     "comfyui_studio.imagine.__main__",
     "comfyui_studio.imagine.backend.main",
+    # comfyui_studio.remote.__main__ -- та же двухуровневая лень, что и у
+    # Imagine выше (см. комментарий в ComfyUIStudio-full.spec).
+    "comfyui_studio.remote.__main__",
+    "comfyui_studio.remote.app",
 ]
 
 # см. комментарий в шапке файла — явное исключение, а не просто расчёт
@@ -69,7 +73,7 @@ excludes = ["torch", "sentence_transformers", "transformers", "tokenizers"]
 # исключает.
 from PyInstaller.utils.hooks import collect_all
 
-for _pkg in ("fastapi", "starlette", "uvicorn", "multipart"):
+for _pkg in ("fastapi", "starlette", "uvicorn", "multipart", "websockets", "httpx", "httpcore", "zeroconf"):
     _datas, _binaries, _hiddenimports = collect_all(_pkg)
     datas += _datas
     binaries += _binaries

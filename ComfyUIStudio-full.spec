@@ -52,6 +52,12 @@ hiddenimports = [
     # оба уровня лени PyInstaller не обязан пройти статическим анализом.
     "comfyui_studio.imagine.__main__",
     "comfyui_studio.imagine.backend.main",
+    # comfyui_studio.remote.__main__ -- та же двухуровневая лень, что и у
+    # Imagine выше (диспетчеризация REMOTE_CLI_FLAG в main.py, а изнутри
+    # __main__.main() лениво импортирует uvicorn/.app), см.
+    # ComfyUIStudio_Remote_Roadmap.md, этап 1, launcher/core/remote_process.py.
+    "comfyui_studio.remote.__main__",
+    "comfyui_studio.remote.app",
 ]
 
 # sentence-transformers/transformers/tokenizers тянут немало data-файлов
@@ -74,7 +80,17 @@ for _pkg in ("sentence_transformers", "transformers", "tokenizers"):
 # sentence_transformers/transformers/tokenizers выше. "multipart" --
 # именно так называется импортируемый модуль пакета python-multipart
 # (см. IMAGINE_REQUIRED_MODULES в launcher/core/imagine_process.py).
-for _pkg in ("fastapi", "starlette", "uvicorn", "multipart"):
+# "websockets" добавлен на этапе 3 дорожной карты Remote — теперь
+# рантайм-зависимость самого Imagine (comfyui_studio/imagine/backend/
+# progress_forwarder.py), не только тестов (см. pyproject.toml).
+# "httpx"/"httpcore" добавлены на этапе 4 -- reverse-proxy Remote к
+# Imagine (comfyui_studio/remote/imagine_proxy.py); httpcore -- его
+# внутренний HTTP-транспорт с несколькими backend'ами (asyncio/anyio),
+# тот же риск ленивых импортов мимо AST-анализа, что и у остальных
+# пакетов в этом цикле. "zeroconf" добавлен на этапе 5 -- mDNS-
+# объявление (comfyui_studio/remote/mdns.py), тянет собственные
+# платформенные модули определения сетевых интерфейсов.
+for _pkg in ("fastapi", "starlette", "uvicorn", "multipart", "websockets", "httpx", "httpcore", "zeroconf"):
     _datas, _binaries, _hiddenimports = collect_all(_pkg)
     datas += _datas
     binaries += _binaries

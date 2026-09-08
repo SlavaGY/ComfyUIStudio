@@ -15,10 +15,12 @@ IMAGINE_DEV_MODE, которую выставляет run.bat) -- в интер�
 а чтобы поведение фронтенда и бэкенда не расходилось.
 """
 
+import asyncio
 import logging
 import os
 import sys
 import uuid
+from contextlib import suppress
 from pathlib import Path
 from typing import Optional
 
@@ -29,6 +31,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from . import config_store, launcher, lora_scan, workflow
+from . import progress_forwarder
 from .comfy_client import ComfyClient, ComfyUIError
 
 try:
@@ -114,6 +117,49 @@ def _seed_comfy_target_from_env():
 
 
 _seed_comfy_target_from_env()
+
+
+# НОВОЕ (Remote, этап 3 дорожной карты): порт Remote, куда
+# progress_forwarder.py пересылает generation.progress -- IMAGINE_REMOTE_PORT
+# выставляется __main__.py по CLI-аргументу --remote-port (см. его
+# докстринг), тем же приёмом, что и IMAGINE_COMFY_HOST/PORT выше. Не
+# обязателен -- если не задан, progress_forwarder просто не пересылает
+# события никуда (см. его докстринг про best-effort).
+def _seed_remote_port_from_env():
+    port = os.environ.get("IMAGINE_REMOTE_PORT")
+    if not port:
+        return
+    try:
+        progress_forwarder.remote_port = int(port)
+    except ValueError:
+        log.warning("IMAGINE_REMOTE_PORT=%r не число, игнорирую", port)
+
+
+_seed_remote_port_from_env()
+
+
+_progress_forwarder_task = None
+
+
+@app.on_event("startup")
+async def _start_progress_forwarder():
+    # on_event("startup") вместо lifespan= -- этот модуль не заводил
+    # lifespan раньше (ни для чего другого он здесь не нужен), а
+    # заводить его только ради одной фоновой задачи, когда есть более
+    # точечный @app.on_event, было бы неоправданным расширением области
+    # изменений этого этапа дорожной карты. (Да, on_event помечен
+    # deprecated в новых версиях FastAPI -- если это когда-нибудь будет
+    # мешать, тогда и стоит переезжать на lifespan= целиком.)
+    global _progress_forwarder_task
+    _progress_forwarder_task = asyncio.create_task(progress_forwarder.run_forever())
+
+
+@app.on_event("shutdown")
+async def _stop_progress_forwarder():
+    if _progress_forwarder_task is not None:
+        _progress_forwarder_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await _progress_forwarder_task
 
 
 def get_client() -> ComfyClient:
@@ -222,7 +268,19 @@ async def upload_image(file: UploadFile):
     config_store.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     data = await file.read()
     dest.write_bytes(data)
-    return {"url": f"/media/{name}"}
+    # ОТНОСИТЕЛЬНЫЙ путь (без ведущего "/") -- НЕ "/media/{name}" (см.
+    # тот же приём и то же объяснение у "url" в /api/generate/{id}/status
+    # ниже): страница Imagine теперь может открываться и по своему
+    # собственному адресу (http://127.0.0.1:<imagine_port>/), и через
+    # reverse-proxy Remote (http://127.0.0.1:<remote_port>/apps/imagine/,
+    # см. remote/imagine_proxy.py, этап 4 дорожной карты Remote) -- с
+    # ведущим "/" все ссылки на статику/API резолвились бы браузером
+    # относительно КОРНЯ ТЕКУЩЕГО ORIGIN, а не текущей страницы, и при
+    # заходе через прокси били бы мимо (в /media/... на порту Remote,
+    # где ничего нет, вместо /apps/imagine/media/...). Без ведущего "/"
+    # браузер резолвит путь относительно URL текущей страницы -- корректно
+    # в обоих случаях.
+    return {"url": f"media/{name}"}
 
 
 @app.get("/api/aspect-ratios")
@@ -352,7 +410,15 @@ def generation_status(prompt_id: str):
             "state": "done" if images else ("error" if status.get("completed") is False else "done"),
             "images": [
                 {
-                    "url": f"/api/image?filename={img['filename']}"
+                    # ОТНОСИТЕЛЬНЫЙ путь -- см. подробное объяснение у
+                    # /api/upload-image выше (тот же самый баг, только
+                    # здесь он реально всплыл на этапе 4 дорожной карты
+                    # Remote: при открытии Imagine через
+                    # http://<pc>:<remote_port>/apps/imagine/ браузер
+                    # запрашивал картинки с АБСОЛЮТНОГО "/api/image?..."
+                    # -- то есть с http://<pc>:<remote_port>/api/image?...,
+                    # мимо прокси, 404).
+                    "url": f"api/image?filename={img['filename']}"
                     f"&subfolder={img['subfolder']}&type={img['type']}"
                 }
                 for img in images

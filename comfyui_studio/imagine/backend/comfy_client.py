@@ -25,11 +25,29 @@ class ComfyUIError(Exception):
 
 
 class ComfyClient:
+    # НОВОЕ (Remote, этап 3 дорожной карты ComfyUIStudio_Remote_Roadmap.md,
+    # "Пошаговый прогресс"): client_id ДОЛЖЕН быть одним и тем же на весь
+    # процесс, а не генерироваться заново на каждый ComfyClient(...) (как
+    # было раньше -- get_client() в main.py создаёт новый экземпляр на
+    # каждый запрос). Это не стилистическая мелочь: ComfyUI запоминает
+    # client_id ИЗ ЗАПРОСА POST /prompt, которым конкретное задание было
+    # поставлено в очередь, и каждое следующее "progress"/"executing"
+    # для этого задания шлёт ТОЛЬКО сокету с ТЕМ ЖЕ client_id (см. подробный
+    # разбор в comfyui_studio/launcher/core/comfy_ws.py, докстринг модуля,
+    # раздел "ОКОНЧАТЕЛЬНЫЙ ОТВЕТ" -- та же особенность ComfyUI, из-за
+    # которой WS-клиент лаунчера НЕ видит эти события для заданий браузера).
+    # Значит, единственный способ получать progress для заданий, которые
+    # ставит в очередь Imagine, -- держать ОДНО WS-соединение к ComfyUI на
+    # весь процесс, открытое с ТЕМ ЖЕ client_id, каким Imagine ставит
+    # прompt'ы -- см. progress_forwarder.py. Отсюда -- модульная константа
+    # вместо self.client_id = str(uuid.uuid4()) в каждом __init__.
+    _PROCESS_CLIENT_ID = str(uuid.uuid4())
+
     def __init__(self, host: str, port: int, timeout: float = 10.0):
         self.host = host
         self.port = port
         self.timeout = timeout
-        self.client_id = str(uuid.uuid4())
+        self.client_id = ComfyClient._PROCESS_CLIENT_ID
 
     @property
     def base_url(self) -> str:
@@ -181,3 +199,10 @@ class ComfyClient:
         # запасной путь, прежде чем сдаваться.
         full = self.get_object_info()
         return full.get(node_class) if isinstance(full, dict) else None
+
+
+# Удобный алиас для progress_forwarder.py -- ему нужен ТОЛЬКО сам
+# client_id (для открытия WS-соединения с ComfyUI), без создания целого
+# ComfyClient с host/port/timeout (см. докстринг ComfyClient._PROCESS_CLIENT_ID
+# про то, почему это значение вообще должно быть одно на процесс).
+PROCESS_CLIENT_ID = ComfyClient._PROCESS_CLIENT_ID

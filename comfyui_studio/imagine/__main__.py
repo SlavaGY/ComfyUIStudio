@@ -13,6 +13,12 @@ uvicorn вместо QApplication (Imagine — веб-инструмент, от
     --port           порт Imagine (по умолчанию 7860)
     --comfy-host     адрес уже поднятого Studio ComfyUI
     --comfy-port     порт уже поднятого Studio ComfyUI
+    --remote-port    порт Remote (comfyui_studio/remote/, см.
+                      ComfyUIStudio_Remote_Roadmap.md, этап 3) -- если
+                      задан, фоновая задача progress_forwarder.py
+                      пересылает туда generation.progress; необязателен,
+                      без него Imagine работает как раньше, просто без
+                      пересылки прогресса (см. докстринг progress_forwarder.py)
     --dev            включить дев-режим (аналог run.bat dev у
                       самостоятельного запуска, см. backend/main.py)
 
@@ -44,6 +50,7 @@ def _parse_args(argv):
     parser.add_argument("--port", type=int, default=7860)
     parser.add_argument("--comfy-host", default=None)
     parser.add_argument("--comfy-port", type=int, default=None)
+    parser.add_argument("--remote-port", type=int, default=None)
     parser.add_argument("--dev", action="store_true")
     return parser.parse_args(argv)
 
@@ -61,6 +68,8 @@ def main(argv=None):
         os.environ["IMAGINE_COMFY_HOST"] = args.comfy_host
     if args.comfy_port:
         os.environ["IMAGINE_COMFY_PORT"] = str(args.comfy_port)
+    if args.remote_port:
+        os.environ["IMAGINE_REMOTE_PORT"] = str(args.remote_port)
 
     import uvicorn
 

@@ -7,8 +7,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/css/style.css">
-<link rel="stylesheet" href="/css/themes.css">
+<!-- ОТНОСИТЕЛЬНЫЕ пути (без ведущего "/") -- см. подробное объяснение у
+     /api/upload-image в imagine/backend/main.py: страница открывается и
+     по собственному адресу Imagine, и через reverse-proxy Remote
+     (/apps/imagine/, см. remote/imagine_proxy.py, этап 4 дорожной карты
+     Remote) -- с ведущим "/" браузер резолвил бы эти пути от корня
+     ORIGIN, а не от текущей страницы, и при заходе через прокси
+     промахивался бы мимо него. -->
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/themes.css">
 </head>
 <body>
 
@@ -322,7 +329,7 @@
   </div>
 </div>
 
-<script src="/js/i18n.js"></script>
-<script src="/js/app.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>

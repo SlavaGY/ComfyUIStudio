@@ -6,6 +6,7 @@
 
 import os
 import sys
+import urllib.error
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon
@@ -19,6 +20,13 @@ from ..core.config import build_extra_launch_args, load_config, prepare_launch_s
 from ..core.constants import APP_NAME, PROJECT_ROOT
 from ..core.imagine_process import ImagineProcess
 from ..core.logging_setup import ICON_PATH, log, set_console_log_level
+from ..core.remote_process import (
+    RemoteProcess,
+    call_local_api,
+    extract_error_detail,
+    get_lan_ip,
+    is_remote_available,
+)
 from ..core.system_monitor import ResourceMonitor
 from ..integration.comfy_theme import COMFY_PALETTE_MAP, sync_comfyui_color_palette
 from .browser_page import BrowserPage
@@ -48,6 +56,15 @@ class MainWindow(QMainWindow):
         # когда cfg["interface"] == "imagine"; None во всех остальных
         # случаях, в т.ч. пока ComfyUI ещё запускается.
         self.imagine_process = None
+        # НОВОЕ (Remote, этап 1 дорожной карты
+        # ComfyUIStudio_Remote_Roadmap.md): процесс Remote API
+        # (comfyui_studio/remote/) -- полностью независим от
+        # comfy_process/imagine_process (см. §0.1 дорожной карты),
+        # включается/выключается отдельным переключателем в настройках
+        # (ui/settings/remote_page.py) и живёт своей жизнью независимо от
+        # того, запущен ли сейчас ComfyUI.
+        self.remote_process = None
+        self._remote_ready_attempts = 0
         self._quitting = False
         # НОВОЕ: см. restart_studio()/closeEvent() ниже -- этап 4
         # дорожной карты, доработка по замечанию пользователя (кнопки
@@ -75,6 +92,12 @@ class MainWindow(QMainWindow):
         self.settings_page.cancel_requested.connect(self._on_launch_cancelled)
         self.settings_page.quit_studio_requested.connect(self.quit_studio)
         self.settings_page.restart_studio_requested.connect(self.restart_studio)
+        self.settings_page.remote_enable_toggled.connect(self._on_remote_enable_toggled)
+        self.settings_page.remote_pairing_requested.connect(self._on_remote_pairing_requested)
+        self.settings_page.remote_refresh_devices_requested.connect(
+            self._on_remote_refresh_devices_requested
+        )
+        self.settings_page.remote_revoke_requested.connect(self._on_remote_revoke_requested)
 
         self.launch_watcher = LaunchWatcher(loc=self.loc, parent=self)
         self.launch_watcher.ready.connect(self._on_server_ready)
@@ -116,6 +139,14 @@ class MainWindow(QMainWindow):
             self.resource_monitor.feed_log_line
         )
         self.resource_monitor.start()
+
+        # НОВОЕ (Remote, этап 1): поднимаем Remote сразу при старте
+        # лаунчера, если он был включён в прошлый раз -- НЕ дожидаясь
+        # запуска ComfyUI (в отличие от Imagine, который стартует только
+        # вслед за готовым ComfyUI-сервером, см. _on_server_ready() ниже;
+        # у Remote нет такой зависимости, см. §0.1 дорожной карты).
+        if self.cfg.get("remote", {}).get("enabled"):
+            self._start_remote()
 
     # -- лог процесса ComfyUI -----------------------------------------
 
@@ -207,6 +238,15 @@ class MainWindow(QMainWindow):
             comfy_host="127.0.0.1",
             comfy_port=self.cfg["port"],
             dev_mode=bool(imagine_cfg.get("dev_mode", False)),
+            # НОВОЕ (Remote, этап 3 дорожной карты): передаём НАСТРОЕННЫЙ
+            # порт Remote вне зависимости от того, включён ли Remote и
+            # запущен ли он прямо сейчас -- если нет, progress_forwarder.py
+            # внутри Imagine просто не сможет достучаться (см. его
+            # докстринг про best-effort), сам Imagine это никак не
+            # затрагивает. Полная независимость Imagine от Remote (см.
+            # §0.1 дорожной карты) сохранена -- это лишь один
+            # необязательный аргумент запуска.
+            remote_port=self.cfg.get("remote", {}).get("port"),
         )
         try:
             self.imagine_process.start()
@@ -326,6 +366,157 @@ class MainWindow(QMainWindow):
         self._quitting = True
         self.close()
 
+    # -- Remote (этап 1 дорожной карты ComfyUIStudio_Remote_Roadmap.md):
+    # эта секция — единственное место, которое реально владеет
+    # RemoteProcess и делает HTTP-вызовы к нему; ui/settings/remote_page.py
+    # сама ничего не запускает и не дёргает, только эмитит сигналы и ждёт
+    # обратного вызова (см. её докстринг) -----------------------------
+
+    def _start_remote(self):
+        # НАЙДЕНО ПРИ ЖИВОМ ТЕСТИРОВАНИИ (2026-09-06): self.cfg -- снимок
+        # конфига, загруженный при старте MainWindow (см. __init__) или
+        # обновлённый только через _on_launch() (кнопка "Запустить
+        # ComfyUI"), а настройки Remote в разделе "Удалённый доступ"
+        # сохраняются АВТОСОХРАНЕНИЕМ прямо из AppSettingsDialog (см.
+        # app_settings_dialog.py, _auto_save/save_config) -- НЕ через
+        # self.cfg этого окна. Итог: изменение чекбокса "Разрешить доступ
+        # по локальной сети" реально писалось на диск, но со следующего
+        # запуска Remote всё равно бы использовался старый self.cfg этого
+        # окна -- перезапуск Remote (и даже перезапуск всей Studio без
+        # этого фикса) не подхватывал новое значение "host". Поэтому
+        # здесь -- свежая загрузка конфига С ДИСКА, а не self.cfg.
+        fresh_cfg = load_config()
+        remote_cfg = fresh_cfg.get("remote", {})
+        port = remote_cfg.get("port", 7861)
+        host = remote_cfg.get("host", "127.0.0.1")
+        imagine_port = fresh_cfg.get("imagine", {}).get("port")
+        try:
+            self.remote_process = RemoteProcess(
+                host=host,
+                port=port,
+                comfy_host="127.0.0.1",
+                comfy_port=fresh_cfg.get("port"),
+                imagine_port=imagine_port,
+            )
+            self.remote_process.start()
+        except RuntimeError as e:
+            log.error("Не удалось запустить Remote: %s", e)
+            self.remote_process = None
+            self.settings_page.set_remote_running_state(False, error=str(e))
+            return
+        self._remote_ready_attempts = 0
+        QTimer.singleShot(300, self._poll_remote_ready)
+
+    def _poll_remote_ready(self):
+        """Простой опрос готовности без отдельного класса-watcher (в
+        отличие от LaunchWatcher/ImagineLaunchWatcher) -- достаточно для
+        этапа 1: пользователь и так ждёт, глядя на статус в настройках, а
+        не на прогресс-бар главного экрана."""
+        if self.remote_process is None:
+            return
+        if not self.remote_process.is_running():
+            code = self.remote_process.exit_code()
+            log.error("Процесс Remote завершился раньше времени, код выхода: %s", code)
+            self.settings_page.set_remote_running_state(
+                False,
+                error=f"процесс неожиданно завершился (код выхода {code}), подробности в логе",
+            )
+            self.remote_process = None
+            return
+        if is_remote_available(self.remote_process.port):
+            self.settings_page.set_remote_running_state(True)
+            # НОВОЕ: если Remote слушает не только localhost (см.
+            # host="0.0.0.0" в настройках -- чекбокс "Разрешить доступ по
+            # локальной сети"), подсказываем человеку готовый адрес для
+            # телефона, вместо того чтобы заставлять его самостоятельно
+            # искать LAN-IP этого ПК в настройках Windows.
+            if self.remote_process.host != "127.0.0.1":
+                lan_ip = get_lan_ip()
+                url = f"http://{lan_ip}:{self.remote_process.port}/" if lan_ip else None
+                self.settings_page.show_lan_url(url)
+            else:
+                self.settings_page.show_lan_url(None)
+            return
+        self._remote_ready_attempts += 1
+        if self._remote_ready_attempts >= 20:  # ~6 секунд при шаге 300мс
+            self.settings_page.set_remote_running_state(
+                False, error="не поднялся вовремя, подробности в логе"
+            )
+            return
+        QTimer.singleShot(300, self._poll_remote_ready)
+
+    def _stop_remote(self):
+        if self.remote_process:
+            self.remote_process.stop()
+            self.remote_process = None
+        self.settings_page.set_remote_running_state(False)
+
+    def _on_remote_enable_toggled(self, enabled: bool):
+        if enabled:
+            if self.remote_process is None:
+                self._start_remote()
+        else:
+            self._stop_remote()
+
+    def _on_remote_pairing_requested(self):
+        if self.remote_process is None or not self.remote_process.is_running():
+            self.settings_page.show_remote_pairing_error(
+                "Remote не запущен -- включите удалённый доступ."
+            )
+            return
+        try:
+            result = call_local_api(
+                self.remote_process.port, "POST", "/api/v1/remote/pair/start"
+            )
+        except urllib.error.HTTPError as e:
+            self.settings_page.show_remote_pairing_error(extract_error_detail(e))
+            return
+        except urllib.error.URLError as e:
+            self.settings_page.show_remote_pairing_error(str(e))
+            return
+        self.settings_page.show_remote_pairing_code(
+            result["code"], result["expires_at"], result["attempts_left"]
+        )
+
+    def _on_remote_refresh_devices_requested(self):
+        if self.remote_process is None or not self.remote_process.is_running():
+            self.settings_page.show_remote_devices_error(
+                "Remote не запущен -- включите удалённый доступ."
+            )
+            return
+        try:
+            devices = call_local_api(
+                self.remote_process.port, "GET", "/api/v1/remote/devices"
+            )
+        except urllib.error.HTTPError as e:
+            self.settings_page.show_remote_devices_error(extract_error_detail(e))
+            return
+        except urllib.error.URLError as e:
+            self.settings_page.show_remote_devices_error(str(e))
+            return
+        self.settings_page.set_remote_devices(devices or [])
+
+    def _on_remote_revoke_requested(self, device_ids: list):
+        if self.remote_process is None or not self.remote_process.is_running():
+            self.settings_page.show_remote_devices_error(
+                "Remote не запущен -- включите удалённый доступ."
+            )
+            return
+        for device_id in device_ids:
+            try:
+                call_local_api(
+                    self.remote_process.port,
+                    "POST",
+                    f"/api/v1/remote/devices/{device_id}/revoke",
+                )
+            except urllib.error.HTTPError as e:
+                self.settings_page.show_remote_devices_error(extract_error_detail(e))
+                return
+            except urllib.error.URLError as e:
+                self.settings_page.show_remote_devices_error(str(e))
+                return
+        self._on_remote_refresh_devices_requested()
+
     def quit_studio(self):
         """Полностью закрывает ВСЮ ComfyUI Studio (лаунчер + окна
         остальных инструментов, если открыты) -- то же самое, что пункт
@@ -395,6 +586,10 @@ class MainWindow(QMainWindow):
 
         self.resource_monitor.stop()
         self.tray.hide()
+        # Remote независим от ComfyUI (см. §0.1 дорожной карты) -- всегда
+        # останавливается при настоящем выходе, независимо от того, был
+        # ли запущен ComfyUI (ветка выше это решение уже приняла).
+        self._stop_remote()
 
         # Явно отвязываем страницу ComfyUI от вида перед выходом (как и
         # при возврате в настройки без остановки, см. unload() выше) --

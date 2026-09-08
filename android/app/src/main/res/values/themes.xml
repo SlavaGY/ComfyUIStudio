@@ -1,0 +1,11 @@
+<resources>
+    <!-- Тёмная тема по умолчанию — терминал зеркалит домашнюю страницу
+         Remote (routes/home.py на сервере тоже тёмная, #111/#222), а не
+         вводит свою отдельную цветовую тему поверх ещё до появления
+         WebView — резкий белый Splash перед тёмной страницей был бы
+         заметной вспышкой на телефоне. -->
+    <style name="Theme.ComfyUIStudioTerminal" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:statusBarColor">@color/background</item>
+    </style>
+</resources>

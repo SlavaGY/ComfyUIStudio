@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "783028252926",
+    "project_id": "cuis-c2587",
+    "storage_bucket": "cuis-c2587.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:783028252926:android:206365069ba789ae6475af",
+        "android_client_info": {
+          "package_name": "com.comfyuistudio.terminal"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAmJnyVPozO2cJUMrajFuSyhj1tlzOoqHU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

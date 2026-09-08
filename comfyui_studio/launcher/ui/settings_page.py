@@ -52,6 +52,15 @@ class SettingsPage(QWidget):
     # в launcher_window.py.
     quit_studio_requested = Signal()
     restart_studio_requested = Signal()
+    # НОВОЕ (Remote, этап 1 дорожной карты) -- чистая ретрансляция тех же
+    # сигналов AppSettingsDialog.remote_* дальше вверх, к MainWindow
+    # (launcher_window.py), которому и принадлежит RemoteProcess (см.
+    # докстринг RemoteSettingsPage про разделение "страница просит --
+    # MainWindow делает").
+    remote_enable_toggled = Signal(bool)
+    remote_pairing_requested = Signal()
+    remote_refresh_devices_requested = Signal()
+    remote_revoke_requested = Signal(list)
 
     def __init__(self, cfg, theme_manager: ThemeManager, loc=None, parent=None):
         super().__init__(parent)
@@ -108,6 +117,12 @@ class SettingsPage(QWidget):
         self.settings_dialog.language_changed.connect(self.language_changed.emit)
         self.settings_dialog.quit_studio_requested.connect(self.quit_studio_requested.emit)
         self.settings_dialog.restart_studio_requested.connect(self.restart_studio_requested.emit)
+        self.settings_dialog.remote_enable_toggled.connect(self.remote_enable_toggled.emit)
+        self.settings_dialog.remote_pairing_requested.connect(self.remote_pairing_requested.emit)
+        self.settings_dialog.remote_refresh_devices_requested.connect(
+            self.remote_refresh_devices_requested.emit
+        )
+        self.settings_dialog.remote_revoke_requested.connect(self.remote_revoke_requested.emit)
 
         settings_row = QHBoxLayout()
         self.settings_btn = QPushButton(self._tr("Настройки..."))
@@ -207,6 +222,28 @@ class SettingsPage(QWidget):
             self.running_label.setText(f"ComfyUI уже запущен на порту {port}")
         self.launch_btn.setEnabled(not running)
         self.settings_dialog.set_running_state(running)
+
+    # -- Remote (этап 1 дорожной карты): ретрансляция вниз, к
+    # AppSettingsDialog/RemoteSettingsPage -- см. remote_enable_toggled и
+    # соседние сигналы выше -----------------------------------------------
+
+    def set_remote_running_state(self, running: bool, error: str | None = None) -> None:
+        self.settings_dialog.set_remote_running_state(running, error)
+
+    def show_lan_url(self, url: str | None) -> None:
+        self.settings_dialog.show_lan_url(url)
+
+    def show_remote_pairing_code(self, code: str, expires_at_text: str, attempts_left: int) -> None:
+        self.settings_dialog.show_remote_pairing_code(code, expires_at_text, attempts_left)
+
+    def show_remote_pairing_error(self, message: str) -> None:
+        self.settings_dialog.show_remote_pairing_error(message)
+
+    def set_remote_devices(self, devices: list) -> None:
+        self.settings_dialog.set_remote_devices(devices)
+
+    def show_remote_devices_error(self, message: str) -> None:
+        self.settings_dialog.show_remote_devices_error(message)
 
     # -- прогресс запуска (вместо отдельной страницы) --------------------
 

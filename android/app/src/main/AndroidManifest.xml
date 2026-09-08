@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Discovery (NsdManager) + сам HTTP/WS-трафик к Remote API. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- CHANGE_WIFI_MULTICAST_STATE — на части устройств mDNS-пакеты
+         (multicast) без него не доходят при агрессивном сне Wi-Fi;
+         NsdManager сам берёт мультикаст-лок под капотом на большинстве
+         прошивок, но разрешение всё равно требуется декларативно. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- §Этап 6.5 — без него на API 33+ notify() в FcmService.kt
+         молча ничего не показывает, даже если система разрешение уже
+         как бы "дала" по умолчанию для старых приложений: начиная с
+         API 33 это ОБЯЗАН быть runtime-запрос (см. MainActivity.kt). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="false"
+        android:label="ComfyUI Studio"
+        android:theme="@style/Theme.ComfyUIStudioTerminal"
+        android:usesCleartextTraffic="true">
+        <!-- usesCleartextTraffic — Remote API этапа 6 обслуживает
+             только голый http:// в пределах LAN (см. proxy_auth.py на
+             сервере, docstring про Secure-куки и §9 дорожной карты про
+             VPN как отдельный будущий слой) — без этого флага система
+             с API 28+ молча блокирует все запросы к http://<lan-ip>. -->
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="ComfyUI Studio">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".terminal.TerminalActivity"
+            android:exported="false"
+            android:label="ComfyUI Studio"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <!-- §Этап 6.5 — FirebaseMessagingService. exported=false: этот
+             сервис вызывается только самим Firebase SDK изнутри
+             процесса приложения, никогда напрямую системой/другими
+             приложениями. Работает и без google-services.json (см.
+             app/build.gradle.kts) — просто никогда не получит
+             реального токена/сообщения, декларация в манифесте от
+             этого не становится некорректной. -->
+        <service
+            android:name=".fcm.FcmService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

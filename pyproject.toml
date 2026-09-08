@@ -60,11 +60,46 @@ promptvault = [
 # "Интерфейс: Imagine" в разделе настроек ComfyUI (ui/settings/
 # comfyui_page.py) при попытке запуска покажет понятную ошибку вместо
 # ImportError где-то в глубине imagine_process.py.
+#
+# ЭТА ЖЕ группа используется Remote (comfyui_studio/remote/, см.
+# launcher/core/remote_process.py, ComfyUIStudio_Remote_Roadmap.md,
+# этап 1) — тот же набор fastapi/uvicorn/pydantic/python-multipart,
+# отдельной группы `remote` сознательно не заводили: Remote появился
+# позже Imagine, когда эти зависимости уже были в проекте, а держать
+# два одинаковых списка версий было бы источником рассинхронизации.
+# Если Remote и Imagine когда-нибудь разойдутся по версиям своих
+# зависимостей — тогда это стоит разделить.
 imagine = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
     "pydantic>=2",
     "python-multipart>=0.0.9",
+    # НОВОЕ (Remote, этап 3 дорожной карты): async WS-клиент внутри
+    # comfyui_studio/imagine/backend/progress_forwarder.py (Imagine ->
+    # ComfyUI, трансляция progress в Remote) -- та же библиотека, что
+    # уже была в dev-группе НИЖЕ исключительно ради
+    # tests/launcher/test_comfy_ws.py, теперь нужна и в рантайме
+    # Imagine, не только в тестах.
+    "websockets>=13.0",
+    # НОВОЕ (Remote, этап 4 дорожной карты): async HTTP-клиент внутри
+    # comfyui_studio/remote/imagine_proxy.py (reverse-proxy Remote ->
+    # Imagine, см. §4/§0.3 -- "Что на сервере"). FastAPI и так тянет
+    # httpx транзитивно (используется его собственным TestClient), но
+    # это не гарантирует конкретную версию/наличие в рантайме без
+    # прямого объявления -- поэтому здесь явно.
+    "httpx>=0.27",
+    # НОВОЕ (Remote, этап 5 дорожной карты): mDNS-объявление Remote в
+    # локальной сети (comfyui_studio/remote/mdns.py, §5 -- "mDNS
+    # discovery"). Используется async-API (zeroconf.asyncio) -- версия
+    # с этим модулем стабильна уже много лет, нижняя граница здесь
+    # мягкая, как и у остальных зависимостей этой группы.
+    "zeroconf>=0.135",
+    # НОВОЕ (Remote, этап 6.5 дорожной карты): OAuth2 к Google для
+    # отправки push через FCM HTTP v1 API (comfyui_studio/remote/fcm.py,
+    # §Этап 6.5 -- "Push-уведомления"). Только для service-account JWT/
+    # обновления access-токена -- сама отправка сообщения обычным
+    # urllib, поэтому не нужен более тяжёлый google-cloud-messaging.
+    "google-auth>=2.28",
 ]
 
 # Инструменты разработки (pytest/ruff/mypy) — этап 5 дорожной карты
@@ -80,9 +115,17 @@ imagine = [
 # tests/launcher/test_comfy_ws.py — там поднимается настоящий локальный
 # WS-сервер, чтобы проверить ComfyWebSocketClient (core/comfy_ws.py) на
 # реальном разборе смешанных текстовых/бинарных фреймов, а не на моке.
-# Рантайму приложения эта библиотека не нужна: клиентская сторона
-# WebSocket в самом приложении -- PySide6.QtWebSockets (уже часть
-# основной зависимости PySide6 выше), НЕ пакет `websockets`.
+# Клиентская сторона WebSocket в самом лаунчере -- PySide6.QtWebSockets
+# (уже часть основной зависимости PySide6 выше), НЕ пакет `websockets`.
+#
+# ОБНОВЛЕНО (Remote, этап 3 дорожной карты): пакет `websockets` версией
+# младше уже перечислен и в группе `imagine` выше — тот же самый пакет
+# (не дублируем версию здесь второй раз внутри группы `dev`, а полагаемся
+# на то, что группы extras можно комбинировать: `pip install .[dev]`
+# уже не подтянет её отдельно от той, что в `imagine`, если обе группы
+# указаны с одной и той же нижней границей версии) нужен теперь и в
+# рантайме самого Imagine (comfyui_studio/imagine/backend/
+# progress_forwarder.py), а не только тестам.
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",

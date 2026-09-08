@@ -1,0 +1,6 @@
+<resources>
+    <color name="background">#111111</color>
+    <color name="surface">#222222</color>
+    <color name="accent">#4C8DFF</color>
+    <color name="error">#E5484D</color>
+</resources>

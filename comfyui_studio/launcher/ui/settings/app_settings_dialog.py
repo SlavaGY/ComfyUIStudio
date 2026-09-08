@@ -54,6 +54,7 @@ from .comfyui_page import ComfyUISettingsPage
 from .general_page import GeneralSettingsPage
 from .prompt_builder_page import PromptBuilderSettingsPage
 from .promptvault_page import PromptVaultSettingsPage
+from .remote_page import RemoteSettingsPage
 
 
 class AppSettingsDialog(QDialog):
@@ -65,6 +66,16 @@ class AppSettingsDialog(QDialog):
     # MainWindow.quit_studio()/restart_studio() (launcher_window.py).
     quit_studio_requested = Signal()
     restart_studio_requested = Signal()
+    # НОВОЕ (Remote, этап 1 дорожной карты): этот диалог сам не
+    # управляет процессом Remote и не делает HTTP-вызовов (см. докстринг
+    # RemoteSettingsPage) -- просто ретранслирует его сигналы наружу,
+    # ровно как quit_studio_requested/restart_studio_requested выше;
+    # MainWindow (launcher_window.py) — единственный владелец
+    # RemoteProcess.
+    remote_enable_toggled = Signal(bool)
+    remote_pairing_requested = Signal()
+    remote_refresh_devices_requested = Signal()
+    remote_revoke_requested = Signal(list)
 
     AUTOSAVE_DEBOUNCE_MS = 400
 
@@ -102,6 +113,7 @@ class AppSettingsDialog(QDialog):
         # см. её докстринг.
         self.promptvault_page = PromptVaultSettingsPage(loc, parent=self)
         self.advanced_page = AdvancedSettingsPage(cfg, loc, parent=self)
+        self.remote_page = RemoteSettingsPage(cfg, loc, parent=self)
 
         # (заголовок дерева, страница) -- см. _add_section ниже; заголовки
         # "ComfyUI"/"Prompt Builder"/"PromptVault" не переводятся -- это
@@ -113,6 +125,7 @@ class AppSettingsDialog(QDialog):
             ("ComfyUI", self.comfyui_page),
             ("Prompt Builder", self.prompt_builder_page),
             ("PromptVault", self.promptvault_page),
+            (self._tr("Удалённый доступ"), self.remote_page),
             (self._tr("Дополнительно"), self.advanced_page),
         ]
         self._tree_items: list[QTreeWidgetItem] = []
@@ -128,6 +141,13 @@ class AppSettingsDialog(QDialog):
         self.advanced_page.reset_confirmed.connect(self._on_reset_confirmed)
         self.advanced_page.quit_requested.connect(self._on_quit_requested)
         self.advanced_page.restart_requested.connect(self._on_restart_requested)
+        self.remote_page.changed.connect(self._schedule_autosave)
+        self.remote_page.enable_toggled.connect(self.remote_enable_toggled.emit)
+        self.remote_page.pairing_requested.connect(self.remote_pairing_requested.emit)
+        self.remote_page.refresh_devices_requested.connect(
+            self.remote_refresh_devices_requested.emit
+        )
+        self.remote_page.revoke_requested.connect(self.remote_revoke_requested.emit)
 
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
@@ -167,11 +187,34 @@ class AppSettingsDialog(QDialog):
         cfg = dict(self.cfg)
         cfg.update(self.comfyui_page.collect())
         cfg.update(self.advanced_page.collect())
+        cfg.update(self.remote_page.collect())
         self.cfg = cfg
         self.comfyui_page.cfg = cfg
         self.advanced_page.cfg = cfg
         save_config(cfg)
         log.debug("Настройки автосохранены (единое дерево настроек)")
+
+    # -- Remote (этап 1 дорожной карты): чистая ретрансляция вызовов от
+    # launcher_window.py вниз, к RemoteSettingsPage -- сам этот диалог
+    # не хранит никакого состояния Remote, см. докстринг класса ---------
+
+    def set_remote_running_state(self, running: bool, error: str | None = None) -> None:
+        self.remote_page.set_running_state(running, error)
+
+    def show_lan_url(self, url: str | None) -> None:
+        self.remote_page.show_lan_url(url)
+
+    def show_remote_pairing_code(self, code: str, expires_at_text: str, attempts_left: int) -> None:
+        self.remote_page.show_pairing_code(code, expires_at_text, attempts_left)
+
+    def show_remote_pairing_error(self, message: str) -> None:
+        self.remote_page.show_pairing_error(message)
+
+    def set_remote_devices(self, devices: list) -> None:
+        self.remote_page.set_devices(devices)
+
+    def show_remote_devices_error(self, message: str) -> None:
+        self.remote_page.show_devices_error(message)
 
     # -- язык -------------------------------------------------------------
 
@@ -226,6 +269,7 @@ class AppSettingsDialog(QDialog):
             "ComfyUI",
             "Prompt Builder",
             "PromptVault",
+            self._tr("Удалённый доступ"),
             self._tr("Дополнительно"),
         ]
         for item, title in zip(self._tree_items, titles):
@@ -234,4 +278,5 @@ class AppSettingsDialog(QDialog):
         self.comfyui_page.retranslate_ui()
         self.prompt_builder_page.retranslate_ui()
         self.promptvault_page.retranslate_ui()
+        self.remote_page.retranslate_ui()
         self.advanced_page.retranslate_ui()

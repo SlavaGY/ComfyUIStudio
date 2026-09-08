@@ -1,5 +1,18 @@
 // Imagine — фронтенд. Ванильный JS, без сборки.
 //
+// ВАЖНО: все fetch()-пути здесь ОТНОСИТЕЛЬНЫЕ (без ведущего "/", напр.
+// 'api/mode', а не '/api/mode') -- страница открывается и по
+// собственному адресу Imagine (http://127.0.0.1:<imagine_port>/), и
+// через reverse-proxy Remote (http://127.0.0.1:<remote_port>/apps/imagine/,
+// см. comfyui_studio/remote/imagine_proxy.py, этап 4 дорожной карты
+// Remote). Абсолютный путь резолвился бы браузером от корня ORIGIN, а
+// не от текущей страницы -- при заходе через прокси такие запросы били
+// бы мимо него (напрямую на порт Remote, где ничего похожего нет, а не
+// в /apps/imagine/..., см. баг, найденный при живом тестировании этапа
+// 4). Это касается и серверных ответов с URL картинок (см. "url" в
+// /api/generate/{id}/status и /api/upload-image, imagine/backend/main.py)
+// -- та же логика, тот же приём.
+//
 // Два независимых способа выбора стиля, оба разом на странице, оба
 // теперь ОДИНАКОВОГО поведения -- одиночный выбор, подсветка активного:
 //  - "Стили" (styletilegrid) -- плоские кликабельные плашки с картинкой.
@@ -71,14 +84,14 @@ function hideLoadingScreen() {
 }
 
 async function loadMode() {
-  const res = await fetch('/api/mode');
+  const res = await fetch('api/mode');
   const data = await res.json();
   state.devMode = !!data.dev;
   el('devToggle').hidden = !state.devMode;
 }
 
 async function loadConfig() {
-  const res = await fetch('/api/config');
+  const res = await fetch('api/config');
   state.config = await res.json();
   const gen = state.config.generation;
   el('steps').value = gen.default_steps;
@@ -96,7 +109,7 @@ async function renderAspectRatios() {
   sel.innerHTML = '';
   let options = state.config.generation.aspect_ratios;
   try {
-    const res = await fetch('/api/aspect-ratios');
+    const res = await fetch('api/aspect-ratios');
     const data = await res.json();
     if (data.options && data.options.length) options = data.options;
   } catch {
@@ -581,7 +594,7 @@ function wireStaticHandlers() {
 
 async function refreshComfyStatus() {
   try {
-    const res = await fetch('/api/comfyui/status');
+    const res = await fetch('api/comfyui/status');
     const data = await res.json();
     const dot = el('statusDot');
     const wasAlive = dot.classList.contains('alive');
@@ -604,7 +617,7 @@ async function refreshComfyStatus() {
 async function onStartComfy() {
   el('startComfyBtn').disabled = true;
   try {
-    const res = await fetch('/api/comfyui/start', { method: 'POST' });
+    const res = await fetch('api/comfyui/start', { method: 'POST' });
     if (!res.ok) {
       const err = await res.json();
       showError(err.detail || t('Не удалось запустить ComfyUI'));
@@ -620,7 +633,7 @@ async function onFreeMemory() {
   btn.disabled = true;
   clearError();
   try {
-    const res = await fetch('/api/comfyui/free-memory', { method: 'POST' });
+    const res = await fetch('api/comfyui/free-memory', { method: 'POST' });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || t('Не удалось выгрузить модели'));
@@ -697,7 +710,7 @@ async function onGenerate() {
   const pendingPlate = addPendingPlate();
 
   try {
-    const res = await fetch('/api/generate', {
+    const res = await fetch('api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -736,7 +749,7 @@ function addPendingPlate() {
 
 async function pollGeneration(promptId, pendingPlate) {
   try {
-    const res = await fetch(`/api/generate/${promptId}/status`);
+    const res = await fetch(`api/generate/${promptId}/status`);
     const data = await res.json();
 
     if (data.state === 'running') {
@@ -913,7 +926,7 @@ async function loadAvailableLoraFiles() {
   datalist3.innerHTML = '';
   hint.textContent = t('запрашиваю список у ComfyUI…');
   try {
-    const res = await fetch('/api/available-loras');
+    const res = await fetch('api/available-loras');
     const data = await res.json();
     for (const f of data.files) {
       const opt = document.createElement('option');
@@ -1116,7 +1129,7 @@ function toggleBoxExpanded(nodeId) {
 }
 
 async function persistConfig() {
-  await fetch('/api/config', {
+  await fetch('api/config', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(state.config),
@@ -1139,7 +1152,7 @@ async function onStyleImageSelected(e) {
   form.append('file', file);
   const preview = el('newStyleImagePreview');
   try {
-    const res = await fetch('/api/upload-image', { method: 'POST', body: form });
+    const res = await fetch('api/upload-image', { method: 'POST', body: form });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || t('Не удалось загрузить картинку'));
