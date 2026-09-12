@@ -99,7 +99,17 @@ imagine = [
     # §Этап 6.5 -- "Push-уведомления"). Только для service-account JWT/
     # обновления access-токена -- сама отправка сообщения обычным
     # urllib, поэтому не нужен более тяжёлый google-cloud-messaging.
-    "google-auth>=2.28",
+    #
+    # ИСПРАВЛЕНО (живой баг 2026-09-08): `google-auth` сам по себе НЕ
+    # тянет `requests` как обязательную зависимость -- модуль
+    # `google.auth.transport.requests.Request` (нужен для обновления
+    # access-токена, см. fcm.py::_load_credentials) требует его
+    # отдельно. Без extras `[requests]` `pip install google-auth`
+    # ставился "успешно", но при первой же попытке импорта падал с
+    # "The requests library is not installed" -- ловилось как ImportError
+    # и маскировалось под общее "google-auth не установлен" (см. историю
+    # диагностики в ComfyUIStudio_Remote_Roadmap.md, этап 6.5).
+    "google-auth[requests]>=2.28",
 ]
 
 # Инструменты разработки (pytest/ruff/mypy) — этап 5 дорожной карты

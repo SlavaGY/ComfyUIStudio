@@ -96,6 +96,48 @@ for _pkg in ("fastapi", "starlette", "uvicorn", "multipart", "websockets", "http
     binaries += _binaries
     hiddenimports += _hiddenimports
 
+# НОВОЕ, забегая вперёд перед этапом 8 дорожной карты Remote (тот же
+# прецедент, что и у LAN-переключателя -- см. "Забегая вперёд" в самом
+# файле роадмапа: собранный .exe регулярно вскрывает то, что `python -m`
+# в разработке не ловит). `google-auth[requests]` (fcm.py, §Этап 6.5,
+# push-уведомления) сам по себе уже один раз давал живой баг именно на
+# уровне зависимостей (см. pyproject.toml -- забыли extras "[requests]"),
+# и есть все основания ожидать второго раунда той же болезни уже на
+# уровне PyInstaller: "google.auth"/"google.oauth2" -- PEP 420 namespace-
+# пакеты, а сами модули (`transport.requests`, `crypt.rsa` и т.п.)
+# импортируются ВНУТРИ google-auth условно/лениво в зависимости от
+# доступных бэкендов -- то есть ровно тот же паттерн "обычный
+# AST-анализ PyInstaller не найдёт сам", что и у fastapi/uvicorn/httpx
+# выше. `collect_all("google.auth")` для namespace-пакета ненадёжен
+# (в отличие от обычных пакетов в цикле выше) -- поэтому явные
+# hiddenimports вместо него; "cryptography" -- обычный (не namespace)
+# пакет со своими бинарными расширениями (hazmat backend), под него
+# collect_all уместен и безопасен, как и для остальных пакетов цикла
+# выше.
+hiddenimports += [
+    "google.auth",
+    "google.auth.transport.requests",
+    "google.auth._helpers",
+    "google.auth.jwt",
+    "google.auth.crypt",
+    "google.auth.crypt.rsa",
+    "google.auth.crypt._cryptography_rsa",
+    "google.oauth2",
+    "google.oauth2.service_account",
+    "google.oauth2._client",
+    "google.oauth2.credentials",
+    "cachetools",
+    "pyasn1",
+    "pyasn1_modules",
+    "rsa",
+    "six",
+]
+for _pkg in ("cryptography",):
+    _datas, _binaries, _hiddenimports = collect_all(_pkg)
+    datas += _datas
+    binaries += _binaries
+    hiddenimports += _hiddenimports
+
 
 a = Analysis(
     ['main.py'],

@@ -22,11 +22,13 @@ load_config()`, что уже используют comfy_launcher.py/app_launche
 сам Remote или как-либо блокировать основную WS-доставку (§2), которая
 работает независимо от push и всегда была и остаётся основным каналом.
 
-Зависимость `google-auth` (см. pyproject.toml) -- только для OAuth2 к
-Google (`service_account.Credentials`/`Request` для обновления
-access-токена); сама отправка сообщения -- обычный `urllib`, без
-дополнительных Google SDK (`google-cloud-messaging` тянет за собой
-значительно больше, чем нужно для одного HTTP POST).
+Зависимость `google-auth[requests]` (см. pyproject.toml — extras `[requests]`
+обязательны, сам `google-auth` не тянет `requests` как обязательную
+зависимость, хотя `google.auth.transport.requests.Request` от него
+требует) -- только для OAuth2 к Google (`service_account.Credentials`/
+`Request` для обновления access-токена); сама отправка сообщения --
+обычный `urllib`, без дополнительных Google SDK (`google-cloud-messaging`
+тянет за собой значительно больше, чем нужно для одного HTTP POST).
 """
 
 from __future__ import annotations
@@ -42,6 +44,20 @@ from ..launcher.core.logging_setup import log
 from .device_store import list_fcm_tokens
 
 FCM_SEND_TIMEOUT_SECONDS = 5.0
+
+
+def _peek_json(path: str) -> Optional[dict]:
+    """Читает файл заново, независимо от того, что произошло при
+    попытке загрузить его как сервис-аккаунт -- используется только для
+    диагностики (см. вызывающий код: различить "это вообще не JSON /
+    файла нет" от "это валидный JSON, но не того типа файла"). Никогда
+    не бросает исключений -- это вспомогательная проверка для текста
+    ошибки, а не часть основной логики."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
 
 _lock = threading.Lock()
 _cached_credentials = None
@@ -63,12 +79,23 @@ def _load_credentials() -> tuple[Optional[str], Optional[str]]:
     try:
         from google.auth.transport.requests import Request
         from google.oauth2 import service_account
-    except ImportError:
+    except ImportError as e:
         # google-auth -- часть стандартных зависимостей проекта (см.
         # pyproject.toml), но не у всех текущих пользователей она уже
         # установлена (обновили код, ещё не переустановили окружение) --
         # это не должно ронять Remote, только тихо отключать push.
-        log.warning("Пакет google-auth не установлен -- push-уведомления недоступны.")
+        #
+        # ВАЖНО: этот except ловит ЛЮБОЙ ImportError из цепочки импортов
+        # выше -- не только "google-auth не установлен вовсе", но и сбой
+        # ЛЮБОЙ его транзитивной зависимости (cryptography, pyasn1,
+        # cffi...), например несовместимую версию/битый нативный модуль.
+        # Раньше здесь логировалось одно и то же сообщение независимо от
+        # реальной причины -- живой случай (2026-09-08): google-auth
+        # был установлен именно в тот venv, которым запускается Remote,
+        # но предупреждение всё равно появлялось -- без текста самого
+        # исключения продиагностировать это было невозможно. Теперь
+        # str(e) всегда попадает в лог.
+        log.warning("Не удалось импортировать google-auth -- push-уведомления недоступны: %s", e)
         return None, None
 
     with _lock:
@@ -81,7 +108,29 @@ def _load_credentials() -> tuple[Optional[str], Optional[str]]:
                     _cached_project_id = json.load(f).get("project_id")
                 _cached_path = path
             except (OSError, ValueError, KeyError) as e:
-                log.error("Не удалось прочитать сервис-аккаунт FCM (%s): %s", path, e)
+                # ЖИВОЙ СЛУЧАЙ (2026-09-08): пользователь указал сюда
+                # android/app/google-services.json (конфиг Android-
+                # приложения — project_info/client/api_key) вместо JSON
+                # сервисного аккаунта (client_email/private_key/
+                # token_uri) — два совершенно разных файла с одного и
+                # того же Firebase-проекта, которые легко перепутать.
+                # _peek_json() читает файл заново и независимо от того,
+                # на каком шаге выше сорвалось исключение (Credentials.
+                # from_service_account_file могла упасть до нашего
+                # собственного open() ниже) — раз файл в принципе
+                # существует и это валидный JSON, можно проверить его
+                # форму и дать точную подсказку вместо общей ошибки.
+                probe = _peek_json(path)
+                if isinstance(probe, dict) and "project_info" in probe:
+                    log.error(
+                        "В настройках push указан android/app/google-services.json "
+                        "(конфиг Android-приложения) — нужен другой файл: JSON "
+                        "сервисного аккаунта из Firebase Console -> Настройки проекта -> "
+                        "Service Accounts -> Generate new private key. (%s)",
+                        path,
+                    )
+                else:
+                    log.error("Не удалось прочитать сервис-аккаунт FCM (%s): %s", path, e)
                 _cached_credentials = None
                 return None, None
 
@@ -158,6 +207,16 @@ def _send_generation_push_unsafe(event: dict) -> None:
                     "title": title,
                     "body": body,
                     "prompt_id": str(event.get("prompt_id", "")),
+                    # НОВОЕ (автосохранение картинок на телефон, см.
+                    # GeneratedImageSaver.kt): исходный "type" события
+                    # ("generation.completed"/"generation.error") --
+                    # раньше клиент мог различить их только по ТЕКСТУ
+                    # заголовка ("Готово" vs "Ошибка генерации"), что
+                    # хрупко (текст мог когда-нибудь измениться/
+                    # локализоваться) -- теперь FcmService.kt сам решает,
+                    # стоит ли идти скачивать картинки, по этому полю, а
+                    # не парся title.
+                    "state": str(event.get("type", "")),
                 },
                 "android": {"priority": "high"},
             }

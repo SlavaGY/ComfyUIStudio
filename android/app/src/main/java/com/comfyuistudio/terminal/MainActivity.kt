@@ -37,9 +37,18 @@ class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    // §Этап "автосохранение сгенерированных картинок" -- см.
+    // GeneratedImageSaver.kt: нужно ТОЛЬКО на API 26-28 (до Scoped
+    // Storage, см. манифест про maxSdkVersion="28" у самого
+    // разрешения) -- на более новых устройствах permission-лаунчер
+    // просто не понадобится (см. requestGalleryPermissionIfNeeded ниже).
+    private val galleryPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestNotificationPermissionIfNeeded()
+        requestGalleryPermissionIfNeeded()
 
         val tokenStore = TokenStore(this)
         if (tokenStore.hasDevice()) {
@@ -69,6 +78,26 @@ class MainActivity : ComponentActivity() {
         ) == PackageManager.PERMISSION_GRANTED
         if (!granted) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    /**
+     * См. GeneratedImageSaver.kt и WRITE_EXTERNAL_STORAGE в манифесте
+     * (maxSdkVersion="28") -- начиная с API 29 (Scoped Storage) запись
+     * собственных файлов приложения в MediaStore разрешения не
+     * требует вовсе, поэтому на таких устройствах это разрешение даже
+     * не значится в манифесте и просто нечего запрашивать. Как и у
+     * уведомлений выше -- отказ ни на что не влияет: сохранение
+     * картинок опционально (см. её же докстринг), не блокирует ни
+     * Pairing, ни Terminal, ни сам push.
+     */
+    private fun requestGalleryPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) return
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.WRITE_EXTERNAL_STORAGE,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            galleryPermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
     }
 }

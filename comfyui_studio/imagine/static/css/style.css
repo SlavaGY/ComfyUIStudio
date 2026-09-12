@@ -486,6 +486,29 @@ textarea:focus, input:focus, select:focus { border-color: var(--accent); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Этап 7 дорожной карты: кнопка "Остановить" -- виден только на
+   плашке, которая реально сейчас исполняется в ComfyUI (см.
+   pollGeneration в app.js, состояние "running"), спрятана по
+   умолчанию через [hidden]. */
+.plate-stop-btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.plate-stop-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+.plate-stop-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 /* ---------------- loading screen ---------------- */
 
 .loading-screen {

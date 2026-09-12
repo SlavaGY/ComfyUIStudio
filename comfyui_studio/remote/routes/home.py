@@ -32,6 +32,8 @@ proxy_auth.py, ограничение здесь не действует) и з�
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
@@ -200,7 +202,16 @@ async def home(request: Request) -> HTMLResponse:
         return HTMLResponse(_UNAUTHORIZED_HTML, status_code=401)
 
     _device_id, token = resolved
-    html = _render_home_html(list_all_apps(), token)
+    # asyncio.to_thread -- та же причина, что и в imagine_proxy.py:
+    # _render_home_html() внутри дёргает app.status_fn() для каждой
+    # плитки, а тот (см. app_launcher.imagine_status()) синхронно
+    # блокирующий (urlopen с таймаутом до 1с). Здесь это не так
+    # критично, как было в proxy (эта страница отдаётся один раз на
+    # заход в терминал, а не на каждую картинку), но тот же паттерн
+    # "блокирующий вызов внутри async def" одинаково не к месту что
+    # там, что тут -- не блокировать event loop Remote целиком, пока
+    # непонятно, запущен ли Imagine.
+    html = await asyncio.to_thread(_render_home_html, list_all_apps(), token)
     response = HTMLResponse(html)
     if request.query_params.get("token"):
         # Токен пришёл в URL -- закрепляем его в куке (см.

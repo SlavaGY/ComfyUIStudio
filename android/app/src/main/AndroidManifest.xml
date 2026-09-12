@@ -15,6 +15,21 @@
          как бы "дала" по умолчанию для старых приложений: начиная с
          API 33 это ОБЯЗАН быть runtime-запрос (см. MainActivity.kt). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Автосохранение сгенерированных картинок (GeneratedImageSaver.kt)
+         — нужно ТОЛЬКО на API 26-28: начиная с API 29 (Scoped Storage)
+         запись в MediaStore для собственных файлов приложения не
+         требует этого разрешения вовсе, поэтому maxSdkVersion="28" —
+         на более новых устройствах система даже не покажет это
+         разрешение в списке запрашиваемых. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <!-- §Этап 9 — WireGuard-туннель (com.wireguard.android:tunnel).
+         Само согласие пользователя на VPN — не манифест-разрешение, а
+         системный диалог через GoBackend.VpnService.prepare(context) +
+         startActivityForResult (runtime-флоу, см. TunnelManager.kt). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <application
         android:allowBackup="false"
@@ -57,5 +72,26 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- §Этап 9 — сам системный VpnService из библиотеки
+             com.wireguard.android:tunnel (не наш класс, мы его только
+             декларируем) — без этой записи GoBackend.VpnService.
+             prepare()/setState(UP, ...) падает в рантайме, т.к. система
+             не находит зарегистрированный VPN-сервис. permission +
+             intent-filter — стандартная декларация для ЛЮБОГО
+             VpnService в Android, не специфика именно этой библиотеки. -->
+        <service
+            android:name="com.wireguard.android.backend.GoBackend$VpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
+        <activity
+            android:name=".tunnel.TunnelSettingsActivity"
+            android:exported="false"
+            android:label="Доступ вне дома (VPN)" />
     </application>
 </manifest>

@@ -38,6 +38,11 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // §Этап 9 (WireGuard-туннель) -- com.wireguard.android:tunnel
+        // использует Java 8+ API (java.time и т.п.) напрямую, без
+        // собственного desugaring -- обязательное требование самой
+        // библиотеки (см. её README), не наша прихоть.
+        isCoreLibraryDesugaringEnabled = true
     }
     kotlinOptions {
         jvmTarget = "17"
@@ -94,6 +99,20 @@ dependencies {
     // по тому же принципу, каким на сервере обошлись без Jinja2 для
     // одной HTML-страницы (см. routes/home.py на сервере).
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // §Этап 9 дорожной карты -- доступ вне домашней сети, вариант A
+    // (системный VpnService, см. ComfyUIStudio_Remote_Roadmap.md).
+    // Именно tunnel-библиотека (не полное GUI-приложение WireGuard) --
+    // то же встраиваемое ядро, что использует официальное приложение,
+    // без его Activity/UI, см. https://github.com/WireGuard/wireguard-android.
+    // Версия -- последняя на Maven Central на момент написания
+    // (проверено веб-поиском, т.к. сетевой доступ из этой песочницы
+    // недоступен для прямой проверки) -- стоит свериться с
+    // https://search.maven.org/artifact/com.wireguard.android/tunnel
+    // перед сборкой на случай более новой версии.
+    implementation("com.wireguard.android:tunnel:1.0.20260102")
+    // Обязательное требование библиотеки выше, см. compileOptions.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

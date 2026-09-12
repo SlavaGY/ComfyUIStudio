@@ -395,6 +395,50 @@ def generate(req: GenerationRequest):
     return {"prompt_id": prompt_id, "seed": seed}
 
 
+@app.get("/api/generate/recent")
+def recent_generations(limit: int = 20):
+    """НОВОЕ (§Этап 6.5 дорожной карты, живой отчёт: несколько генераций
+    в очереди -> несколько push-уведомлений -> каждый переход открывал
+    изолированную сессию с одной картинкой вместо общей галереи). Не
+    завязано на конкретный prompt_id -- отдаёт последние `limit`
+    завершённых генераций разом (см. ComfyClient.get_recent_history),
+    от новых к старым. `initDeepLinkedGeneration()` в app.js вызывает
+    это вместо (а не только вместе с) одиночного опроса одного
+    prompt_id, когда страница открыта по deep-link'у из push -- так все
+    недавние генерации видны сразу, независимо от того, по какому
+    именно уведомлению был переход."""
+    client = get_client()
+    try:
+        entries = client.get_recent_history(limit)
+    except ComfyUIError as exc:
+        raise HTTPException(502, f"ComfyUI недоступен: {exc}") from exc
+
+    items = []
+    for prompt_id, entry in entries:
+        images = workflow.find_output_images(entry)
+        if not images:
+            # Запись есть в истории, но без выходных изображений (напр.
+            # само задание завершилось ошибкой) -- не показываем её в
+            # этом списке; ошибку конкретной генерации, если это была
+            # именно та, что упомянута в уведомлении, по-прежнему видно
+            # через обычный /status (см. app.js -- используется как
+            # запасной путь, если prompt_id из URL не нашёлся здесь).
+            continue
+        items.append({
+            "prompt_id": prompt_id,
+            # Тот же относительный путь и та же причина, что и в
+            # /api/generate/{id}/status выше -- см. комментарий там.
+            "images": [
+                {
+                    "url": f"api/image?filename={img['filename']}"
+                    f"&subfolder={img['subfolder']}&type={img['type']}"
+                }
+                for img in images
+            ],
+        })
+    return {"items": items}
+
+
 @app.get("/api/generate/{prompt_id}/status")
 def generation_status(prompt_id: str):
     client = get_client()

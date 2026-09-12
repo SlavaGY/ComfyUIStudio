@@ -64,6 +64,7 @@ async function init() {
     updateActiveSummary();
     wireStaticHandlers();
     await refreshComfyStatus();
+    await initDeepLinkedGeneration();
   } catch (e) {
     // Не даём экрану загрузки зависнуть навечно, даже если что-то из
     // инициализации упало (например бэкенд ещё не поднялся) -- лучше
@@ -74,6 +75,82 @@ async function init() {
     hideLoadingScreen();
   }
   setInterval(refreshComfyStatus, 6000);
+}
+
+// НОВОЕ (§Этап 6.5 дорожной карты, "Push-уведомления" -- живой отчёт
+// после первого прогона на реальном устройстве): тап по push-
+// уведомлению открывал Imagine с чистого листа -- пустая галерея, а не
+// результат ИМЕННО той генерации, о которой пришло уведомление. Дело в
+// том, что галерея этой страницы целиком в памяти JS текущей загрузки
+// (см. `state`/addPendingPlate/pollGeneration выше) -- она не хранится
+// нигде между перезагрузками страницы САМА ПО СЕБЕ.
+//
+// ВТОРОЙ живой отчёт сразу после первого фикса: несколько генераций в
+// очереди -> несколько push-уведомлений -> каждый переход по
+// уведомлению открывал СВОЮ изолированную сессию с ОДНОЙ картинкой,
+// а не общую галерею со всеми недавними результатами. Причина та же
+// (память JS одной загрузки страницы никак не переживает переход между
+// уведомлениями, если процесс приложения между ними был убит системой,
+// а это обычное дело для свёрнутого Android-приложения) -- но раз мы
+// уже не полагаемся на клиентскую память, разумно сразу показать ВСЕ
+// недавние завершённые генерации, а не одну по prompt_id из конкретного
+// уведомления: `GET /api/generate/recent` отдаёт последние N (по
+// умолчанию сервера) завершённых заданий разом, независимо от того, по
+// какому именно уведомлению был переход.
+async function initDeepLinkedGeneration() {
+  const promptId = new URLSearchParams(location.search).get('prompt_id');
+  if (!promptId) return;
+
+  let items = [];
+  let foundTappedOne = false;
+  try {
+    const res = await fetch('api/generate/recent?limit=20');
+    const data = await res.json();
+    items = data.items || [];
+  } catch (e) {
+    // Сеть/бэкенд подвели -- не страшно, ниже всё равно есть запасной
+    // путь конкретно для той генерации, что упомянута в уведомлении.
+  }
+
+  if (items.length) {
+    el('galleryEmpty').hidden = true;
+    for (const item of items) {
+      if (item.prompt_id === promptId) foundTappedOne = true;
+      for (const img of item.images) {
+        appendPlate(img.url);
+      }
+    }
+  }
+
+  if (!foundTappedOne) {
+    // Генерация из уведомления либо ещё не попала в /history (только
+    // что завершилась/вот-вот завершится -- гонка между push и записью
+    // в историю ComfyUI), либо recent-запрос выше не удался вовсе --
+    // оба случая закрывает уже существующий путь опроса конкретного
+    // prompt_id, тот же, что и для обычной, только что запущенной со
+    // страницы генерации.
+    const pendingPlate = addPendingPlate();
+    state.activeGenerations = (state.activeGenerations || 0) + 1;
+    updateGenerateBtnLabel();
+    pollGeneration(promptId, pendingPlate);
+  }
+}
+
+// Тот же приём, что и insertPlateBefore() ниже (клик -> лайтбокс), но
+// добавляет плашку В КОНЕЦ текущего списка, а не перед конкретным
+// узлом -- нужно для initDeepLinkedGeneration(), которая строит галерею
+// с нуля из уже готового списка (в порядке "от новых к старым", см.
+// /api/generate/recent), а не вставляет один результат в существующую.
+function appendPlate(url) {
+  const plate = document.createElement('div');
+  plate.className = 'plate';
+  const img = document.createElement('img');
+  img.src = url;
+  img.alt = 'generated';
+  plate.appendChild(img);
+  plate.addEventListener('click', () => openLightbox(url));
+  el('galleryGrid').appendChild(plate);
+  return plate;
 }
 
 function hideLoadingScreen() {
@@ -742,9 +819,42 @@ function addPendingPlate() {
   el('galleryEmpty').hidden = true;
   const plate = document.createElement('div');
   plate.className = 'plate plate--pending';
-  plate.innerHTML = '<div class="tray-ripple"></div><span>' + t('генерируется…') + '</span>';
+  plate.innerHTML =
+    '<div class="tray-ripple"></div>' +
+    '<span>' + t('генерируется…') + '</span>' +
+    '<button type="button" class="plate-stop-btn" hidden ' +
+    'title="' + t('Останавливает то, что ComfyUI выполняет прямо сейчас (не только эту генерацию, если их несколько в очереди)') + '">' +
+    t('Остановить') + '</button>';
   el('galleryGrid').prepend(plate);
   return plate;
+}
+
+// Этап 7 дорожной карты: единственное реально доступное в проекте
+// действие с очередью -- POST .../interrupt, который останавливает то,
+// что ComfyUI выполняет ПРЯМО СЕЙЧАС, а не конкретно ту генерацию, чей
+// prompt_id передан в URL (сам параметр бэкендом не используется, см.
+// docstring interrupt() в imagine/backend/main.py) -- отмены именно
+// ОЖИДАЮЩЕГО задания в очереди в проекте нет нигде. Поэтому кнопка
+// показывается только на плашке в состоянии "running" (см.
+// pollGeneration ниже) -- там клик по ней однозначно останавливает
+// именно её, а не что-то чужое.
+async function interruptGeneration(promptId, plate, stopBtn) {
+  stopBtn.disabled = true;
+  stopBtn.textContent = t('останавливается…');
+  // Отмечаем плашку ДО ответа сервера (сам interrupt -- fire-and-forget,
+  // ComfyUI не подтверждает какую генерацию он остановил) -- нужно,
+  // чтобы pollGeneration ниже показал честное "остановлено", а не
+  // "ошибка выполнения", когда ComfyUI зарегистрирует прерывание в
+  // истории как status.completed === False.
+  plate.dataset.userStopped = '1';
+  try {
+    await fetch(`api/generate/${promptId}/interrupt`, { method: 'POST' });
+  } catch (e) {
+    // Сеть моргнула -- следующий тик pollGeneration сам разберётся
+    // (либо статус подтянется, либо покажет "потеряна связь"); кнопку
+    // намеренно оставляем отключённой, чтобы не долбить interrupt
+    // повторно в рамках уже начатой попытки остановки.
+  }
 }
 
 async function pollGeneration(promptId, pendingPlate) {
@@ -752,10 +862,19 @@ async function pollGeneration(promptId, pendingPlate) {
     const res = await fetch(`api/generate/${promptId}/status`);
     const data = await res.json();
 
+    const stopBtn = pendingPlate.querySelector('.plate-stop-btn');
     if (data.state === 'running') {
       pendingPlate.querySelector('span').textContent = t('генерируется…');
+      if (stopBtn && !pendingPlate.dataset.userStopped) {
+        stopBtn.hidden = false;
+        if (!stopBtn.dataset.bound) {
+          stopBtn.dataset.bound = '1';
+          stopBtn.addEventListener('click', () => interruptGeneration(promptId, pendingPlate, stopBtn));
+        }
+      }
     } else if (data.state === 'pending') {
       pendingPlate.querySelector('span').textContent = t('в очереди (#{n})', {n: data.queue_position});
+      if (stopBtn) stopBtn.hidden = true;
     } else if (data.state === 'done') {
       // Готовые изображения встают ровно туда, где была ЭТА плашка
       // ожидания, а не наверх всей галереи -- иначе завершение одной
@@ -769,7 +888,15 @@ async function pollGeneration(promptId, pendingPlate) {
       return;
     } else if (data.state === 'error') {
       pendingPlate.remove();
-      showError(t('ComfyUI сообщил об ошибке выполнения'));
+      // Пользователь сам остановил именно эту генерацию (см.
+      // interruptGeneration выше) -- честно показываем это отдельно от
+      // настоящей ошибки выполнения, обычным info-баннером, а не
+      // тревожным error-баннером.
+      if (pendingPlate.dataset.userStopped) {
+        showInfo(t('Генерация остановлена'));
+      } else {
+        showError(t('ComfyUI сообщил об ошибке выполнения'));
+      }
       finishGeneration();
       return;
     }

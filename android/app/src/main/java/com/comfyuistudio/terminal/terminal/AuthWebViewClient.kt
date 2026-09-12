@@ -38,7 +38,30 @@ import android.webkit.WebViewClient
 class AuthWebViewClient(
     private val onConnectionError: () -> Unit,
     private val onPageLoaded: () -> Unit,
+    private val onLoadStarted: () -> Unit,
 ) : WebViewClient() {
+
+    override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+        super.onPageStarted(view, url, favicon)
+        // НОВОЕ (живой отчёт: "Imagine уходил в загрузку на 2 минуты" +
+        // просьба добавить кнопку "Повторить" на случай "забыл
+        // подключиться к общему Wi-Fi/запустить Studio") --
+        // `onPageStarted` (в отличие от [onReceivedError] ниже) вызывается
+        // документированно ТОЛЬКО для навигаций главного документа --
+        // как для самой первой загрузки из TerminalActivity, так и для
+        // ЛЮБОЙ последующей (переход по ссылке ВНУТРИ WebView, например
+        // с домашней плитки на Imagine) -- про вторые Compose-код в
+        // TerminalActivity в принципе не может узнать сам, только через
+        // этот колбэк. Используется в TerminalWebView, чтобы перезапускать
+        // собственный (короткий) таймаут ожидания загрузки -- см. его
+        // докстринг там же про то, почему [onReceivedError] один
+        // недостаточен: если телефон просто не в той же сети, что ПК,
+        // соединение не завершается быстрой явной ошибкой -- ОС пытается
+        // достучаться и только потом, спустя СВОЙ куда более долгий
+        // таймаут по умолчанию (те самые интервалы "пара минут" из
+        // отчёта), сама вызовет onReceivedError.
+        onLoadStarted()
+    }
 
     override fun onReceivedError(
         view: WebView,

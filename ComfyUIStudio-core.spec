@@ -79,6 +79,35 @@ for _pkg in ("fastapi", "starlette", "uvicorn", "multipart", "websockets", "http
     binaries += _binaries
     hiddenimports += _hiddenimports
 
+# См. тот же блок и подробный комментарий в ComfyUIStudio-full.spec --
+# "google-auth[requests]" (fcm.py, §Этап 6.5) нужен в ОБОИХ профилях
+# (google.auth/google.oauth2 — namespace-пакеты, явные hiddenimports
+# вместо ненадёжного здесь collect_all; "cryptography" — обычный пакет
+# со своими бинарными расширениями, под него collect_all уместен).
+hiddenimports += [
+    "google.auth",
+    "google.auth.transport.requests",
+    "google.auth._helpers",
+    "google.auth.jwt",
+    "google.auth.crypt",
+    "google.auth.crypt.rsa",
+    "google.auth.crypt._cryptography_rsa",
+    "google.oauth2",
+    "google.oauth2.service_account",
+    "google.oauth2._client",
+    "google.oauth2.credentials",
+    "cachetools",
+    "pyasn1",
+    "pyasn1_modules",
+    "rsa",
+    "six",
+]
+for _pkg in ("cryptography",):
+    _datas, _binaries, _hiddenimports = collect_all(_pkg)
+    datas += _datas
+    binaries += _binaries
+    hiddenimports += _hiddenimports
+
 
 a = Analysis(
     ['main.py'],

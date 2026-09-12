@@ -4,9 +4,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.comfyuistudio.terminal.R
+import com.comfyuistudio.terminal.gallery.GeneratedImageSaver
 import com.comfyuistudio.terminal.pairing.RemotePairingClient
 import com.comfyuistudio.terminal.pairing.TokenStore
 import com.comfyuistudio.terminal.terminal.TerminalActivity
@@ -88,7 +90,26 @@ class FcmService : FirebaseMessagingService() {
             // См. докстринг класса про IMAGINE_PATH -- TerminalActivity
             // при наличии этого extra сразу открывает соответствующий
             // апп, а не домашнюю страницу со списком плиток.
-            putExtra(TerminalActivity.EXTRA_OPEN_PATH, IMAGINE_PATH)
+            //
+            // НОВОЕ (живой отчёт после первого прогона на реальном
+            // устройстве, §Этап 6.5): просто открыть IMAGINE_PATH было
+            // недостаточно -- галерея Imagine целиком в памяти JS
+            // текущей загрузки страницы (см. static/js/app.js), поэтому
+            // тап открывал ПУСТУЮ страницу, а не результат ИМЕННО той
+            // генерации, о которой пришло уведомление. `prompt_id` уже
+            // есть в data-payload push-сообщения (см. fcm.py на
+            // сервере) -- добавляем его в query, а фронтенд Imagine
+            // (`initDeepLinkedGeneration()` в app.js) сам подхватывает
+            // его при загрузке и подгружает готовый результат из
+            // истории ComfyUI, независимо от того, какая сессия
+            // изначально запускала генерацию.
+            val promptId = message.data["prompt_id"]
+            val path = if (!promptId.isNullOrBlank()) {
+                "$IMAGINE_PATH?prompt_id=${Uri.encode(promptId)}"
+            } else {
+                IMAGINE_PATH
+            }
+            putExtra(TerminalActivity.EXTRA_OPEN_PATH, path)
         }
         val pendingIntent = PendingIntent.getActivity(
             this, 0, tapIntent,
@@ -110,6 +131,36 @@ class FcmService : FirebaseMessagingService() {
         // здесь просто молча ничего не покажет (стандартное поведение
         // системы), а не упадёт с SecurityException.
         manager?.notify(NOTIFICATION_ID, notification)
+
+        maybeSaveGeneratedImages(message)
+    }
+
+    /**
+     * НОВОЕ (по запросу пользователя после живого теста §Этапа 7):
+     * автосохранение сгенерированных картинок в галерею телефона --
+     * см. докстринг GeneratedImageSaver.kt про то, почему именно push
+     * (а не что-то внутри WebView) -- это единственное событие,
+     * долетающее до телефона независимо от того, открыт ли сейчас
+     * Imagine.
+     *
+     * "state" -- см. НОВОЕ поле в fcm.py на сервере (раньше здесь
+     * пришлось бы сравнивать локализованный текст заголовка "Готово"/
+     * "Ошибка генерации", что хрупко) -- сохраняем только для
+     * успешного завершения, не для ошибок (там и сохранять нечего).
+     */
+    private fun maybeSaveGeneratedImages(message: RemoteMessage) {
+        if (message.data["state"] != "generation.completed") return
+        val promptId = message.data["prompt_id"]?.takeIf { it.isNotBlank() } ?: return
+        val device = TokenStore(applicationContext).load() ?: return
+        // Сетевые вызовы -- не в главном потоке (тот же приём, что и у
+        // onNewToken выше): пара блокирующих HTTP-запросов
+        // (статус + скачивание каждой картинки, см.
+        // GeneratedImageSaver.saveGenerationImages) и запись в
+        // MediaStore не должны выполняться в потоке, в котором система
+        // и так уже вызывает onMessageReceived.
+        thread {
+            GeneratedImageSaver.saveGenerationImages(applicationContext, device, promptId)
+        }
     }
 
     private fun ensureChannel() {

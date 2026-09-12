@@ -149,6 +149,10 @@
     "в очереди (#{n})": "in queue (#{n})",
     "ComfyUI сообщил об ошибке выполнения": "ComfyUI reported an execution error",
     "Потеряна связь с бэкендом во время генерации": "Lost connection to the backend during generation",
+    "Остановить": "Stop",
+    "останавливается…": "stopping…",
+    "Генерация остановлена": "Generation stopped",
+    "Останавливает то, что ComfyUI выполняет прямо сейчас (не только эту генерацию, если их несколько в очереди)": "Stops whatever ComfyUI is executing right now (not only this generation, if several are queued)",
     "запрашиваю список у ComfyUI…": "requesting the list from ComfyUI…",
     "от ComfyUI: {n} файлов LoRA": "from ComfyUI: {n} LoRA files",
     "ComfyUI недоступен и папка LoRA не задана — укажите её ниже, либо впишите путь к файлу вручную":

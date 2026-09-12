@@ -102,6 +102,24 @@ class ComfyClient:
         data = self._get(f"/history/{prompt_id}")
         return data.get(prompt_id)
 
+    def get_recent_history(self, limit: int = 20):
+        """НОВОЕ (§Этап 6.5 дорожной карты, живой отчёт: "запустил 3
+        генерации в очередь, каждое push-уведомление открывает свою
+        изолированную сессию с одной картинкой"). Последние `limit`
+        записей /history -- ВСЕ зарегистрированные задания, а не одно
+        конкретное (в отличие от get_history() выше) -- используется,
+        чтобы показать сразу несколько недавних генераций одним списком
+        (см. /api/generate/recent в main.py и initDeepLinkedGeneration()
+        в app.js), а не по одной на переход по уведомлению.
+
+        Возвращает [(prompt_id, entry), ...] от НОВЫХ к СТАРЫМ -- сам
+        ComfyUI отдаёт /history в порядке завершения (старые первыми,
+        обычный dict с сохранением порядка вставки); разворачиваем
+        здесь один раз, чтобы вызывающему коду не пришлось помнить об
+        этом на каждый вызов."""
+        data = self._get(f"/history?max_items={limit}")
+        return list(reversed(list(data.items())))
+
     def get_queue_position(self, prompt_id: str):
         """(is_running, position_in_pending) -- грубая оценка того, где
         сейчас задание, если его ещё нет в /history."""

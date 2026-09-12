@@ -31,14 +31,36 @@ from starlette.responses import StreamingResponse
 
 from .apps_registry import get_app
 from .proxy_auth import resolve_device_and_token, set_token_cookie
+from .state import runtime
 
 router = APIRouter()
 
 # Один httpx.AsyncClient на процесс Remote -- переиспользует TCP-
 # соединения к Imagine между запросами (тот же принцип, что и у
-# персистентных клиентов в остальном проекте, напр. ComfyAPIClient),
-# вместо нового соединения на каждый проксируемый запрос.
-_client = httpx.AsyncClient(timeout=60.0)
+# персистентных клиентов в остальном проекте, напр. ComfyAPIClient).
+#
+# НАЙДЕННЫЙ БАГ (живой отчёт: "GeneratedImageSaver: timeout" на второй
+# из двух картинок генерации, первая сохранилась нормально): именно
+# keep-alive переиспользование соединения здесь и виновато. У httpx по
+# умолчанию `keepalive_expiry=5.0` (см. httpx.Limits) -- ровно столько
+# же, сколько и таймаут простоя у самого uvicorn Imagine
+# (`timeout_keep_alive`, тоже по умолчанию 5с, см. imagine/__main__.py).
+# Между скачиванием картинки №1 (телефон получил байты, затем ЕЩЁ
+# пишет их в MediaStore -- реальное время на диске) и запросом
+# картинки №2 вполне может пройти больше 5с -- Imagine к тому моменту
+# уже закрыл соединение как простаивающее, а httpx здесь, возможно,
+# ещё не успел заметить это и пытается переиспользовать уже
+# мёртвый сокет -- отсюда зависание на неопределённое время (пока не
+# сработает таймаут TCP уровня ОС, что и даёт наблюдаемые "минуты"),
+# а не быстрая чистая ошибка "соединение разорвано".
+#
+# Раз это трафик на 127.0.0.1 (Remote и Imagine всегда на одной
+# машине, см. §0.3), новое TCP-соединение открывается практически
+# бесплатно -- поэтому проще вообще не переиспользовать соединения
+# для этого клиента (`max_keepalive_connections=0`), чем гоняться за
+# синхронизацией таймаутов простоя между двумя независимыми uvicorn-
+# процессами.
+_client = httpx.AsyncClient(timeout=60.0, limits=httpx.Limits(max_keepalive_connections=0))
 
 # Заголовки, которые нельзя слепо копировать между исходным запросом/
 # ответом и проксируемым:
@@ -71,9 +93,30 @@ async def proxy_imagine(path: str, request: Request):
     app = get_app("imagine")
     if app is None:
         raise HTTPException(status_code=404, detail="Imagine не зарегистрирован в Remote.")
-    target_base = app.proxy_target()
-    if target_base is None:
+    # НАЙДЕННЫЙ БАГ (жалоба "загрузка Imagine иногда занимает минуты"):
+    # раньше здесь стоял `app.proxy_target()`, который под капотом
+    # (`_imagine_target()` в app.py) дёргает СИНХРОННЫЙ, блокирующий
+    # `is_imagine_available()` (`urllib.request.urlopen`, см. её
+    # докстринг в launcher/core/imagine_process.py) -- и делал это на
+    # КАЖДЫЙ проксируемый запрос, то есть на каждую картинку стиля/JS/
+    # CSS отдельно, а не один раз на страницу. Вызов внутри `async def`
+    # без `run_in_threadpool`/`asyncio.to_thread` блокирует ВЕСЬ event
+    # loop процесса Remote целиком (uvicorn однопоточный) на время
+    # каждого такого запроса -- при странице с десятками картинок
+    # стилей эти блокировки суммируются и последовательно "съедают"
+    # секунды-минуты, плюс тормозят вообще всё остальное в Remote,
+    # что крутится в этом же event loop (WebSocket, другие клиенты).
+    #
+    # Отдельная проверка на самом деле избыточна: строкой ниже мы и так
+    # прямо сейчас пытаемся соединиться с Imagine через персистентный
+    # `_client` -- если он реально недоступен, `httpx.HTTPError` ниже
+    # уже ловится и превращается в понятный 502. Поэтому здесь
+    # достаточно знать НАСТРОЕН ли Imagine вообще (просто чтение int из
+    # памяти, без сети) -- а не опрашивать его доступность отдельным
+    # HTTP-запросом на каждый суб-ресурс.
+    if runtime.imagine_port is None:
         raise HTTPException(status_code=503, detail="Imagine сейчас не запущен.")
+    target_base = f"http://127.0.0.1:{runtime.imagine_port}"
 
     upstream_url = f"{target_base}/{path}"
     upstream_headers = {
