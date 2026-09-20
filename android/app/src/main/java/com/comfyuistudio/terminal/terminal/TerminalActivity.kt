@@ -1,6 +1,7 @@
 package com.comfyuistudio.terminal.terminal
 
 import android.annotation.SuppressLint
+import com.comfyuistudio.terminal.BuildConfig
 import android.content.Intent
 import android.os.Bundle
 import android.webkit.CookieManager
@@ -11,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,12 +27,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.comfyuistudio.terminal.fcm.syncFcmTokenIfPaired
 import com.comfyuistudio.terminal.pairing.TokenStore
+import com.comfyuistudio.terminal.sshproxy.SshProxyConfigStore
+import com.comfyuistudio.terminal.sshproxy.SshProxySettingsActivity
+import com.comfyuistudio.terminal.sshproxy.SshSocksProxy
+import com.comfyuistudio.terminal.sshproxy.SshTunnelService
 import com.comfyuistudio.terminal.tunnel.TunnelConfigStore
 import com.comfyuistudio.terminal.tunnel.TunnelSettingsActivity
 import com.comfyuistudio.terminal.tunnel.VpnServiceTunnelProvider
 import com.comfyuistudio.terminal.tunnel.parseTunnelConfig
+import androidx.webkit.ProxyConfig
+import androidx.webkit.ProxyController
+import androidx.webkit.WebViewFeature
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlin.concurrent.thread
 
 // Порог, после которого ожидание загрузки главного документа
@@ -112,16 +123,20 @@ class TerminalActivity : ComponentActivity() {
 private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    // §Этап 9 -- туннель поднимается ТОЛЬКО если пользователь явно
-    // включил его в TunnelSettingsActivity (см. её же "Использовать вне
-    // дома"). Флаг по умолчанию выключен (см. TunnelConfigStore.enabled)
-    // -- значит для всех, кто не настраивал VPN, весь этот блок ничего
-    // не меняет в уже проверенном поведении: tunnelReady сразу true,
-    // TerminalWebView показывается как и раньше, без единого лишнего
-    // кадра ожидания или системного диалога.
+    // §Этап 9 -- ДВА независимых механизма доступа вне дома, у каждого
+    // свой отдельный флаг "включён" (см. докстринг SshProxyConfigStore
+    // про то, что оба МОГУТ быть настроены одновременно). Приоритет --
+    // SSH (вариант B): если включён, используется он, VPN (вариант A)
+    // даже не проверяется -- по прямой просьбе пользователя после
+    // живого конфликта с Hide.me (см. дорожную карту), SSH теперь
+    // предпочтительный путь. Если SSH выключен -- поведение ровно то
+    // же, что было раньше (VPN, если включён, иначе прямое
+    // подключение) -- см. комментарии внутри блоков ниже про
+    // "ничего не меняет для тех, кто не настраивал X".
+    val sshStore = remember { SshProxyConfigStore(context) }
     val tunnelStore = remember { TunnelConfigStore(context) }
-    var tunnelReady by remember { mutableStateOf(!tunnelStore.enabled) }
-    var tunnelError by remember { mutableStateOf<String?>(null) }
+    var accessReady by remember { mutableStateOf(!sshStore.enabled && !tunnelStore.enabled) }
+    var accessError by remember { mutableStateOf<String?>(null) }
     var pendingPermissionConfig by remember { mutableStateOf<com.wireguard.config.Config?>(null) }
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
@@ -135,25 +150,100 @@ private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
                 try {
                     runBlocking { VpnServiceTunnelProvider.connect(context, config) }
                 } catch (e: Exception) {
-                    tunnelError = "VPN: ${e.message}"
+                    accessError = "VPN: ${e.message}"
                 } finally {
-                    tunnelReady = true
+                    accessReady = true
                 }
             }
         } else {
-            tunnelError = "Нет согласия на VPN -- пробуем без туннеля."
-            tunnelReady = true
+            accessError = "Нет согласия на VPN -- пробуем без туннеля."
+            accessReady = true
         }
     }
 
     LaunchedEffect(Unit) {
+        if (sshStore.enabled) {
+            // Вариант B -- см. докстринг SshSocksProxy.kt целиком.
+            // Поднимаем SSH-сессию + локальный SOCKS5, ЗАТЕМ направляем
+            // на него ТОЛЬКО WebView этого приложения через
+            // ProxyController -- никакого VpnService на этом пути
+            // вообще (см. её же докстринг про то, почему это не
+            // конфликтует с Hide.me).
+            val profile = sshStore.loadProfile()
+            if (profile == null) {
+                accessReady = true
+                return@LaunchedEffect
+            }
+            try {
+                // withContext(IO) -- сам опрос ниже блокирующий (delay в
+                // цикле), а не долгий ввод-вывод, но остаётся на IO, чтобы
+                // не занимать Main-диспетчер ожиданием. ProxyController
+                // ниже снова выполняется на исходном диспетчере
+                // LaunchedEffect (Main) после возврата из withContext --
+                // ОБЯЗАТЕЛЬНО с главного потока (недопустимо для
+                // WebView-API).
+                //
+                // НОВОЕ -- см. докстринг SshTunnelService.kt: само
+                // подключение (SshSocksProxy.connect) теперь происходит
+                // ВНУТРИ foreground-сервиса, а не прямо здесь -- иначе
+                // туннель падал при сворачивании терминала (живой отчёт:
+                // "уведомление не пришло, картинки не скачались", см. её
+                // же докстринг про причину). Раньше здесь был прямой
+                // блокирующий вызов SshSocksProxy.connect(...); теперь
+                // этот блок только просит сервис подняться и ждёт
+                // результата опросом (у Service нет колбэка обратно в
+                // Activity) -- сам факт подключения по-прежнему отражается
+                // в тех же SshSocksProxy.isRunning()/lastError, что и
+                // раньше.
+                withContext(Dispatchers.IO) {
+                    SshTunnelService.start(context)
+                    val deadline = System.currentTimeMillis() + 15_000L
+                    while (!SshSocksProxy.isRunning() &&
+                        SshSocksProxy.lastError == null &&
+                        System.currentTimeMillis() < deadline
+                    ) {
+                        delay(200)
+                    }
+                    if (!SshSocksProxy.isRunning()) {
+                        throw IllegalStateException(
+                            SshSocksProxy.lastError ?: "не удалось подключиться за 15 секунд",
+                        )
+                    }
+                }
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+                    val proxyConfig = ProxyConfig.Builder()
+                        .addProxyRule("socks5://127.0.0.1:${SshSocksProxy.LOCAL_PORT}")
+                        .build()
+                    ProxyController.getInstance().setProxyOverride(
+                        proxyConfig,
+                        { r -> r.run() },
+                        { accessReady = true },
+                    )
+                } else {
+                    // Само SSH-соединение поднято, но перенаправить
+                    // именно WebView на него нечем -- на этом
+                    // устройстве/версии системного WebView нет
+                    // ProxyController. Не должно происходить на
+                    // современных устройствах (фича давно стабильна), но
+                    // лучше явно сообщить, чем молча продолжить без
+                    // прокси.
+                    accessError = "WebView на этом устройстве не поддерживает ProxyOverride"
+                    accessReady = true
+                }
+            } catch (e: Exception) {
+                accessError = "SSH: ${e.message}"
+                accessReady = true
+            }
+            return@LaunchedEffect
+        }
+
         if (!tunnelStore.enabled) return@LaunchedEffect
         val raw = tunnelStore.loadRawConfig()
         if (raw == null) {
             // Включено, но конфиг почему-то не сохранён (не должно
             // случаться через обычный UI TunnelSettingsActivity, но не
             // повод блокировать сам терминал, если всё же произошло).
-            tunnelReady = true
+            accessReady = true
             return@LaunchedEffect
         }
         try {
@@ -164,7 +254,7 @@ private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
                 vpnPermissionLauncher.launch(intent)
             } else {
                 VpnServiceTunnelProvider.connect(context, config)
-                tunnelReady = true
+                accessReady = true
             }
         } catch (e: Exception) {
             // Не удалось поднять туннель (битый конфиг, сервер не
@@ -174,26 +264,36 @@ private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
             // прежде, а если нет -- увидит уже привычный
             // ConnectionErrorOverlay из TerminalWebView, просто без
             // помощи VPN в этой попытке.
-            tunnelError = "VPN: ${e.message}"
-            tunnelReady = true
+            accessError = "VPN: ${e.message}"
+            accessReady = true
         }
     }
 
-    // Гасим туннель при уходе с экрана терминала -- см. решение "вариант
-    // A" в роадмапе, §Этап 9: "приложение само поднимает/гасит туннель
-    // при открытии/закрытии". thread{}+runBlocking, а не
-    // rememberCoroutineScope() -- тот отменяется вместе с самим onDispose,
-    // гонка могла бы прервать disconnect() на середине.
+    // Гасим то, что подняли, при уходе с экрана терминала -- НО только
+    // для варианта VPN (WireGuard). Вариант SSH (см. докстринг
+    // SshTunnelService.kt) сознательно НЕ гасится здесь -- туннель
+    // теперь живёт в foreground-сервисе именно для того, чтобы survive
+    // сворачивание терминала (живой отчёт: "уведомление не пришло,
+    // картинки не скачались" -- см. её же докстринг про причину).
+    // ProxyController -- на главном потоке (onDispose сам по себе уже
+    // выполняется на главном потоке Compose) -- сбрасываем override
+    // WebView этого экрана в любом случае: он Activity-scoped и дёшево
+    // переприменяется заново при следующем открытии терминала, а сам
+    // туннель за ним продолжает жить в SshTunnelService.
     DisposableEffect(Unit) {
         onDispose {
-            if (tunnelStore.enabled) {
+            if (sshStore.enabled) {
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+                    ProxyController.getInstance().clearProxyOverride({ r -> r.run() }, {})
+                }
+            } else if (tunnelStore.enabled) {
                 thread { runBlocking { VpnServiceTunnelProvider.disconnect() } }
             }
         }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (!tunnelReady) {
+        if (!accessReady) {
             Column(
                 modifier = Modifier.fillMaxSize().padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -201,14 +301,15 @@ private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
             ) {
                 CircularProgressIndicator()
                 androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(4.dp))
-                Text("Подключение к VPN…")
+                Text(if (sshStore.enabled) "Подключение по SSH…" else "Подключение к VPN…")
             }
         } else {
             TerminalWebView(device, openPath)
-            tunnelError?.let {
+            accessError?.let {
                 // Ненавязчивое уведомление поверх WebView -- не
                 // блокирует терминал (см. комментарии выше про то, что
-                // сбой VPN не должен мешать обычной работе дома).
+                // сбой туннеля/прокси не должен мешать обычной работе
+                // дома).
                 Text(
                     it,
                     modifier = Modifier
@@ -220,13 +321,18 @@ private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
             }
         }
 
-        OutlinedButton(
-            onClick = { context.startActivity(Intent(context, TunnelSettingsActivity::class.java)) },
+        Row(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(12.dp),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
         ) {
-            Text("VPN")
+            OutlinedButton(onClick = { context.startActivity(Intent(context, SshProxySettingsActivity::class.java)) }) {
+                Text("SSH")
+            }
+            OutlinedButton(onClick = { context.startActivity(Intent(context, TunnelSettingsActivity::class.java)) }) {
+                Text("VPN")
+            }
         }
     }
 }
@@ -237,6 +343,18 @@ private fun TerminalWebView(device: TokenStore.Device, openPath: String?) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var connectionError by remember { mutableStateOf(false) }
     var reloadTrigger by remember { mutableStateOf(0) }
+    // НОВОЕ (просьба "кнопка назад должна выходить к списку апп", а не
+    // сразу закрывать приложение целиком) -- ссылка на сам WebView, чтобы
+    // BackHandler ниже мог явно перевести его на домашнюю страницу
+    // (webView.goBack() тут не подошёл бы: если экран открыт по тапу на
+    // push-уведомление (openPath, см. FcmService.kt), домашняя страница
+    // вообще ни разу не попадала в историю ЭТОЙ WebView-сессии -- goBack()
+    // тогда был бы недоступен либо ушёл бы совсем не туда).
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    // Путь текущей загруженной страницы ("/" -- список апп, что угодно
+    // ещё -- конкретное апп) -- обновляется в onLoadStarted, см. её же
+    // докстринг в AuthWebViewClient.kt.
+    var isHomePage by remember { mutableStateOf(openPath == null) }
 
     // НОВОЕ (живой отчёт: "Imagine уходил в загрузку на 2 минуты" +
     // просьба "добавить кнопку перезагрузку, когда приложение не
@@ -278,6 +396,21 @@ private fun TerminalWebView(device: TokenStore.Device, openPath: String?) {
     // разделитель для токена подбирается по факту, а не жёстко "?",
     // иначе получился бы битый URL с двумя "?" подряд.
     val tokenSeparator = if (baseUrl.contains('?')) '&' else '?'
+    // Домашняя ("список апп") -- без openPath и без ?token=, кука уже
+    // закреплена после самой первой загрузки (см. комментарий у
+    // update{} ниже про "?token= только в первом запросе").
+    val homeUrl = "http://${device.host}:${device.port}/"
+
+    // НОВОЕ (просьба "кнопка назад должна выходить к списку апп") --
+    // enabled только пока реально показан WebView НЕ на домашней
+    // странице; если уже на ней -- не перехватываем вообще, системный
+    // back ведёт себя как раньше (закрывает терминал). Пока показан
+    // ConnectionErrorOverlay (connectionError=true) тоже не перехватываем
+    // -- там кнопка "назад" должна закрывать экран, а не пытаться
+    // куда-то грузить всё ещё недоступный сервер.
+    androidx.activity.compose.BackHandler(enabled = !connectionError && !isHomePage) {
+        webViewRef?.loadUrl(homeUrl)
+    }
 
     if (connectionError) {
         ConnectionErrorOverlay(
@@ -301,6 +434,20 @@ private fun TerminalWebView(device: TokenStore.Device, openPath: String?) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
+                // НОВОЕ (живой отчёт: третья попытка вслепую понять,
+                // почему кнопка "молчит", логи -- сплошной системный шум
+                // без единой строчки про наше приложение) -- включает
+                // chrome://inspect на ПК (тот же USB-кабель/ADB, что и
+                // logcat): подключить телефон, открыть chrome://inspect
+                // в Chrome на ПК, найти там WebView этого приложения --
+                // и будет виден настоящий JS-консоль/сетевые вкладки,
+                // а не наши догадки по логам, где WebView в принципе
+                // ничего не пишет наружу без явного onConsoleMessage
+                // (см. WebChromeClient ниже -- он же дублирует ошибки в
+                // logcat на случай, если инспектировать через ПК
+                // неудобно прямо сейчас). ДОЛЖНО вызываться до создания
+                // самого WebView -- то, чем и является этот factory-блок.
+                WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
                 WebView(ctx).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
@@ -316,9 +463,31 @@ private fun TerminalWebView(device: TokenStore.Device, openPath: String?) {
                             connectionError = false
                             loadCompleted = true
                         },
-                        onLoadStarted = { loadGeneration++ },
+                        onLoadStarted = { url ->
+                            loadGeneration++
+                            // "/" и "" (пустой путь -- бывает у голого
+                            // "http://host:port" без хвостового слэша)
+                            // оба считаются домашней страницей.
+                            val path = url?.let { android.net.Uri.parse(it).path }
+                            isHomePage = path.isNullOrEmpty() || path == "/"
+                        },
                     )
-                }
+                    // См. комментарий у setWebContentsDebuggingEnabled
+                    // выше -- дублирует console.log/console.error из
+                    // самой страницы (в т.ч. из stopServer()/startApp())
+                    // прямо в logcat под тегом "WebViewConsole", БЕЗ
+                    // необходимости подключать телефон к ПК ради
+                    // chrome://inspect каждый раз.
+                    webChromeClient = object : android.webkit.WebChromeClient() {
+                        override fun onConsoleMessage(message: android.webkit.ConsoleMessage): Boolean {
+                            android.util.Log.d(
+                                "WebViewConsole",
+                                "${message.message()} (${message.sourceId()}:${message.lineNumber()})",
+                            )
+                            return true
+                        }
+                    }
+                }.also { webViewRef = it }
             },
             update = { webView ->
                 // Чтение reloadTrigger здесь -- единственное, что заставляет

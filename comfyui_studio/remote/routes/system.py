@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 
 from ...launcher.core.comfy_api import ComfyAPIClient
 from ...launcher.core.imagine_process import is_imagine_available
+from .. import app_launcher, comfy_launcher
 from ..auth import require_device
 from ..gpu_stats import get_gpu_stats
 from ..models import RemoteStatus
@@ -48,3 +49,35 @@ def get_status(_device_id: str = Depends(require_device)) -> RemoteStatus:
         vram_used_mb=vram_used_mb,
         vram_total_mb=vram_total_mb,
     )
+
+
+@router.post("/system/stop-server", status_code=200)
+def stop_server(_device_id: str = Depends(require_device)) -> dict:
+    """НОВОЕ (живая просьба: "запустить с телефона можем, а выключить
+    нет" + "чтобы на ПК не появлялись фантомные процессы от предыдущих
+    сессий") -- кнопка "Выключить сервер" на домашней странице терминала
+    (routes/home.py). Порядок важен: сначала Imagine, ПОТОМ ComfyUI --
+    остановка в обратном порядке (сперва ComfyUI) оставила бы Imagine
+    жить дальше без своего backend'а (не крашится сам по себе, просто
+    начинает отдавать ошибки на каждый запрос генерации) -- лишний
+    ничего не решающий процесс до следующего ручного вмешательства,
+    тот же класс "фантомного процесса", которого просит избежать отчёт,
+    только на уровне Imagine, а не ComfyUI.
+
+    Всегда 200, даже если что-то из двух уже было остановлено --
+    stop_imagine()/stop_comfyui() оба тихо не делают ничего, если
+    соответствующий `_process` уже None (см. их докстринги), это не
+    ошибка с точки зрения телефона: "выключить" уже гарантированно
+    выполнено, независимо от того, что конкретно пришлось останавливать
+    по факту.
+
+    НОВОЕ (живой отчёт: "кнопка выключает только то, что запущено с
+    телефона, а то что запущено с ПК -- нет") -- stop_imagine()/
+    stop_comfyui() теперь умеют находить и останавливать процесс и в
+    этом случае тоже, через поиск PID по порту (см. process_by_port.py
+    про то, почему это вообще было нужно -- Remote физически не имеет
+    доступа к объекту процесса, запущенного другим ОС-процессом,
+    Studio)."""
+    app_launcher.stop_imagine()
+    comfy_launcher.stop_comfyui()
+    return {"status": "stopped"}

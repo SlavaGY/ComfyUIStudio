@@ -38,7 +38,7 @@ import android.webkit.WebViewClient
 class AuthWebViewClient(
     private val onConnectionError: () -> Unit,
     private val onPageLoaded: () -> Unit,
-    private val onLoadStarted: () -> Unit,
+    private val onLoadStarted: (String?) -> Unit,
 ) : WebViewClient() {
 
     override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
@@ -60,7 +60,13 @@ class AuthWebViewClient(
         // достучаться и только потом, спустя СВОЙ куда более долгий
         // таймаут по умолчанию (те самые интервалы "пара минут" из
         // отчёта), сама вызовет onReceivedError.
-        onLoadStarted()
+        //
+        // НОВОЕ (просьба "кнопка назад должна выходить к списку апп") --
+        // url передаётся дальше в TerminalWebView, чтобы она знала, грузится
+        // ли сейчас домашняя страница ("/") или страница конкретного апп --
+        // именно от этого зависит, что должен делать системный back (см. её
+        // же докстринг про BackHandler).
+        onLoadStarted(url)
     }
 
     override fun onReceivedError(

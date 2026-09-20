@@ -28,6 +28,15 @@ RemoteApp.start_fn) -- кнопка "Запустить" вместо ссылк
 умеет ставить заголовки -- в отличие от WebSocket-хендшейка, см.
 proxy_auth.py, ограничение здесь не действует) и затем опрашивающая
 `GET /apps` каждые несколько секунд, пока статус не станет "running".
+
+НОВОЕ (живая просьба: "запустить с телефона можем, а выключить нет" +
+"чтобы на ПК не появлялись фантомные процессы от предыдущих сессий"):
+кнопка "Выключить сервер" внизу страницы -- дергает
+`POST /api/v1/remote/system/stop-server` (см. routes/system.py), тот же
+`window.__REMOTE_TOKEN__` в заголовке. Останавливает и Imagine, и сам
+ComfyUI через `taskkill /F /T /PID` по всему дереву процессов (см.
+comfy_launcher.stop_comfyui()/app_launcher.stop_imagine()) -- не просто
+верхний процесс-обёртку, оставляющий реальный ComfyUI сиротой.
 """
 
 from __future__ import annotations
@@ -112,6 +121,11 @@ def _render_home_html(apps: list[RemoteApp], token: str) -> str:
   .tile-error {{ color:#e5484d; font-size:.85rem; margin:-.75rem 0 1rem; padding:0 .25rem; }}
   .hint {{ color:#999; font-size:.85rem; }}
   .empty {{ color:#999; }}
+  .server-actions {{ margin-top:2rem; padding-top:1rem; border-top:1px solid #333; }}
+  .tile-danger {{ background:transparent; border:1px solid #e5484d; color:#e5484d;
+                   cursor:pointer; }}
+  .tile-danger:active {{ background:#2a1616; }}
+  .tile-danger:disabled {{ opacity:.5; cursor:default; }}
 </style>
 <script>window.__REMOTE_TOKEN__ = {token!r};</script>
 </head>
@@ -119,6 +133,11 @@ def _render_home_html(apps: list[RemoteApp], token: str) -> str:
 <h1>ComfyUI Studio</h1>
 <div id="tiles">
 {tiles}
+</div>
+<div class="server-actions">
+  <button id="stopServerBtn" class="tile tile-danger" onclick="stopServer()">
+    Выключить сервер <span class="hint" id="stopServerHint"></span>
+  </button>
 </div>
 <script>
 // Кнопка "Запустить" -- POST /apps/{{id}}/start с Bearer-заголовком
@@ -189,6 +208,64 @@ async function pollUntilRunning(appId) {{
 document.querySelectorAll('.tile-pending').forEach(el => {{
     pollUntilRunning(el.dataset.appId);
 }});
+
+// НОВОЕ (живая просьба: "запустить с телефона можем, а выключить нет" +
+// "чтобы на ПК не появлялись фантомные процессы от предыдущих сессий")
+// -- POST /api/v1/remote/system/stop-server (см. routes/system.py) гасит
+// и Imagine, и сам ComfyUI (в этом порядке, см. докстринг эндпоинта).
+// confirm() -- та же простая, без зависимостей, схема, что и у
+// остального этого файла (без шаблонизатора) -- действие необратимое
+// (реальные процессы на ПК), поэтому лишний шаг подтверждения уместен,
+// в отличие от startApp() выше.
+async function stopServer() {{
+    if (!confirm('Выключить ComfyUI и все запущенные приложения на ПК?')) {{
+        console.log('stopServer: отменено пользователем');
+        return;
+    }}
+    console.log('stopServer: подтверждено, отправляю запрос');
+    const button = document.getElementById('stopServerBtn');
+    const hint = document.getElementById('stopServerHint');
+    button.disabled = true;
+    hint.textContent = 'останавливаю…';
+    try {{
+        // AbortController -- страховка на случай настоящего зависания
+        // (SSH-канал не открылся и не отклонился, а просто молчит) --
+        // без этого fetch() мог бы ждать бесконечно с нулевой обратной
+        // связью пользователю.
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        const resp = await fetch('/api/v1/remote/system/stop-server', {{
+            method: 'POST',
+            headers: {{ 'Authorization': 'Bearer ' + window.__REMOTE_TOKEN__ }},
+            signal: controller.signal,
+        }});
+        clearTimeout(timeoutId);
+        console.log('stopServer: получен ответ, статус ' + resp.status);
+        if (!resp.ok) {{
+            let detail = 'сервер отклонил запрос (' + resp.status + ')';
+            try {{
+                const body = await resp.json();
+                if (body && body.detail) {{ detail = body.detail; }}
+            }} catch (e) {{
+                // тело не JSON -- оставляем общий текст выше
+            }}
+            console.error('stopServer: сервер ответил ошибкой -- ' + detail);
+            button.disabled = false;
+            hint.textContent = detail;
+            return;
+        }}
+    }} catch (e) {{
+        console.error('stopServer: сетевая ошибка -- ' + e);
+        button.disabled = false;
+        hint.textContent = e && e.name === 'AbortError' ? 'сервер не ответил за 20с' : 'нет соединения, повторите';
+        return;
+    }}
+    console.log('stopServer: успех, перезагружаю страницу');
+    // Перезагружаем -- сервер сам отрисует плитки заново (Imagine снова
+    // покажется кнопкой "Запустить", ComfyUI больше не поднят ни для
+    // одной из них), та же схема, что и у pollUntilRunning() выше.
+    window.location.reload();
+}}
 </script>
 </body>
 </html>"""
@@ -213,6 +290,14 @@ async def home(request: Request) -> HTMLResponse:
     # непонятно, запущен ли Imagine.
     html = await asyncio.to_thread(_render_home_html, list_all_apps(), token)
     response = HTMLResponse(html)
+    # НОВОЕ (живой отчёт: кнопка "как будто не появилась" после
+    # обновления и перезапуска Remote-процесса) -- без явного заголовка
+    # WebView/Chromium вправе показать ранее закэшированную версию этой
+    # страницы вместо свежего запроса к серверу при обычной навигации
+    # (не принудительном обновлении) -- страница и так целиком
+    # динамическая (статусы плиток меняются от запроса к запросу), кэш
+    # тут в принципе не нужен.
+    response.headers["Cache-Control"] = "no-store"
     if request.query_params.get("token"):
         # Токен пришёл в URL -- закрепляем его в куке (см.
         # proxy_auth.py), чтобы дальнейшая навигация (клик по плитке,

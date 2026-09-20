@@ -48,6 +48,7 @@ from typing import Optional
 
 from ..launcher.core.imagine_process import ImagineProcess, is_imagine_available
 from . import comfy_launcher
+from .process_by_port import find_pid_listening_on_port, kill_pid_tree
 from .state import runtime
 
 _lock = threading.Lock()
@@ -212,6 +213,44 @@ def _wait_for_comfy_then_start_imagine() -> None:
     finally:
         with _lock:
             _awaiting_comfy = False
+
+
+def stop_imagine() -> None:
+    """НОВОЕ -- см. докстринг comfy_launcher.stop_comfyui() про причину
+    (кнопка "Выключить сервер" на домашней странице терминала,
+    routes/system.py::stop_server). `_process` здесь -- уже готовый
+    `ImagineProcess` (в отличие от comfy_launcher, где это голый
+    Popen) -- у него уже есть собственный `.stop()` с тем же приёмом
+    `taskkill /F /T /PID` (см. imagine_process.py), переиспользуется
+    как есть, без дублирования.
+
+    НОВОЕ (живой отчёт: "кнопка выключает только то, что запущено с
+    телефона") -- если `_process is None` (Imagine запущен кнопкой в
+    самой Studio на ПК, а не с телефона), у ЭТОГО процесса (Remote)
+    просто нет PID для него напрямую -- см. докстринг
+    process_by_port.py про то, почему (разные ОС-процессы). Ищем PID по
+    порту (runtime.imagine_port, тот же, которым уже пользуется
+    imagine_status() выше)."""
+    global _process, _awaiting_comfy, _last_error
+    with _lock:
+        if _process is not None:
+            _process.stop()
+            _process = None
+        elif runtime.imagine_port:
+            pid = find_pid_listening_on_port(runtime.imagine_port)
+            if pid is not None:
+                kill_pid_tree(pid, "Imagine")
+        # _awaiting_comfy=True означает, что фоновый поток
+        # _wait_for_comfy_then_start_imagine ещё крутится в ожидании
+        # ComfyUI -- сам он ComfyUI не запускал (это делает
+        # comfy_launcher.start_comfyui(), останавливается отдельно тем
+        # же вызывающим кодом, см. routes/system.py::stop_server), но
+        # раз пользователь явно попросил остановить всё -- цикл ожидания
+        # больше не нужен, следующая проверка comfy_launcher.last_error()/
+        # is_comfyui_running() внутри него сама увидит, что ComfyUI
+        # больше не поднят, и поток завершится сам за один цикл опроса.
+        _awaiting_comfy = False
+        _last_error = None
 
 
 def clear_state() -> None:

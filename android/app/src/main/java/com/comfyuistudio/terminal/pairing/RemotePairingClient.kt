@@ -1,5 +1,6 @@
 package com.comfyuistudio.terminal.pairing
 
+import com.comfyuistudio.terminal.sshproxy.SshSocksProxy
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -107,8 +108,13 @@ class RemotePairingClient {
             .post(body)
             .build()
 
+        // См. докстринг GeneratedImageSaver.kt::proxiedClient() -- тот же
+        // приём: этот вызов случается уже ПОСЛЕ pairing (переиздание
+        // FCM-токена), в т.ч. пока телефон вне домашней сети, поэтому
+        // так же нуждается в SOCKS-туннеле, если он сейчас поднят.
+        val proxiedClient = SshSocksProxy.proxyOrNull()?.let { client.newBuilder().proxy(it).build() } ?: client
         return try {
-            client.newCall(request).execute().use { it.isSuccessful }
+            proxiedClient.newCall(request).execute().use { it.isSuccessful }
         } catch (e: IOException) {
             false
         }

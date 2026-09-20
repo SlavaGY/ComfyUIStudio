@@ -32,6 +32,8 @@ from typing import Optional
 from ..launcher.core.comfy_api import ComfyAPIClient
 from ..launcher.core.config import build_extra_launch_args, load_config, prepare_launch_script
 from ..launcher.core.logging_setup import log
+from .process_by_port import find_pid_listening_on_port, kill_pid_tree
+from .state import runtime
 
 _lock = threading.Lock()
 _process: Optional[subprocess.Popen] = None
@@ -143,6 +145,70 @@ def start_comfyui(port: Optional[int] = None) -> None:
         _process = proc
         watcher = threading.Thread(target=_log_exit, args=(proc,), daemon=True)
         watcher.start()
+
+
+def stop_comfyui() -> None:
+    """НОВОЕ (живая просьба: "запустить с телефона можем, а выключить
+    нет" + "чтобы на ПК не появлялись фантомные процессы от предыдущих
+    сессий") -- см. routes/system.py::stop_server, дергается кнопкой
+    "Выключить сервер" на домашней странице терминала (routes/home.py).
+
+    `_process` здесь -- это САМ `cmd.exe /c <launch_script>` из
+    start_comfyui() выше, а не питоновский процесс ComfyUI напрямую
+    (тот запускается уже ВНУТРИ .bat-скрипта, как его дочерний
+    процесс) -- обычный `proc.terminate()` убил бы только этот
+    промежуточный cmd.exe, оставив реальный ComfyUI (и всё, что он сам
+    мог успеть породить) сиротой в дереве процессов -- буквально тот
+    самый "фантомный процесс" из отчёта. `taskkill /F /T /PID` -- тот
+    же приём, что уже используют `ComfyProcess.stop()`/
+    `ImagineProcess.stop()` в launcher/core/ (см. их докстринги): флаг
+    `/T` убивает всё поддерево процессов по PID, а не только сам PID.
+
+    НОВОЕ: если `_process is None` (ComfyUI запущен НЕ через Remote, а
+    кнопкой в самой Studio на ПК -- см. живой отчёт "кнопка выключает
+    только то, что запущено с телефона"), ниже есть fallback через
+    process_by_port.py -- см. его докстринг про то, почему Remote
+    физически не может иметь PID процесса, запущенного другим ОС-
+    процессом."""
+    global _process, _last_error
+    with _lock:
+        if _process is not None:
+            pid = _process.pid
+            log.info("Остановка ComfyUI (PID %s, запущен через Remote)", pid)
+            if sys.platform == "win32":
+                try:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(pid)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                except Exception:
+                    log.exception("Не удалось выполнить taskkill для PID %s", pid)
+            else:
+                try:
+                    _process.terminate()
+                except Exception:
+                    log.exception("Не удалось остановить процесс PID %s", pid)
+            try:
+                _process.wait(timeout=5)
+            except Exception:
+                pass
+            _process = None
+            _last_error = None
+            return
+
+        # НОВОЕ (живой отчёт: "кнопка может выключить только то, что
+        # запущено с телефона") -- см. докстринг process_by_port.py про
+        # причину: если ComfyUI подняли кнопкой в самой Studio на ПК, а
+        # не с телефона, у ЭТОГО процесса (Remote) попросту нет ни
+        # Popen-объекта, ни PID для него напрямую -- ищем по порту,
+        # который Remote и так уже знает (runtime.comfy_port, тот же,
+        # которым пользуется is_comfyui_running() выше).
+        if runtime.comfy_port:
+            pid = find_pid_listening_on_port(runtime.comfy_port)
+            if pid is not None:
+                kill_pid_tree(pid, "ComfyUI")
+        _last_error = None
 
 
 def _log_exit(proc: subprocess.Popen) -> None:
