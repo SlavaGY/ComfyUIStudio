@@ -1,0 +1,8 @@
+<resources>
+    <!-- Взято из нижней части градиента фона assets/icon.png (десктопная
+         иконка ComfyUI Studio, см. launcher_window.py::ICON_PATH) — сам
+         рисунок-логотип (foreground) на адаптивных иконках (API 26+)
+         кладётся поверх этого цвета уже с прозрачными полями (safe zone),
+         см. mipmap-anydpi-v26/ic_launcher.xml. -->
+    <color name="ic_launcher_background">#1E202C</color>
+</resources>

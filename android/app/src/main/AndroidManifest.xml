@@ -30,12 +30,35 @@
          системный диалог через GoBackend.VpnService.prepare(context) +
          startActivityForResult (runtime-флоу, см. TunnelManager.kt). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- НОВОЕ (живой отчёт про потерю SSH-туннеля при сворачивании) —
+         SshTunnelService.kt держит туннель поднятым в фоне через
+         обычный foreground-сервис. Начиная с Android 14 (targetSdk 34)
+         КАЖДЫЙ конкретный тип foreground-сервиса требует своего
+         отдельного разрешения помимо общего FOREGROUND_SERVICE выше —
+         "dataSync" ближе всего по смыслу к тому, что реально
+         происходит (синхронизация данных с домашним ПК через туннель),
+         среди официально определённых типов
+         (см. android:foregroundServiceType у самого service ниже). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
+    <!-- НОВОЕ (лог: "OnBackInvokedCallback is not enabled for the
+         application" при каждом нажатии "назад") — предупреждение
+         появилось сразу после добавления BackHandler в TerminalActivity.kt:
+         Compose с Android 13+ использует новый predictive-back API
+         (OnBackInvokedDispatcher), но система по умолчанию считает
+         приложение не готовым к нему, пока это не объявлено явно —
+         android:enableOnBackInvokedCallback ниже. Без этого флага
+         BackHandler всё равно работает (через старый onBackPressed-путь),
+         просто без анимации предпросмотра жеста и с этим предупреждением
+         в логах при каждом нажатии. -->
     <application
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="ComfyUI Studio"
         android:theme="@style/Theme.ComfyUIStudioTerminal"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:enableOnBackInvokedCallback="true">
         <!-- usesCleartextTraffic — Remote API этапа 6 обслуживает
              только голый http:// в пределах LAN (см. proxy_auth.py на
              сервере, docstring про Secure-куки и §9 дорожной карты про
@@ -93,5 +116,23 @@
             android:name=".tunnel.TunnelSettingsActivity"
             android:exported="false"
             android:label="Доступ вне дома (VPN)" />
+
+        <!-- §Этап 9, вариант B через SSH — не VpnService, обычная
+             Activity, ничего специального в манифесте не требует. -->
+        <activity
+            android:name=".sshproxy.SshProxySettingsActivity"
+            android:exported="false"
+            android:label="Доступ вне дома (SSH)" />
+
+        <!-- НОВОЕ — см. докстринг SshTunnelService.kt. foregroundServiceType
+             должен совпадать с тем, что передаётся в startForeground()
+             на API 29+ (см. сам класс) — "dataSync" (синхронизация с
+             домашним ПК через туннель), а не что-то вроде
+             "connectedDevice" — сам туннель не общается с локальным
+             Bluetooth/USB-устройством, только по сети. -->
+        <service
+            android:name=".sshproxy.SshTunnelService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

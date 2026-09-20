@@ -7,6 +7,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import com.comfyuistudio.terminal.pairing.TokenStore
+import com.comfyuistudio.terminal.sshproxy.SshSocksProxy
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -68,23 +69,30 @@ object GeneratedImageSaver {
     private const val ALBUM_NAME = "ComfyUI Studio"
 
     private val client = OkHttpClient.Builder()
-        // НОВОЕ (живой отчёт: "не удалось сохранить ...: timeout"):
-        // прежние 5с/20с были рассчитаны на маленькие JSON-ответы
-        // (см. RemotePairingClient.kt, где взяты эти же цифры) -- для
-        // самой картинки это может быть слишком мало. Цепочка запроса
-        // -- телефон → Remote (imagine_proxy.py, стриминг) → Imagine
-        // (`GET /api/image`, синхронный обработчик в threadpool) →
-        // ComfyUI (`fetch_image_bytes`, свой таймаут 10с) -- три хопа,
-        // и если ComfyUI в этот момент занят следующей генерацией
-        // (что вполне вероятно сразу после push о завершении ПРЕДЫДУЩЕЙ
-        // -- следующая уже может стоять в очереди и стартовать), общее
-        // время может ощутимо вырасти. Здесь не устраняется сама
-        // причина потенциальной задержки (это может быть просто нагрузка
-        // на ComfyUI, а не баг) -- только даём больше времени, прежде чем
-        // сдаваться.
+        // НОВОЕ (живой отчёт: "уведомление пришло(?), картинки не
+        // скачались" при доступе через SSH вне дома): этот клиент
+        // раньше вообще не знал про SOCKS-туннель из SshSocksProxy.kt --
+        // ProxyController заворачивает в прокси ТОЛЬКО WebView, а этот
+        // OkHttpClient стучался в device.host (обычный LAN-адрес)
+        // НАПРЯМУЮ, что снаружи домашней сети недостижимо в принципе, ни
+        // с одним из механизмов §Этапа 9. Прокси теперь берётся заново
+        // ПЕРЕД каждым вызовом (см. proxiedClient() ниже), а не один раз
+        // здесь при инициализации -- на момент прихода push туннель
+        // может быть ещё не поднят/уже опущен, статическая привязка бы
+        // это просто заморозила.
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
+
+    /** См. комментарий у [client] выше -- если SSH-туннель сейчас
+     * поднят (`SshSocksProxy.isRunning()`), заворачивает этот же клиент
+     * в его локальный SOCKS5; если нет -- обычное прямое подключение
+     * (сценарий "телефон дома"), т.е. поведение ровно как было раньше
+     * для всех, кто SSH вообще не использует. */
+    private fun proxiedClient(): OkHttpClient {
+        val proxy = SshSocksProxy.proxyOrNull() ?: return client
+        return client.newBuilder().proxy(proxy).build()
+    }
 
     /**
      * Синхронная и блокирующая (обычный OkHttp `execute()`, не
@@ -140,7 +148,7 @@ object GeneratedImageSaver {
             .header("Authorization", "Bearer ${device.accessToken}")
             .build()
         return try {
-            client.newCall(request).execute().use { response ->
+            proxiedClient().newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return emptyList()
                 val json = JSONObject(response.body?.string().orEmpty())
                 if (json.optString("state") != "done") return emptyList()
@@ -162,7 +170,7 @@ object GeneratedImageSaver {
             .header("Authorization", "Bearer ${device.accessToken}")
             .build()
 
-        client.newCall(request).execute().use { response ->
+        proxiedClient().newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 Log.w(TAG, "Сервер отклонил скачивание $relativeUrl: ${response.code}")
                 return

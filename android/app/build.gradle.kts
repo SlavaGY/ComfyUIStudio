@@ -50,6 +50,12 @@ android {
 
     buildFeatures {
         compose = true
+        // НОВОЕ -- нужен для BuildConfig.DEBUG в TerminalActivity.kt
+        // (см. её докстринг у setWebContentsDebuggingEnabled). AGP 8+
+        // отключает генерацию BuildConfig по умолчанию, если явно не
+        // запросить здесь -- без этой строки ссылка на BuildConfig.DEBUG
+        // не скомпилируется вообще ("unresolved reference").
+        buildConfig = true
     }
 
     // Kotlin 1.9.24 (не 2.0+) -- Compose включается версией расширения
@@ -59,6 +65,50 @@ android {
     // https://developer.android.com/jetpack/androidx/releases/compose-kotlin
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
+    }
+
+    // НАЙДЕННЫЙ БАГ (живая сборка, §Этап 9): "jsch" (com.github.mwiede)
+    // и его собственная транзитивная зависимость "jspecify" (аннотации
+    // nullability) оба несут внутри себя одинаковый путь
+    // META-INF/versions/9/OSGI-INF/MANIFEST.MF (multi-release JAR) --
+    // Android не может решить, какой из двух класть в APK, и падает на
+    // mergeDebugJavaResource. Файл -- это OSGi-метаданные, никак не
+    // влияющие на код (jsch используется напрямую, не через OSGi) --
+    // безопасно исключить целиком, как и подсказывает сама ошибка
+    // gradle ("Adding a packaging block may help"). Заодно сразу
+    // исключены самые типичные соседние конфликты (LICENSE/NOTICE в
+    // META-INF, module-info.class для нескольких JPMS-модулей) --
+    // именно они обычно всплывают ПО ОДНОМУ на каждый следующий прогон
+    // сборки в проектах с несколькими сетевыми библиотеками
+    // (httpx/zeroconf/jsch и т.п.), чтобы не тратить ещё несколько
+    // циклов "пересобрать -- увидеть следующий дубликат".
+    packaging {
+        resources {
+            // НАЙДЕННЫЙ БАГ №2 (живая сборка): тот же конфликт, что и с
+            // jsch/jspecify выше, но со сдвинутой версией -- bcprov-jdk18on
+            // несёт multi-release-вариант под /versions/11/ (а не /versions/9/,
+            // как jspecify), поэтому точечный excludes выше его не ловит.
+            // Меняем на wildcard по всем version-каталогам сразу, чтобы
+            // следующая multi-release-зависимость не всплывала тем же way
+            // ещё раз на очередной пересборке.
+            excludes += "META-INF/versions/*/OSGI-INF/MANIFEST.MF"
+            excludes += "META-INF/LICENSE*"
+            excludes += "META-INF/NOTICE*"
+            excludes += "META-INF/DEPENDENCIES"
+            excludes += "META-INF/*.kotlin_module"
+            pickFirsts += "module-info.class"
+            // BouncyCastle (bcprov-jdk18on, см. зависимость ниже) --
+            // хорошо известная на Android проблема: JAR-файл подписан
+            // собственной подписью (META-INF/*.SF/*.RSA/*.DSA), а
+            // Android-сборка эти файлы не умеет обрабатывать в
+            // merge-шаге так же, как обычный JVM -- стандартный
+            // конфликт для любого Android-проекта, добавляющего
+            // bcprov напрямую (не через встроенный в Android
+            // урезанный форк), исключаем заранее.
+            excludes += "META-INF/*.SF"
+            excludes += "META-INF/*.RSA"
+            excludes += "META-INF/*.DSA"
+        }
     }
 }
 
@@ -114,7 +164,54 @@ dependencies {
     // Обязательное требование библиотеки выше, см. compileOptions.
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 
+    // Второй, независимый способ доступа вне дома (см. дорожную карту,
+    // §9, "вариант B через SSH") -- НЕ VpnService вообще, поэтому не
+    // конфликтует с основным VPN пользователя (Hide.me), в отличие от
+    // варианта A выше. com.github.mwiede:jsch -- активно поддерживаемый
+    // форк JSch (оригинальный com.jcraft:jsch не обновлялся годами и не
+    // поддерживает современные алгоритмы/форматы ключей) -- пакеты
+    // остаются теми же com.jcraft.jsch.*, это полностью совместимая
+    // замена, а не другой API.
+    implementation("com.github.mwiede:jsch:2.28.0")
+    // НАЙДЕННЫЙ БАГ (живая сборка, §Этап 9): "Auth cancel for methods
+    // 'publickey,password,keyboard-interactive'" при подключении из
+    // приложения, хотя тот же самый ключ прекрасно работает в Termux
+    // (у него свой SSH-клиент, не через Java-провайдеры). Причина:
+    // ed25519 ("ssh-ed25519") у mwiede/jsch требует либо Java 15+
+    // (десктопный JDK с нативной поддержкой EdDSA), либо явно
+    // добавленный в classpath BouncyCastle -- на обычном Android-
+    // рантайме ни того, ни другого нет по умолчанию, поэтому JSch
+    // тихо не может подписать хендшейк этим ключом и перебирает
+    // методы аутентификации до полного отказа. BouncyCastle
+    // регистрируется как security-провайдер в SshSocksProxy.kt перед
+    // созданием сессии (Security.addProvider) -- версия ниже
+    // последняя стабильная на Maven Central на момент написания.
+    implementation("org.bouncycastle:bcprov-jdk18on:1.85.2")
+    // ProxyController -- официальный API именно для подмены прокси
+    // ТОЛЬКО для WebView этого процесса (см. её же докстринг в
+    // TerminalActivity.kt про то, почему это не конфликтует с системным
+    // VPN, в отличие от варианта A).
+    implementation("androidx.webkit:webkit:1.16.0")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+}
+
+// НАЙДЕННЫЙ БАГ (живая сборка, §Этап 9): "androidx.webkit:webkit:1.16.0"
+// (добавлен только что для ProxyController, см. зависимость выше)
+// транзитивно тянет более новый kotlin-stdlib (2.1.20 -- метаданные
+// версии 2.1.0), чем сам проект (Kotlin-плагин 1.9.24, см. корневой
+// build.gradle.kts) -- компилятор 1.9.24 умеет читать метаданные не
+// новее 2.0.0, отсюда "Module was compiled with an incompatible
+// version of Kotlin" буквально на каждом файле проекта, включая уже
+// давно рабочие. Явно закрепляем версию stdlib -- не даём ни одной
+// зависимости протащить более новую транзитивно.
+configurations.all {
+    resolutionStrategy {
+        force("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
+        force("org.jetbrains.kotlin:kotlin-stdlib-common:1.9.24")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24")
+    }
 }
