@@ -64,6 +64,7 @@ async function init() {
     updateActiveSummary();
     wireStaticHandlers();
     await refreshComfyStatus();
+    await refreshPromptGenAvailability();
     await initDeepLinkedGeneration();
   } catch (e) {
     // Не даём экрану загрузки зависнуть навечно, даже если что-то из
@@ -75,6 +76,9 @@ async function init() {
     hideLoadingScreen();
   }
   setInterval(refreshComfyStatus, 6000);
+  // Настройки генератора промптов меняются в Studio, а не на этой
+  // странице -- кнопка должна появляться/исчезать без перезагрузки.
+  setInterval(refreshPromptGenAvailability, 10000);
 }
 
 // НОВОЕ (§Этап 6.5 дорожной карты, "Push-уведомления" -- живой отчёт
@@ -665,6 +669,8 @@ function wireStaticHandlers() {
   el('connectionForm').addEventListener('submit', onSaveConnection);
 
   el('startComfyBtn').addEventListener('click', onStartComfy);
+
+  wirePromptGen();
 }
 
 // ---------------------------------------------------------------- comfy status
@@ -734,12 +740,12 @@ function showError(msg) {
 function clearError() {
   el('errorLine').hidden = true;
 }
-function showInfo(msg) {
+function showInfo(msg, ms = 4000) {
   const line = el('infoLine');
   line.textContent = msg;
   line.hidden = false;
   el('errorLine').hidden = true;
-  setTimeout(() => { line.hidden = true; }, 4000);
+  setTimeout(() => { line.hidden = true; }, ms);
 }
 
 function collectRequest() {
@@ -1645,6 +1651,315 @@ async function onSaveConnection(e) {
   refreshComfyStatus();
   loadAvailableLoraFiles();
   await renderAspectRatios();
+}
+
+// ---------------------------------------------------------------- prompt generator (llama.cpp)
+//
+// Круглая кнопка под полем промпта -> окно с текстом (+ изображением) ->
+// "Написать": бэкенд запускает llama-server с моделью из настроек Studio,
+// получает ответ (до 8192 токенов) и выключает модель (см.
+// backend/promptgen.py). Готовый текст сразу подставляется в поле
+// промпта. Работа идёт в фоновой задаче бэкенда, страница опрашивает её
+// статус -- поэтому окно можно закрыть, не прерывая генерацию (кнопка
+// крутится, результат попадёт в поле, когда будет готов), а через
+// reverse-proxy Remote (таймаут 60 с) длинная генерация тоже не рвётся.
+
+const PG_DEFAULT_IMAGE_SIDE = 1024;  // реальное значение приходит из настроек Studio (api/promptgen/status)
+const PG_SESSION_KEY = 'imagine.promptgen.job';
+
+const pg = {
+  configured: false,
+  vision: false,
+  problem: null,
+  image: null,     // data:image/jpeg;base64,... (уже уменьшенная), либо null
+  imageMaxSide: PG_DEFAULT_IMAGE_SIDE,  // до скольких px уменьшать картинку перед отправкой
+  jobId: null,
+  busy: false,
+};
+
+function pgStoreJob(id) {
+  try {
+    if (id) sessionStorage.setItem(PG_SESSION_KEY, id);
+    else sessionStorage.removeItem(PG_SESSION_KEY);
+  } catch { /* sessionStorage недоступен -- не критично */ }
+}
+function pgStoredJob() {
+  try { return sessionStorage.getItem(PG_SESSION_KEY); } catch { return null; }
+}
+
+async function refreshPromptGenAvailability() {
+  let st;
+  try {
+    const res = await fetch('api/promptgen/status');
+    if (!res.ok) return;
+    st = await res.json();
+  } catch {
+    return; // бэкенд недоступен -- остаёмся при прежнем состоянии
+  }
+  pg.configured = !!(st.available && st.configured);
+  pg.vision = !!st.vision;
+  pg.problem = st.problem || null;
+  pg.imageMaxSide = Number(st.image_max_side) || PG_DEFAULT_IMAGE_SIDE;
+  el('promptGenBtn').hidden = !pg.configured;
+  if (!pg.configured && !pg.busy) closePromptGen();
+  updatePromptGenModalState();
+
+  // Страницу перезагрузили (или мобильный браузер выгрузил вкладку) посреди
+  // генерации -- подхватываем СВОЮ задачу (id хранится в sessionStorage
+  // именно этой вкладки; задачи, запущенные с другого устройства, не
+  // трогаем, чтобы их результат не попал в чужое поле промпта).
+  const job = st.job;
+  if (job && !pg.busy && job.job_id === pgStoredJob()
+      && (job.state === 'loading' || job.state === 'generating')) {
+    pg.jobId = job.job_id;
+    pollPromptGenJob(job.job_id);
+  }
+}
+
+function updatePromptGenModalState() {
+  el('pgAttachRow').hidden = !pg.vision;
+  if (!pg.vision && pg.image) clearPromptGenImage();
+  const problem = el('pgProblem');
+  problem.textContent = pg.problem || '';
+  problem.hidden = !pg.problem;
+  el('pgWrite').disabled = pg.busy || !!pg.problem;
+}
+
+function openPromptGen() {
+  el('promptGenModal').hidden = false;
+  refreshPromptGenAvailability();
+  el('pgInput').focus();
+}
+
+// Закрытие окна НЕ отменяет уже идущую генерацию (см. шапку раздела).
+function closePromptGen() {
+  el('promptGenModal').hidden = true;
+}
+
+function setPromptGenStatus(text, kind) {
+  const line = el('pgStatus');
+  line.textContent = text || '';
+  line.hidden = !text;
+  line.classList.toggle('pgmodal__status--error', kind === 'error');
+}
+
+function setPromptGenWarning(text) {
+  const line = el('pgWarning');
+  line.textContent = text || '';
+  line.hidden = !text;
+}
+
+// Предупреждения бэкенда приходят кодами (не готовым текстом), чтобы их
+// можно было перевести: медленная работа обычно объясняется тем, что
+// модель не поместилась в видеопамять целиком.
+function formatPromptGenWarnings(list) {
+  return (list || []).map((w) => {
+    if (w.code === 'gpu_partial') {
+      return t('Модель загружена на GPU лишь частично ({loaded} из {total} слоёв) — не хватило видеопамяти, поэтому генерация медленная. Выгрузите модели ComfyUI, уменьшите контекст или закройте программы, занимающие VRAM.', { loaded: w.loaded, total: w.total });
+    }
+    if (w.code === 'clip_cpu') {
+      return t('Кодировщик изображений (mmproj) работает на CPU — обработка картинок будет медленной.');
+    }
+    return '';
+  }).filter(Boolean).join(' ');
+}
+
+function setPromptGenPreview(text) {
+  const box = el('pgPreview');
+  box.textContent = text || '';
+  box.hidden = !text;
+  box.scrollTop = box.scrollHeight;
+}
+
+function setPromptGenBusy(busy) {
+  pg.busy = busy;
+  el('pgInput').disabled = busy;
+  el('pgAttachBtn').disabled = busy;
+  el('pgThumbRemove').disabled = busy;
+  el('pgStop').hidden = !busy;
+  el('pgStop').disabled = false;
+  el('promptGenBtn').classList.toggle('busy', busy);
+  updatePromptGenModalState();
+}
+
+function clearPromptGenImage() {
+  pg.image = null;
+  el('pgThumb').removeAttribute('src');
+  el('pgThumbWrap').hidden = true;
+}
+
+// Уменьшает картинку (по большей стороне) и перекодирует в JPEG: полный
+// снимок с телефона -- это мегабайты base64 и лишние тысячи токенов
+// зрения, а модели хватает и 1280 px.
+function downscaleImageToDataUrl(file, maxSide) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; // прозрачные PNG -> белый фон, а не чёрный
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('decode'));
+    };
+    img.src = url;
+  });
+}
+
+async function onPromptGenFile(e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = ''; // чтобы повторный выбор того же файла снова сработал
+  if (!file) return;
+  try {
+    pg.image = await downscaleImageToDataUrl(file, pg.imageMaxSide);
+    el('pgThumb').src = pg.image;
+    el('pgThumbWrap').hidden = false;
+    setPromptGenStatus('');
+  } catch {
+    setPromptGenStatus(t('Не удалось прочитать изображение'), 'error');
+  }
+}
+
+async function onPromptGenWrite() {
+  const text = el('pgInput').value.trim();
+  if (!text && !pg.image) {
+    setPromptGenStatus(t('Введите текст или прикрепите изображение'), 'error');
+    return;
+  }
+  setPromptGenStatus('');
+  setPromptGenPreview('');
+  setPromptGenWarning('');
+  setPromptGenBusy(true);
+  try {
+    const res = await fetch('api/promptgen/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, image: pg.image }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(typeof data.detail === 'string' ? data.detail : t('Не удалось запустить генератор'));
+    }
+    pg.jobId = data.job_id;
+    pgStoreJob(pg.jobId);
+  } catch (err) {
+    setPromptGenBusy(false);
+    setPromptGenStatus(err.message, 'error');
+    return;
+  }
+  await pollPromptGenJob(pg.jobId);
+}
+
+async function onPromptGenStop() {
+  if (!pg.jobId) return;
+  el('pgStop').disabled = true;
+  setPromptGenStatus(t('останавливается…'));
+  try {
+    await fetch('api/promptgen/job/' + encodeURIComponent(pg.jobId) + '/cancel', { method: 'POST' });
+  } catch { /* результат всё равно придёт через опрос статуса */ }
+}
+
+function renderPromptGenProgress(snap) {
+  if (snap.state === 'loading') {
+    setPromptGenStatus(t('Запуск модели…'));
+  } else if (snap.state === 'generating') {
+    const key = snap.thinking ? 'Модель рассуждает… {n} ток. · {s} с' : 'Генерация… {n} ток. · {s} с';
+    setPromptGenStatus(t(key, { n: snap.tokens, s: Math.round(snap.elapsed) }));
+  }
+  setPromptGenPreview(snap.text);
+  setPromptGenWarning(formatPromptGenWarnings(snap.warnings));
+}
+
+function finishPromptGen(kind, payload) {
+  pg.jobId = null;
+  pgStoreJob(null);
+  setPromptGenBusy(false);
+  const modalOpen = !el('promptGenModal').hidden;
+
+  if (kind === 'done') {
+    const field = el('positivePrompt');
+    field.value = payload.text;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    setPromptGenPreview('');
+    setPromptGenStatus('');
+    setPromptGenWarning('');
+    closePromptGen();
+    const warning = formatPromptGenWarnings(payload.warnings);
+    const done = payload.truncated
+      ? t('Промпт готов (ответ обрезан лимитом в 8192 токена) — модель выключена')
+      : t('Промпт готов — модель выключена');
+    // предупреждение о медленной работе держим на экране дольше обычного
+    showInfo(warning ? done + ' ⚠ ' + warning : done, warning ? 20000 : 4000);
+  } else if (kind === 'cancelled') {
+    setPromptGenStatus(t('Остановлено'));
+  } else {
+    setPromptGenStatus(payload, 'error');
+    if (!modalOpen) showError(payload); // окно закрыто -- показываем ошибку на странице
+  }
+}
+
+async function pollPromptGenJob(jobId) {
+  setPromptGenBusy(true);
+  let failures = 0;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 700));
+    let snap;
+    try {
+      const res = await fetch('api/promptgen/job/' + encodeURIComponent(jobId));
+      if (res.status === 404) {
+        finishPromptGen('error', t('Задача потеряна — возможно, Imagine перезапускался'));
+        return;
+      }
+      snap = await res.json();
+      failures = 0;
+    } catch {
+      if (++failures >= 6) {
+        finishPromptGen('error', t('Потеряна связь с бэкендом'));
+        return;
+      }
+      continue;
+    }
+    renderPromptGenProgress(snap);
+    if (snap.state === 'done') return finishPromptGen('done', snap);
+    if (snap.state === 'error') return finishPromptGen('error', snap.error || t('Не удалось запустить генератор'));
+    if (snap.state === 'cancelled') return finishPromptGen('cancelled');
+  }
+}
+
+function wirePromptGen() {
+  el('promptGenBtn').addEventListener('click', openPromptGen);
+  el('pgClose').addEventListener('click', closePromptGen);
+  // закрытие по клику на фон -- только если и нажатие, и отпускание были
+  // на нём (выделение текста мышью, закончившееся за пределами окна, не
+  // должно закрывать его)
+  let pgBackdropDown = false;
+  el('promptGenModal').addEventListener('mousedown', (e) => { pgBackdropDown = e.target === e.currentTarget; });
+  el('promptGenModal').addEventListener('click', (e) => {
+    if (pgBackdropDown && e.target === e.currentTarget) closePromptGen();
+    pgBackdropDown = false;
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !el('promptGenModal').hidden && el('lightbox').hidden) closePromptGen();
+  });
+  el('pgInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !el('pgWrite').disabled) onPromptGenWrite();
+  });
+  el('pgAttachBtn').addEventListener('click', () => el('pgFile').click());
+  el('pgFile').addEventListener('change', onPromptGenFile);
+  el('pgThumbRemove').addEventListener('click', clearPromptGenImage);
+  el('pgWrite').addEventListener('click', onPromptGenWrite);
+  el('pgStop').addEventListener('click', onPromptGenStop);
 }
 
 init();

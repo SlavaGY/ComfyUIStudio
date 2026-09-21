@@ -48,9 +48,16 @@
     </div>
     <textarea id="positivePrompt" rows="4" placeholder="girl in a sunlit doorway, film grain, medium shot…"></textarea>
 
-    <button class="negative-toggle" id="negativeToggle" type="button">
-      <span class="negative-toggle__arrow">▸</span> <span data-i18n="негативный промпт">негативный промпт</span>
-    </button>
+    <div class="prompt-actions">
+      <button class="negative-toggle" id="negativeToggle" type="button">
+        <span class="negative-toggle__arrow">▸</span> <span data-i18n="негативный промпт">негативный промпт</span>
+      </button>
+      <!-- Генератор промптов (llama.cpp): кнопка показывается, только
+           когда он настроен в Studio (см. refreshPromptGenAvailability в app.js) -->
+      <button class="promptgen-btn" id="promptGenBtn" type="button" hidden title="Сгенерировать промпт нейросетью" data-i18n-title="Сгенерировать промпт нейросетью" aria-label="Сгенерировать промпт нейросетью">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2.5l1.9 5.6 5.6 1.9-5.6 1.9L10 17.5l-1.9-5.6L2.5 10l5.6-1.9z"/><path d="M18 13l.9 2.6 2.6.9-2.6.9L18 20l-.9-2.6-2.6-.9 2.6-.9z"/></svg>
+      </button>
+    </div>
     <div class="negative-body" id="negativeBody" hidden>
       <textarea id="negativePrompt" rows="3" placeholder="что нужно исключить из кадра…" data-i18n-placeholder="что нужно исключить из кадра…"></textarea>
     </div>
@@ -309,6 +316,33 @@
         </div>
         <button type="submit" class="btn-primary" data-i18n="Сохранить">Сохранить</button>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- Генератор промптов: окно ввода текста (+ изображения) для модели llama.cpp -->
+<div class="pgmodal" id="promptGenModal" hidden>
+  <div class="pgmodal__box" role="dialog" aria-modal="true" aria-labelledby="pgTitle">
+    <div class="pgmodal__head">
+      <span class="pgmodal__title" id="pgTitle" data-i18n="Генератор промпта">Генератор промпта</span>
+      <button type="button" class="pgmodal__close" id="pgClose" title="Закрыть (Esc)" data-i18n-title="Закрыть (Esc)">✕</button>
+    </div>
+    <p class="pgmodal__problem" id="pgProblem" hidden></p>
+    <textarea id="pgInput" rows="5" placeholder="Опишите идею своими словами — модель развернёт её в промпт…" data-i18n-placeholder="Опишите идею своими словами — модель развернёт её в промпт…"></textarea>
+    <div class="pgmodal__attach" id="pgAttachRow" hidden>
+      <input type="file" id="pgFile" accept="image/*" hidden>
+      <button type="button" class="btn-ghost" id="pgAttachBtn" data-i18n="Прикрепить изображение">Прикрепить изображение</button>
+      <div class="pgmodal__thumb" id="pgThumbWrap" hidden>
+        <img id="pgThumb" alt="">
+        <button type="button" class="pgmodal__thumb-remove" id="pgThumbRemove" title="Убрать изображение" data-i18n-title="Убрать изображение">✕</button>
+      </div>
+    </div>
+    <pre class="pgmodal__preview" id="pgPreview" hidden></pre>
+    <p class="pgmodal__status" id="pgStatus" hidden></p>
+    <p class="pgmodal__warning" id="pgWarning" hidden></p>
+    <div class="pgmodal__actions">
+      <button type="button" class="btn-ghost" id="pgStop" hidden data-i18n="Остановить">Остановить</button>
+      <button type="button" class="btn-primary" id="pgWrite" data-i18n="Написать">Написать</button>
     </div>
   </div>
 </div>

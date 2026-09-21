@@ -173,6 +173,28 @@
     "✕ категория": "✕ category",
     "Не удалось загрузить картинку": "Failed to upload the image",
     "Сохранить название": "Save name",
+    // -- генератор промптов (llama.cpp) --
+    "Сгенерировать промпт нейросетью": "Generate a prompt with a language model",
+    "Генератор промпта": "Prompt generator",
+    "Опишите идею своими словами — модель развернёт её в промпт…": "Describe your idea in your own words — the model will expand it into a prompt…",
+    "Прикрепить изображение": "Attach an image",
+    "Убрать изображение": "Remove image",
+    "Написать": "Write",
+    "Запуск модели…": "Starting the model…",
+    "Генерация… {n} ток. · {s} с": "Generating… {n} tok. · {s} s",
+    "Модель рассуждает… {n} ток. · {s} с": "The model is thinking… {n} tok. · {s} s",
+    "Введите текст или прикрепите изображение": "Enter some text or attach an image",
+    "Не удалось запустить генератор": "Couldn't start the generator",
+    "Не удалось прочитать изображение": "Couldn't read the image",
+    "Промпт готов — модель выключена": "Prompt ready — the model is unloaded",
+    "Промпт готов (ответ обрезан лимитом в 8192 токена) — модель выключена": "Prompt ready (the answer was cut at the 8192-token limit) — the model is unloaded",
+    "Остановлено": "Stopped",
+    "Задача потеряна — возможно, Imagine перезапускался": "The task was lost — Imagine may have restarted",
+    "Потеряна связь с бэкендом": "Lost connection to the backend",
+    "Модель загружена на GPU лишь частично ({loaded} из {total} слоёв) — не хватило видеопамяти, поэтому генерация медленная. Выгрузите модели ComfyUI, уменьшите контекст или закройте программы, занимающие VRAM.":
+      "The model was loaded onto the GPU only partially ({loaded} of {total} layers) — there wasn't enough VRAM, so generation is slow. Unload the ComfyUI models, reduce the context size or close programs that use VRAM.",
+    "Кодировщик изображений (mmproj) работает на CPU — обработка картинок будет медленной.":
+      "The image encoder (mmproj) runs on the CPU — image processing will be slow.",
   };
 
   let CURRENT_LANG = "ru";

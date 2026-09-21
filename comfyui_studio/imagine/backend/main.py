@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from . import config_store, launcher, lora_scan, workflow
-from . import progress_forwarder
+from . import progress_forwarder, promptgen
 from .comfy_client import ComfyClient, ComfyUIError
 
 try:
@@ -160,6 +160,20 @@ async def _stop_progress_forwarder():
         _progress_forwarder_task.cancel()
         with suppress(asyncio.CancelledError):
             await _progress_forwarder_task
+
+
+@app.on_event("startup")
+def _promptgen_startup_sweep():
+    """При старте Imagine добиваем llama-server'ы, оставшиеся от
+    аварийно завершившегося прошлого запуска (см. promptgen.sweep_stale)."""
+    promptgen.generator.startup_sweep()
+
+
+@app.on_event("shutdown")
+def _stop_prompt_generator():
+    """Штатное завершение Imagine: не оставляем llama-server висеть в VRAM
+    (см. promptgen.py -- там же atexit и Job Object на Windows)."""
+    promptgen.generator.shutdown()
 
 
 def get_client() -> ComfyClient:
@@ -348,6 +362,55 @@ def comfyui_free_memory():
     except ComfyUIError as exc:
         raise HTTPException(502, f"ComfyUI недоступен: {exc}") from exc
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Генератор промптов (llama.cpp) -- кнопка под полем промпта
+# ---------------------------------------------------------------------------
+#
+# Настройки берутся из общего файла Studio (см. shared_promptgen.py), а не
+# из config.json Imagine -- поэтому, в отличие от /api/config, эти
+# эндпоинты не требуют дев-режима: пользователь настраивает генератор в
+# Studio, а здесь им только пользуется. Долгая работа (загрузка модели +
+# генерация) вынесена в фоновую задачу с опросом статуса -- см. докстринг
+# promptgen.py про таймаут reverse-proxy Remote.
+
+class PromptGenStartRequest(BaseModel):
+    text: str = ""
+    image: Optional[str] = None  # data:image/...;base64,...
+
+
+@app.get("/api/promptgen/status")
+def promptgen_status():
+    return promptgen.generator.status()
+
+
+@app.post("/api/promptgen/start")
+def promptgen_start(req: PromptGenStartRequest):
+    def _free_comfy_memory():
+        try:
+            get_client().free_memory()
+        except ComfyUIError:
+            pass  # ComfyUI не запущен -- выгружать нечего
+
+    try:
+        job_id = promptgen.generator.start(req.text, req.image, pre_start=_free_comfy_memory)
+    except promptgen.PromptGenError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+    return {"job_id": job_id}
+
+
+@app.get("/api/promptgen/job/{job_id}")
+def promptgen_job(job_id: str):
+    snapshot = promptgen.generator.get_job(job_id)
+    if snapshot is None:
+        raise HTTPException(404, "Задача генерации промпта не найдена")
+    return snapshot
+
+
+@app.post("/api/promptgen/job/{job_id}/cancel")
+def promptgen_cancel(job_id: str):
+    return {"ok": promptgen.generator.cancel(job_id)}
 
 
 # ---------------------------------------------------------------------------

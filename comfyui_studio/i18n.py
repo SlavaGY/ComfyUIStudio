@@ -464,6 +464,76 @@ TRANSLATIONS = {
         "Обновить": "Refresh",
         "Отозвать выбранные": "Revoke selected",
         "Не удалось получить список устройств: {}": "Failed to get the device list: {}",
+        # -- Генератор промптов (Imagine + llama.cpp), см. ui/settings/prompt_generator_page.py --
+        "Должен вмещать текст запроса, изображение и ответ (до 8192 токенов). Чем больше, тем больше видеопамяти занимает KV-кэш — а нехватка VRAM заставляет llama-server оставить часть слоёв на CPU, и генерация замедляется. 0 — взять значение из самой модели.": (
+            "Must fit the request text, the image and the answer (up to 8192 tokens). The larger it is, the more VRAM the KV cache takes — and a shortage of VRAM makes llama-server keep some layers on the CPU, which slows generation down. 0 — use the value from the model itself."
+        ),
+        "Выгружать модели ComfyUI перед запуском:": "Unload ComfyUI models before starting:",
+        "Автоматически (если не хватает VRAM)": "Automatically (if VRAM is short)",
+        "Всегда": "Always",
+        "Никогда": "Never",
+        "Видеопамять, занятая ComfyUI, заставляет llama-server оставить часть слоёв модели на CPU — и генерация становится в разы медленнее. «Автоматически» выгружает модели ComfyUI, только если по оценке свободной видеопамяти не хватает (нужен драйвер NVIDIA); следующая генерация картинки загрузит их заново.": (
+            "VRAM occupied by ComfyUI makes llama-server keep some of the model's layers on the CPU — and generation becomes several times slower. “Automatically” unloads the ComfyUI models only if, by estimate, there isn't enough free VRAM (needs the NVIDIA driver); the next image generation will load them again."
+        ),
+        "Макс. сторона изображения (px):": "Max image side (px):",
+        "Прикреплённая картинка уменьшается до этого размера перед отправкой: чем меньше, тем меньше токенов зрения и тем быстрее обработка запроса.": (
+            "An attached picture is downscaled to this size before sending: the smaller it is, the fewer vision tokens and the faster the request is processed."
+        ),
+        "promptgen.log — ход каждой генерации с таймингами, снимками видеопамяти и предупреждениями; в папке llama-server — полный вывод llama-server каждого запуска.": (
+            "promptgen.log — the course of every generation with timings, VRAM snapshots and warnings; the llama-server folder holds the full llama-server output of every launch."
+        ),
+        "Кнопка генератора в Imagine запускает локальную модель GGUF через llama.cpp, отправляет ей ваш текст (и изображение, если указан mmproj), вставляет ответ в поле промпта и сразу выключает модель. Изменения применяются без перезапуска Imagine.": (
+            "The generator button in Imagine runs a local GGUF model through llama.cpp, sends it your text (and an image, if mmproj is set), puts the answer into the prompt field and immediately shuts the model down. Changes apply without restarting Imagine."
+        ),
+        "Модель и llama.cpp": "Model and llama.cpp",
+        "Папка llama.cpp:": "llama.cpp folder:",
+        "Файл модели (GGUF):": "Model file (GGUF):",
+        "Файл mmproj (необязательно):": "mmproj file (optional):",
+        "Нужен только для работы с изображениями: в окне генератора в Imagine появится кнопка «Прикрепить изображение».": (
+            "Only needed for image input: the generator window in Imagine will get an “Attach an image” button."
+        ),
+        "Текст перед запросом": "Text before the request",
+        "Этот текст добавляется перед тем, что вы напишете в окне генератора (это не системный промпт — всё уходит одним сообщением). Метка {input} задаёт место, куда подставится ваш текст; если метки нет, текст дописывается в конец.": (
+            "This text is added before whatever you type in the generator window (it is not a system prompt — everything is sent as a single message). The {input} marker sets where your text is inserted; without it, your text is appended at the end."
+        ),
+        "Сбросить на значение по умолчанию": "Reset to default",
+        "Размер контекста (токенов):": "Context size (tokens):",
+        "из модели": "from model",
+        "Слои на GPU (-ngl):": "GPU layers (-ngl):",
+        "авто": "auto",
+        "Пусто — llama-server сам подберёт под доступную видеопамять. Можно указать число слоёв, all или auto.": (
+            "Empty — llama-server picks a value to fit the available VRAM. You can enter a number of layers, all or auto."
+        ),
+        "Доп. папка с DLL:": "Extra DLL folder:",
+        "Добавляется в PATH процесса llama-server. Для llama-server из LM Studio папка backends\\vendor\\… с CUDA-библиотеками находится автоматически; сюда нужно писать, только если автопоиск не сработал.": (
+            "Added to the PATH of the llama-server process. For LM Studio's llama-server, the backends\\vendor\\… folder with the CUDA libraries is found automatically; only fill this in if auto-detection didn't work."
+        ),
+        "Доп. аргументы llama-server:": "Extra llama-server arguments:",
+        "Добавляются в командную строку как есть — например, --reasoning off, чтобы отключить «рассуждения» у thinking-моделей.": (
+            "Appended to the command line as is — for example, --reasoning off to disable “thinking” in reasoning models."
+        ),
+        "Укажите папку llama.cpp и файл модели — пока они не заданы, кнопка генератора в Imagine скрыта.": (
+            "Set the llama.cpp folder and the model file — until they are set, the generator button in Imagine stays hidden."
+        ),
+        "✔ Всё найдено — генератор готов к работе.": "✔ Everything found — the generator is ready.",
+        "Папки DLL, добавляемые в PATH при запуске: {}": "DLL folders added to PATH at launch: {}",
+        "Выберите папку с llama-server.exe": "Select the folder with llama-server.exe",
+        "Выберите файл модели GGUF": "Select the GGUF model file",
+        "Выберите файл mmproj": "Select the mmproj file",
+        "Выберите папку с DLL": "Select the DLL folder",
+        "Модели GGUF (*.gguf);;Все файлы (*)": "GGUF models (*.gguf);;All files (*)",
+        "Генератор промптов": "Prompt generator",
+        "Не указана папка llama.cpp (Настройки Studio → Генератор промптов).": (
+            "llama.cpp folder is not set (Studio settings → Prompt generator)."
+        ),
+        "Папка llama.cpp не найдена: {}": "llama.cpp folder not found: {}",
+        "В папке llama.cpp нет llama-server.exe: {}": "There is no llama-server.exe in the llama.cpp folder: {}",
+        "Не указан файл модели GGUF (Настройки Studio → Генератор промптов).": (
+            "GGUF model file is not set (Studio settings → Prompt generator)."
+        ),
+        "Файл модели не найден: {}": "Model file not found: {}",
+        "Файл mmproj не найден: {}": "mmproj file not found: {}",
+        "Дополнительная папка с DLL не найдена: {}": "Extra DLL folder not found: {}",
     }
 }
 

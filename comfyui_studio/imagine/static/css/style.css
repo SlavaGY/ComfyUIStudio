@@ -831,3 +831,141 @@ textarea:focus, input:focus, select:focus { border-color: var(--accent); }
   cursor: pointer;
 }
 .btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+
+/* ---------------- генератор промптов (llama.cpp) ---------------- */
+
+/* Ряд под полем промпта: "негативный промпт" слева, круглая кнопка
+   генератора справа. */
+.prompt-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+}
+.prompt-actions .negative-toggle { margin-top: 0; }
+
+.promptgen-btn {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.promptgen-btn:hover { background: var(--border); border-color: var(--border-hover); }
+.promptgen-btn svg { width: 16px; height: 16px; fill: currentColor; }
+/* Пока модель работает (в том числе при закрытом окне) -- вращающееся кольцо. */
+.promptgen-btn.busy { border-color: var(--accent); }
+.promptgen-btn.busy::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--accent);
+  animation: pg-spin 0.9s linear infinite;
+}
+@keyframes pg-spin { to { transform: rotate(360deg); } }
+
+.pgmodal {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(1, 4, 9, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.pgmodal__box {
+  width: 100%;
+  max-width: 560px;
+  max-height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.pgmodal__head { display: flex; align-items: center; justify-content: space-between; }
+.pgmodal__title { font-family: var(--font-display); font-weight: 600; font-size: 15px; }
+.pgmodal__close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.pgmodal__close:hover { color: var(--text); }
+.pgmodal__attach { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pgmodal__thumb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.pgmodal__thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pgmodal__thumb-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(1, 4, 9, 0.75);
+  color: #fff;
+  font-size: 10px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.pgmodal__preview {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 9px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+.pgmodal__status,
+.pgmodal__problem {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.pgmodal__status--error,
+.pgmodal__problem { color: var(--danger); }
+/* предупреждение о медленной работе (модель не поместилась в VRAM) */
+.pgmodal__warning {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #d29922;
+}
+.pgmodal__actions { display: flex; justify-content: flex-end; gap: 8px; }
+.pgmodal__actions .btn-primary { padding: 8px 20px; }
+.pgmodal__actions button:disabled,
+.pgmodal__attach button:disabled { opacity: 0.6; cursor: not-allowed; }

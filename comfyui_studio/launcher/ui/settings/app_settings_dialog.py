@@ -2,7 +2,7 @@
 рефакторинга.
 
 QTreeWidget слева (General / ComfyUI / Prompt Builder / PromptVault /
-Advanced) + QStackedWidget справа с соответствующими страницами
+Prompt Generator / Remote / Advanced) + QStackedWidget справа с соответствующими страницами
 (см. соседние *_page.py в этом же пакете). Раньше всё это было одним
 плоским QFormLayout прямо на главном экране лаунчера (SettingsPage,
 см. ../settings_page.py) -- теперь SettingsPage остаётся "домашним"
@@ -53,6 +53,7 @@ from .advanced_page import AdvancedSettingsPage
 from .comfyui_page import ComfyUISettingsPage
 from .general_page import GeneralSettingsPage
 from .prompt_builder_page import PromptBuilderSettingsPage
+from .prompt_generator_page import PromptGeneratorSettingsPage
 from .promptvault_page import PromptVaultSettingsPage
 from .remote_page import RemoteSettingsPage
 
@@ -112,6 +113,10 @@ class AppSettingsDialog(QDialog):
         # -- моста через полноценный MainWindow PromptVault больше не нужно,
         # см. её докстринг.
         self.promptvault_page = PromptVaultSettingsPage(loc, parent=self)
+        # Генератор промптов (кнопка в Imagine, llama.cpp): пишет настройки
+        # в общий файл %APPDATA%\ComfyUIStudio\prompt_generator.json, а не
+        # в cfg -- см. докстринг PromptGeneratorSettingsPage.
+        self.prompt_generator_page = PromptGeneratorSettingsPage(loc, parent=self)
         self.advanced_page = AdvancedSettingsPage(cfg, loc, parent=self)
         self.remote_page = RemoteSettingsPage(cfg, loc, parent=self)
 
@@ -125,6 +130,7 @@ class AppSettingsDialog(QDialog):
             ("ComfyUI", self.comfyui_page),
             ("Prompt Builder", self.prompt_builder_page),
             ("PromptVault", self.promptvault_page),
+            (self._tr("Генератор промптов"), self.prompt_generator_page),
             (self._tr("Удалённый доступ"), self.remote_page),
             (self._tr("Дополнительно"), self.advanced_page),
         ]
@@ -142,6 +148,7 @@ class AppSettingsDialog(QDialog):
         self.advanced_page.quit_requested.connect(self._on_quit_requested)
         self.advanced_page.restart_requested.connect(self._on_restart_requested)
         self.remote_page.changed.connect(self._schedule_autosave)
+        self.prompt_generator_page.changed.connect(self._schedule_autosave)
         self.remote_page.enable_toggled.connect(self.remote_enable_toggled.emit)
         self.remote_page.pairing_requested.connect(self.remote_pairing_requested.emit)
         self.remote_page.refresh_devices_requested.connect(
@@ -192,7 +199,19 @@ class AppSettingsDialog(QDialog):
         self.comfyui_page.cfg = cfg
         self.advanced_page.cfg = cfg
         save_config(cfg)
+        # Генератор промптов хранит настройки в своём общем файле, не в cfg
+        self.prompt_generator_page.save()
         log.debug("Настройки автосохранены (единое дерево настроек)")
+
+    def hideEvent(self, event):
+        """Не теряем правки, сделанные за последние AUTOSAVE_DEBOUNCE_MS
+        перед закрытием окна: без этого путь, вписанный и тут же закрытый
+        диалогом, не успевал сохраниться. hideEvent, а не closeEvent --
+        Esc у QDialog скрывает окно через reject() без closeEvent."""
+        if self._save_timer.isActive():
+            self._save_timer.stop()
+            self._auto_save()
+        super().hideEvent(event)
 
     # -- Remote (этап 1 дорожной карты): чистая ретрансляция вызовов от
     # launcher_window.py вниз, к RemoteSettingsPage -- сам этот диалог
@@ -269,6 +288,7 @@ class AppSettingsDialog(QDialog):
             "ComfyUI",
             "Prompt Builder",
             "PromptVault",
+            self._tr("Генератор промптов"),
             self._tr("Удалённый доступ"),
             self._tr("Дополнительно"),
         ]
@@ -278,5 +298,6 @@ class AppSettingsDialog(QDialog):
         self.comfyui_page.retranslate_ui()
         self.prompt_builder_page.retranslate_ui()
         self.promptvault_page.retranslate_ui()
+        self.prompt_generator_page.retranslate_ui()
         self.remote_page.retranslate_ui()
         self.advanced_page.retranslate_ui()
