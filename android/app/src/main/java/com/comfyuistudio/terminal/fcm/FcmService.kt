@@ -86,7 +86,36 @@ class FcmService : FirebaseMessagingService() {
         ensureChannel()
 
         val tapIntent = Intent(this, TerminalActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            // НОВОЕ (живой баг 2026-09-21: тап по уведомлению "Готово" --
+            // чёрный экран, потом "нет связи с ПК"; помогает только
+            // закрыть-открыть приложение) -- SINGLE_TOP добавлен к уже
+            // бывшим здесь NEW_TASK/CLEAR_TOP. Без него, раз
+            // TerminalActivity не объявлена singleTask/singleInstance в
+            // манифесте (launchMode по умолчанию "standard"), связка
+            // NEW_TASK+CLEAR_TOP САМА ПО СЕБЕ не переиспользует уже
+            // открытый экран через onNewIntent -- система сначала
+            // завершает старый экземпляр и запускает НОВЫЙ поверх него
+            // (см. TerminalActivity.onNewIntent про то, почему это плохо
+            // именно здесь: у варианта SSH -- §Этап 9 -- ProxyController,
+            // которым WebView направляется в SOCKS5-туннель, ОБЩИЙ на весь
+            // процесс приложения, а не привязан к конкретному экрану; при
+            // такой гонке двух экземпляров новый успевал применить прокси,
+            // а следом старый, завершаясь, его тут же снимал (см. onDispose
+            // в TerminalScreen) -- WebView повторно грузил
+            // /apps/imagine/?prompt_id=... уже БЕЗ прокси и не мог
+            // достучаться до ПК вне домашней сети; у варианта VPN та же
+            // гонка ещё и рвала сам VpnService). SINGLE_TOP заставляет
+            // систему переиспользовать уже открытый экран через
+            // onNewIntent вместо пересоздания -- тогда гонки попросту нет
+            // (SSH/VPN не поднимаются заново, а WebView лишь переходит по
+            // новому пути). CLEAR_TOP оставлен намеренно: если поверх
+            // терминала в этот момент открыт другой экран приложения
+            // (SSH/VPN настройки), именно он даёт системе закрыть эти
+            // экраны и всё равно вызвать onNewIntent на терминале, а не
+            // создать ещё один его экземпляр в стеке.
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
             // См. докстринг класса про IMAGINE_PATH -- TerminalActivity
             // при наличии этого extra сразу открывает соответствующий
             // апп, а не домашнюю страницу со списком плиток.
@@ -111,9 +140,27 @@ class FcmService : FirebaseMessagingService() {
             }
             putExtra(TerminalActivity.EXTRA_OPEN_PATH, path)
         }
+        // НОВОЕ (живой баг 2026-09-21, раунд 2: SINGLE_TOP выше добавлен,
+        // но при тапе по уведомлению приложение по-прежнему показывало
+        // "нет связи с ПК" -- logcat это подтвердил: у самого запуска
+        // Activity стоял flg=0x14000000 = NEW_TASK|CLEAR_TOP, БЕЗ
+        // SINGLE_TOP (0x20000000), хотя код здесь его ставит). Причина --
+        // не в коде выше, а в самом FLAG_UPDATE_CURRENT: документация
+        // PendingIntent прямо говорит, что он заменяет только extra-
+        // данные УЖЕ СУЩЕСТВУЮЩЕГО PendingIntent с тем же "базовым"
+        // Intent (компонент + action/data/categories, БЕЗ учёта flags и
+        // requestCode совпадает) -- flags старого PendingIntent, если он
+        // был создан ЕЩЁ ДО этого исправления (первым запуском старой
+        // версии приложения), так и остаются старыми НАВСЕГДА, сколько
+        // версий приложение ни обновляй -- FLAG_UPDATE_CURRENT их не
+        // трогает. FLAG_CANCEL_CURRENT вместо него принудительно отменяет
+        // такой "унаследованный" PendingIntent и создаёт новый с текущими
+        // flags -- здесь это безопасно: на этот PendingIntent никто,
+        // кроме самого уведомления, которое мы вот-вот покажем, не
+        // ссылается.
         val pendingIntent = PendingIntent.getActivity(
             this, 0, tapIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)

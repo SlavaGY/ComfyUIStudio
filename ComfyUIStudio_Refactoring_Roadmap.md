@@ -43,7 +43,8 @@ ComfyUIStudio/
 ├── build_exe.bat                  build_exe.bat [core|full] (этап 3)
 ├── README.md                      частично обновлён под этап 3 (установка,
 │                                   сборка); остальное не тронуто
-├── assets/                        icon.ico/icon.png лаунчера
+├── assets/                        icon.ico/icon.png Studio; assets/branding/ — источник
+│                                    всех иконок комплекта (см. README, "Иконки комплекта")
 ├── comfyui_studio/                общее пространство имён (этап 2)
 │   ├── __init__.py                 НОВОЕ (этап 4): __version__ — используется
 │   │                                на странице General → Updates
