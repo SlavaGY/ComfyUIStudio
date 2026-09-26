@@ -77,12 +77,26 @@ class TerminalActivity : ComponentActivity() {
         const val EXTRA_OPEN_PATH = "open_path"
     }
 
+    // НОВОЕ (живой баг 2026-09-21, см. подробный разбор в FcmService.kt
+    // у FLAG_ACTIVITY_SINGLE_TOP) -- Compose-состояние на уровне самой
+    // Activity, а не локальный val в onCreate: SINGLE_TOP означает, что
+    // повторный тап по уведомлению (или вообще любой новый Intent, пока
+    // экран уже открыт) придёт в уже живой экземпляр через onNewIntent
+    // ниже, а не пересоздаст Activity с нуля -- значит, новый openPath
+    // нужно чем-то довести до уже читающей его композиции. Мутация
+    // обычного `by mutableStateOf`-поля Activity -- ровно то же самое
+    // хождение через Snapshot-состояние, что и `remember { mutableStateOf
+    // (...) }" внутри @Composable, просто "поднятое" на уровень выше
+    // (hoisting), чтобы onNewIntent -- обычный, не-@Composable колбэк --
+    // тоже мог до него дотянуться.
+    private var openPathState by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val tokenStore = TokenStore(this)
         val device = tokenStore.load()
-        val openPath = intent.getStringExtra(EXTRA_OPEN_PATH)
+        openPathState = intent.getStringExtra(EXTRA_OPEN_PATH)
 
         setContent {
             MaterialTheme {
@@ -111,12 +125,41 @@ class TerminalActivity : ComponentActivity() {
                         LaunchedEffect(device) {
                             syncFcmTokenIfPaired(device)
                         }
-                        TerminalScreen(device, openPath)
+                        // openPathState читается здесь как обычное поле, но
+                        // это Snapshot-состояние (см. его объявление выше) --
+                        // Compose сам подписывается на него при чтении внутри
+                        // композиции и перекомпонует TerminalScreen, когда
+                        // onNewIntent ниже его поменяет.
+                        TerminalScreen(device, openPathState)
                     }
                 }
             }
         }
     }
+
+    // НОВОЕ (живой баг 2026-09-21) -- вызывается вместо пересоздания
+    // Activity благодаря FLAG_ACTIVITY_SINGLE_TOP в FcmService.kt (см. её
+    // подробный комментарий там про саму причину бага). setIntent(intent)
+    // обязателен: без него getIntent()/intent во всех остальных местах
+    // Activity (например, при повороте экрана, который тут не пересоздаёт
+    // Activity благодаря android:configChanges в манифесте, но МОГ бы
+    // читать intent заново где-то ещё) продолжал бы отдавать старый,
+    // самый первый Intent, с которым Activity была создана.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openPathState = intent.getStringExtra(EXTRA_OPEN_PATH)
+    }
+}
+
+/**
+ * Незавершённый запрос WebView на выбор файла (`<input type="file">`) --
+ * см. комментарий у `fileChooserLauncher` в [TerminalWebView]. Простой
+ * держатель, а не Compose-состояние: читается только из колбэков
+ * WebChromeClient/ActivityResult, перерисовка от него не нужна.
+ */
+private class PendingFileChooser {
+    var callback: android.webkit.ValueCallback<Array<android.net.Uri>>? = null
 }
 
 @Composable
@@ -351,6 +394,40 @@ private fun TerminalWebView(device: TokenStore.Device, openPath: String?) {
     // вообще ни разу не попадала в историю ЭТОЙ WebView-сессии -- goBack()
     // тогда был бы недоступен либо ушёл бы совсем не туда).
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    // НОВОЕ (живой отчёт 2026-09-21: в приложении не прикрепляется
+    // изображение в генераторе промптов Imagine, хотя в браузере всё
+    // работает) -- WebView сам по себе НЕ показывает выбор файла для
+    // <input type="file">: пока WebChromeClient не переопределяет
+    // onShowFileChooser, клик по такому полю молча ничего не делает (ни
+    // ошибки, ни диалога, ни строчки в логе). Здесь -- стандартная схема:
+    // onShowFileChooser (см. WebChromeClient ниже) запоминает колбэк и
+    // запускает системный выбор файла, а результат возвращается в тот же
+    // колбэк отсюда. Разрешений не требуется: выбор идёт через системный
+    // ACTION_GET_CONTENT (в т. ч. системный выбор фото), а WebView читает
+    // выбранный content://-адрес по временному праву, выданному выбором.
+    val fileChooser = remember { PendingFileChooser() }
+    val fileChooserLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val callback = fileChooser.callback
+        fileChooser.callback = null
+        // parseResult сам отдаёт null при отмене (resultCode != RESULT_OK) и
+        // разбирает и data, и clipData (множественный выбор). Колбэк ОБЯЗАТЕЛЬНО
+        // вызывать при любом исходе -- иначе WebView больше не покажет ни
+        // одного выбора файла до перезапуска экрана.
+        callback?.onReceiveValue(
+            android.webkit.WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data),
+        )
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            // Экран закрывается с незавершённым выбором -- закрываем запрос,
+            // а не оставляем колбэк висеть.
+            fileChooser.callback?.onReceiveValue(null)
+            fileChooser.callback = null
+        }
+    }
     // Путь текущей загруженной страницы ("/" -- список апп, что угодно
     // ещё -- конкретное апп) -- обновляется в onLoadStarted, см. её же
     // докстринг в AuthWebViewClient.kt.
@@ -484,6 +561,30 @@ private fun TerminalWebView(device: TokenStore.Device, openPath: String?) {
                                 "WebViewConsole",
                                 "${message.message()} (${message.sourceId()}:${message.lineNumber()})",
                             )
+                            return true
+                        }
+
+                        // См. комментарий у fileChooserLauncher выше.
+                        override fun onShowFileChooser(
+                            webView: WebView?,
+                            filePathCallback: android.webkit.ValueCallback<Array<android.net.Uri>>?,
+                            fileChooserParams: android.webkit.WebChromeClient.FileChooserParams?,
+                        ): Boolean {
+                            if (filePathCallback == null || fileChooserParams == null) return false
+                            // Предыдущий запрос, если он почему-то остался
+                            // незавершённым, обязательно закрываем null'ом --
+                            // иначе WebView не покажет новый выбор.
+                            fileChooser.callback?.onReceiveValue(null)
+                            fileChooser.callback = filePathCallback
+                            try {
+                                // createIntent() строит ACTION_GET_CONTENT с типом из
+                                // accept="image/*" самого поля -- для генератора
+                                // промптов открывается выбор изображений.
+                                fileChooserLauncher.launch(fileChooserParams.createIntent())
+                            } catch (e: android.content.ActivityNotFoundException) {
+                                fileChooser.callback = null
+                                filePathCallback.onReceiveValue(null)
+                            }
                             return true
                         }
                     }
