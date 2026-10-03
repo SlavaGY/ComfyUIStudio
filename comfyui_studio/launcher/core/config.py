@@ -12,8 +12,33 @@ from .constants import APP_DIR, CONFIG_PATH, DEFAULT_CONFIG, LAUNCH_SCRIPT_TMP
 from .logging_setup import log
 
 
+def _ensure_app_dir() -> None:
+    r"""Создаёт папку данных, если её нет, и НИКОГДА не бросает исключение.
+
+    Раньше и `load_config`, и `save_config` вызывали `os.makedirs(APP_DIR)`
+    БЕЗ защиты: если каталог нельзя даже создать (нет прав, запрет внешнего
+    механизма защиты), падало всё приложение. Причём `load_config`
+    вызывается из `MainWindow.__init__`, то есть окно вообще не появлялось —
+    а значит и предупреждение о недоступной папке данных (см.
+    `launcher_window._warn_if_data_dir_unwritable`) показать было некому.
+
+    Живой случай (Windows, 2026-10-03): `PermissionError: [WinError 5]
+    Отказано в доступе: 'C:\Users\...\AppData\Roaming\ComfyUILauncher'` —
+    приложение падало до показа окна. Работать в таком режиме можно и
+    нужно: config.json — это сохранённые настройки, а не условие запуска.
+    """
+    try:
+        os.makedirs(APP_DIR, exist_ok=True)
+    except OSError as exc:
+        log.warning(
+            "Папка данных недоступна (%s) -- работаем без config.json: %s",
+            APP_DIR,
+            exc,
+        )
+
+
 def load_config():
-    os.makedirs(APP_DIR, exist_ok=True)
+    _ensure_app_dir()
     if os.path.exists(CONFIG_PATH):
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -28,7 +53,7 @@ def load_config():
 
 
 def save_config(cfg):
-    os.makedirs(APP_DIR, exist_ok=True)
+    _ensure_app_dir()
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
