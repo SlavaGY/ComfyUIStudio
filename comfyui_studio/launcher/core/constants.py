@@ -19,6 +19,8 @@ comfyui_studio/launcher/core/ вычисление корня проекта ч�
 import os
 import sys
 
+from comfyui_studio.app_paths import launcher_dir
+
 
 def app_base_dir():
     """Папка, где лежит сам лаунчер (корень проекта / папка с exe): рядом
@@ -37,9 +39,11 @@ def app_base_dir():
 
 
 APP_NAME = "ComfyUI Launcher"
-APP_DIR = os.path.join(
-    os.environ.get("APPDATA", os.path.expanduser("~")), "ComfyUILauncher"
-)
+# Путь к папке данных -- через comfyui_studio.app_paths, чтобы её можно было
+# увести из профиля переменной COMFYUI_STUDIO_DATA_DIR (см. докстринг модуля:
+# на машине, где python.exe не может писать в C:\Users\<пользователь>\...,
+# это единственный способ сохранять настройки и логи).
+APP_DIR = launcher_dir()
 CONFIG_PATH = os.path.join(APP_DIR, "config.json")
 WEBENGINE_PROFILE_DIR = os.path.join(APP_DIR, "webengine_profile")
 LAUNCH_SCRIPT_TMP = os.path.join(APP_DIR, "_launch_current.bat")

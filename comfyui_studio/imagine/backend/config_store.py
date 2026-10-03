@@ -71,6 +71,8 @@ import os
 import threading
 from pathlib import Path
 
+from comfyui_studio.app_paths import studio_dir
+
 # ИЗМЕНЕНО при встраивании в ComfyUIStudio: раньше DATA_DIR лежала прямо
 # рядом с исходниками (data/ на уровень выше backend/), что подходило,
 # только пока инструмент жил отдельным репозиторием с прямым запуском
@@ -81,16 +83,12 @@ from pathlib import Path
 # Пишем в общую папку комплекта, по образцу shared_theme.py/
 # shared_language.py и launcher/core/constants.py (APP_DIR) —
 # %APPDATA%\ComfyUIStudio\imagine\. IMAGINE_DATA_DIR остаётся отдушиной
-# для тестов/отладки вне Windows (где APPDATA не задан).
+# для тестов/отладки вне Windows (где APPDATA не задан); общий же способ
+# увести данные из профиля — COMFYUI_STUDIO_DATA_DIR (см.
+# comfyui_studio/app_paths.py), он действует и здесь, потому что путь
+# строится через studio_dir().
 DATA_DIR = Path(
-    os.environ.get(
-        "IMAGINE_DATA_DIR",
-        os.path.join(
-            os.environ.get("APPDATA", os.path.expanduser("~")),
-            "ComfyUIStudio",
-            "imagine",
-        ),
-    )
+    os.environ.get("IMAGINE_DATA_DIR", os.path.join(studio_dir(), "imagine"))
 )
 CONFIG_PATH = DATA_DIR / "config.json"
 UPLOADS_DIR = DATA_DIR / "uploads"

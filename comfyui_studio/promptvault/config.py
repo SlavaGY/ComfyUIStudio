@@ -7,6 +7,8 @@
 import sys
 from pathlib import Path
 
+from comfyui_studio.app_paths import data_override
+
 APP_VERSION = "0.11.1"
 
 # базовая директория пакета app/ — и в обычном запуске (python -m
@@ -49,7 +51,14 @@ TRANSLATIONS_DIR = _APP_DIR / "resources" / "translations"
 # ------------------------------------------------------------------
 # Пути
 
-APP_DATA_DIR = Path.home() / ".promptvault"
+# PromptVault исторически хранит данные в ~/.promptvault, а НЕ в %APPDATA%,
+# поэтому COMFYUI_STUDIO_DATA_DIR (см. comfyui_studio/app_paths.py) уводит их
+# только когда переменная задана: без неё путь прежний, иначе у уже
+# существующих пользователей "потерялась" бы библиотека.
+_DATA_ROOT_OVERRIDE = data_override()
+APP_DATA_DIR = (
+    Path(_DATA_ROOT_OVERRIDE) if _DATA_ROOT_OVERRIDE else Path.home()
+) / ".promptvault"
 DB_PATH = APP_DATA_DIR / "promptvault.db"
 LOG_DIR = APP_DATA_DIR / "logs"
 THUMBNAIL_CACHE_DIR = APP_DATA_DIR / "thumbnails"

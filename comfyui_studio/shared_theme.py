@@ -23,9 +23,9 @@ QFileSystemWatcher, так что смена темы применяется С�
 import json
 import os
 
-SHARED_DIR = os.path.join(
-    os.environ.get("APPDATA", os.path.expanduser("~")), "ComfyUIStudio"
-)
+from comfyui_studio.app_paths import studio_dir
+
+SHARED_DIR = studio_dir()
 SHARED_THEME_PATH = os.path.join(SHARED_DIR, "theme.json")
 
 

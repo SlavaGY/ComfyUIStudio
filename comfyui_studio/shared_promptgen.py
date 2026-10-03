@@ -27,9 +27,9 @@ import json
 import os
 import tempfile
 
-SHARED_DIR = os.path.join(
-    os.environ.get("APPDATA", os.path.expanduser("~")), "ComfyUIStudio"
-)
+from comfyui_studio.app_paths import studio_dir
+
+SHARED_DIR = studio_dir()
 SHARED_PROMPTGEN_PATH = os.path.join(SHARED_DIR, "prompt_generator.json")
 
 # Логи генератора: promptgen.log (ход каждой задачи с таймингами и

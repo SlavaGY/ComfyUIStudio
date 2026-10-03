@@ -35,9 +35,9 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
-SHARED_DIR = os.path.join(
-    os.environ.get("APPDATA", os.path.expanduser("~")), "ComfyUIStudio"
-)
+from comfyui_studio.app_paths import studio_dir
+
+SHARED_DIR = studio_dir()
 DEVICE_STORE_PATH = os.path.join(SHARED_DIR, "remote_devices.json")
 
 # Один и тот же процесс-Remote может обрабатывать несколько HTTP-запросов
