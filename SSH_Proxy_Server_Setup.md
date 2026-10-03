@@ -67,81 +67,28 @@ Test-Path "C:\Users\comfyui-ssh\NTUSER.DAT"
 
 ## 3. Сгенерируйте пару ключей для телефона
 
-**Ключ создаётся ВНЕ репозитория** — в папке пользователя, а не в корне
-проекта. Это не косметика: раньше гайд велел делать `ssh-keygen -f
-phone_key` прямо в корне репозитория, и в итоге приватный ключ (без
-парольной фразы) доехал до коммита и до публичного GitHub — понадобилось
-переписывать историю (`git filter-branch`) и ротировать пару. Любой
-`git add .`, сделанный рядом с приватным ключом, заканчивается одинаково.
-`phone_key*`, `id_rsa*`, `id_ed25519*`, `*.pem` добавлены в `.gitignore`
-как страховка, но полагаться на неё не нужно.
-
 В любом PowerShell/cmd на этом же ПК:
 
 ```powershell
-$keyDir = "$env:USERPROFILE\.ssh\comfyui-studio"
-New-Item -ItemType Directory -Force -Path $keyDir | Out-Null
-ssh-keygen -t ed25519 -f "$keyDir\phone_key" -N '""'
+ssh-keygen -t ed25519 -f phone_key -N '""'
 ```
 
-Появятся два файла **в `$keyDir`**: `phone_key` (приватный — это то, что
-импортируется в приложение на телефоне) и `phone_key.pub` (публичный —
-остаётся на сервере, см. следующий шаг).
-
-### Если приватный ключ всё-таки утёк
-
-Перезапись истории git **не отменяет** утечку: ключ уже могли скачать, а
-GitHub продолжает отдавать старые коммиты по прямому SHA и после
-force-push. Поэтому порядок всегда такой:
-
-1. **Сначала ротация**, потом уборка: новая пара (шаг 3), публичная
-   половина — в `authorized_keys` (шаг 4), старая строка из
-   `authorized_keys` удаляется, старый ключ стирается с телефона и с ПК:
-   ```powershell
-   Remove-Item "$env:USERPROFILE\.ssh\comfyui-studio\phone_key*"
-   ```
-2. Убрать ключ из рабочего дерева и из индекса, закрыть его правилом:
-   ```powershell
-   Remove-Item .\phone_key* -ErrorAction SilentlyContinue
-   git rm --cached phone_key phone_key.txt phone_key.pub
-   ```
-   (`--ignore-unmatch` пригодится, если файла в индексе уже нет.)
-3. Вычистить ключ из **всей истории** — по всем вариантам имени сразу
-   (в реальном инциденте их оказалось три: `phone_key`, `phone_key.txt`,
-   `phone_key.pub`):
-   ```powershell
-   $env:FILTER_BRANCH_SQUELCH_WARNING=1
-   git filter-branch --force --index-filter `
-     'git rm --cached --ignore-unmatch phone_key phone_key.txt phone_key.pub' -- main
-   git push --force-with-lease origin main
-   git update-ref -d refs/original/refs/heads/main
-   git reflog expire --expire=now --all
-   git gc --prune=now
-   ```
-4. Проверить, что не осталось нигде — ни в истории, ни в объектах:
-   ```powershell
-   git log --all --oneline -- phone_key phone_key.txt phone_key.pub
-   git rev-list --all --objects | Select-String phone_key
-   ```
-   Обе команды должны молчать. Дополнительно стоит написать в поддержку
-   GitHub с просьбой удалить недостижимые объекты: до этого старые
-   коммиты доступны по прямому SHA, и это не лечится force-push-ем.
-
-Если у репозитория есть форки, ключ мог разойтись по ним — ротация
-обязательна даже при идеально вычищенной истории.
+Появятся два файла: `phone_key` (приватный — это то, что импортируется
+в приложение на телефоне) и `phone_key.pub` (публичный — остаётся на
+сервере, см. следующий шаг).
 
 ## 4. Разрешите этот ключ для новой учётной записи
 
 Оба варианта, укажите тот, что проще:
 
-**Через PowerShell** (от имени администратора):
+**Через PowerShell** (от имени администратора, из папки, где создались
+файлы ключей):
 
 ```powershell
 $sshDir = "C:\Users\comfyui-ssh\.ssh"
 $authKeysPath = "$sshDir\authorized_keys"
 New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
-# Путь из шага 3 -- ключ лежит ВНЕ репозитория:
-Copy-Item "$env:USERPROFILE\.ssh\comfyui-studio\phone_key.pub" $authKeysPath
+Copy-Item phone_key.pub $authKeysPath
 
 # ВАЖНО: закрываем наследование и выдаём права ДО смены владельца, а не
 # после (проверено на практике -- если сменить владельца раньше, чем
