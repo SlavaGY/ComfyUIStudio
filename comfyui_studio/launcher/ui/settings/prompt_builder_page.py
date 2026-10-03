@@ -22,6 +22,7 @@ debounce-автосейв AppSettingsDialog эта страница не вкл�
 
 from __future__ import annotations
 
+import os
 
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -38,6 +39,7 @@ from PySide6.QtWidgets import (
 
 from comfyui_studio.prompt_builder.lora_combo import get_lora_folder, set_lora_folder
 from comfyui_studio.prompt_builder.pb_settings import (
+    DEFAULT_BACKUP_KEEP,
     get_backup_keep,
     get_extension_folder,
     set_backup_keep,

@@ -780,55 +780,6 @@ NVIDIA-картой и установленными драйверами — н�
 покажет «нет данных» вместо GPU-метрик (это видно в `launcher.log` как
 предупреждение при старте).
 
-## Тесты и CI
-
-Прогон из корня репозитория (там же, где `pyproject.toml`):
-
-```
-pip install -e ".[imagine,dev]"
-pytest                                  # весь набор: 584 теста
-pytest tests/launcher                   # только лаунчер
-ruff check .                            # линт
-mypy comfyui_studio/promptvault/core    # типы в strict-зоне
-```
-
-`.[imagine,dev]`, а не просто `.[dev]`: тестам нужны ещё и рантайм-пакеты
-extras `imagine` — `tests/remote/test_mdns.py` требует `zeroconf`,
-`tests/imagine/*` — `fastapi`; без них соответствующие модули
-пропускаются (`pytest.importorskip`). `pytest-qt` (в `dev`) обязателен —
-он даёт фикстуры `qapp` и `qtbot`.
-
-**Нужен Python 3.11+** (как и везде в проекте, см. `requires-python`).
-На 3.10 часть тестов падает ложно: например
-`test_external_modification_between_read_and_write_is_detected` —
-в 3.10 `pathlib` вызывает `os.stat` через закэшированный
-`_NormalAccessor`, и monkeypatch теста его не перехватывает.
-
-**Что проверяет CI** (`.github/workflows/ci.yml`, windows-latest +
-Python 3.11, `QT_QPA_PLATFORM=offscreen`):
-
-| Проверка | Блокирует merge |
-|---|---|
-| `ruff check .` | да |
-| `pytest -q` | да |
-| `mypy comfyui_studio/promptvault/core` (strict-зона) | да |
-| `mypy comfyui_studio` (весь пакет) | нет — информационно |
-
-Полный `mypy` пока информационный: 118 унаследованных ошибок в 34 файлах
-(часть — реальные, например `remote/routes/ssh_config.py` импортирует
-несуществующий `models.SshConfigResponse`; часть — рассинхрон
-enum-стабов PySide6 вроде `Qt.AlignCenter`). Сделать его блокирующим
-можно только вместе с отдельным проходом по этим ошибкам.
-
-`ruff format` в CI **не проверяется** — форматтер в проекте подключён, но
-сознательно не применён ко всему коду (обоснование — в комментарии к
-`[tool.ruff.format]` в `pyproject.toml`). По той же причине из `ruff`
-исключён `I` (isort): автофикс `I001` переписывает layout импортов
-целиком в ~30 файлах, потому что в дереве уживаются два устоявшихся
-стиля — компактная упаковка «по нескольку имён на строку» (launcher,
-prompt_builder, imagine) и «по одному имени на строку» (promptvault/ui);
-включить его стоит отдельным коммитом «нормализовать импорты».
-
 ## Сборка в один exe
 
 `build_exe.bat` в корне репозитория собирает **весь монолит одним

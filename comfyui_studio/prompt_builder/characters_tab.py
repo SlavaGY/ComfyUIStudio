@@ -10,7 +10,7 @@ from typing import Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox, QDoubleSpinBox, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QMessageBox, QPushButton, QSplitter, QTextEdit, QVBoxLayout,
+    QMessageBox, QPushButton, QSizePolicy, QSplitter, QTextEdit, QVBoxLayout,
     QWidget,
 )
 

@@ -319,6 +319,7 @@ class TestApplicationSection:
 
         window, _gallery, _theme, _loc, _toolbar = settings_window
 
+        from PySide6.QtWidgets import QMessageBox
 
         monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.No))
 
@@ -333,6 +334,7 @@ class TestApplicationSection:
 
         window, _gallery, _theme, _loc, _toolbar = settings_window
 
+        from PySide6.QtWidgets import QMessageBox
 
         monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.Yes))
 
@@ -347,6 +349,7 @@ class TestApplicationSection:
 
         window, _gallery, _theme, _loc, _toolbar = settings_window
 
+        from PySide6.QtWidgets import QMessageBox
 
         monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.No))
 
@@ -361,6 +364,7 @@ class TestApplicationSection:
 
         window, _gallery, _theme, _loc, _toolbar = settings_window
 
+        from PySide6.QtWidgets import QMessageBox
 
         monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.Yes))
 

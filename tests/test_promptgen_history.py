@@ -67,10 +67,7 @@ def test_sorting_both_directions_and_tiebreak(db):
     ph.add_record(rec(started_at=1, total_tokens=50, user_text="b"), db)
     ph.add_record(rec(started_at=2, total_tokens=10, user_text="a"), db)
     ph.add_record(rec(started_at=3, total_tokens=30, user_text="c"), db)
-    def by(key, desc):
-        # было `by = lambda ...` -- ruff E731
-        return [r["user_text"] for r in ph.query(sort_by=key, descending=desc, path=db)]
-
+    by = lambda key, desc: [r["user_text"] for r in ph.query(sort_by=key, descending=desc, path=db)]
     assert by("started_at", True) == ["c", "a", "b"]
     assert by("started_at", False) == ["b", "a", "c"]
     assert by("total_tokens", True) == ["b", "c", "a"]

@@ -15,27 +15,3 @@ __pycache__/
 # Firebase / Google Cloud credentials
 *-firebase-adminsdk-*.json
 *.env
-
-# Приватные ключи -- НИКОГДА не коммитить. `phone_key*` появился здесь
-# после инцидента: ключ ed25519 без парольной фразы, созданный по
-# SSH_Proxy_Server_Setup.md прямо в корне репозитория, был закоммичен и
-# опубликован на GitHub (см. коммит a830091). Гайд теперь велит создавать
-# пару вне репозитория (например, в %USERPROFILE%\.ssh\), а эти правила --
-# страховка на случай, если кто-то всё же создаст ключ рядом.
-phone_key
-phone_key.*
-id_rsa*
-id_ed25519*
-*.pem
-
-# Android: build- и IDE-артефакты. `.gradle/` -- бинарные кэши Gradle
-# (executionHistory.bin и т.п., до 3 МБ), `.idea/` -- локальные настройки
-# IDE, `local.properties` -- машинозависимый путь к Android SDK (сам файл
-# в шапке просит "must *NOT* be checked into Version Control"). Все три
-# были в индексе и попали в коммиты.
-android/.gradle/
-android/.idea/
-android/local.properties
-
-# Каталог-зеркало %APPDATA%, который создают смоук-тесты под песочницей
-.tmp_appdata/

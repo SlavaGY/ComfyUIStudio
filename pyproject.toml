@@ -155,20 +155,6 @@ include = ["comfyui_studio*"]
 testpaths = ["tools/promptvault/tests", "tests"]
 pythonpath = ["."]
 qt_api = "pyside6"
-# ИСПРАВЛЕНО: без этого `addopts` прогон `pytest` из корня репозитория
-# вообще не собирался — в дереве два пакета с именем `tests`
-# (новый корневой `tests/` с __init__.py и легаси
-# `tools/promptvault/tests/` с __init__.py, см. testpaths выше). При
-# import-mode по умолчанию (prepend) pytest добавляет в sys.path родителя
-# каждого пакета и импортирует оба как `tests.<module>` — первый
-# выигрывает, второй падает с `ModuleNotFoundError: No module named
-# 'tests.launcher'` / `'tests.remote'` / `'tests.test_promptgen_history'`.
-# Было: 378 collected + 10 collection errors, 206 из 584 тестов молча не
-# собирались вообще. importlib не полагается на sys.path и имя пакета,
-# поэтому оба дерева сосуществуют: 584 collected, единственная ошибка —
-# отсутствующий `zeroconf` для tests/remote/test_mdns.py (пакет объявлен
-# в extra `imagine`, см. CI-workflow).
-addopts = "--import-mode=importlib"
 
 [tool.coverage.run]
 source = ["comfyui_studio.promptvault"]
@@ -182,26 +168,9 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-# Намеренно небольшой набор правил — Pyflakes (реальные ошибки: неиспользуемые
-# импорты, переопределения, дубли ключей словаря) + pycodestyle-ошибки.
-# `E501` выключен: длина строки и так задана line-length, а форматтер
-# сознательно не применяется ко всему проекту (см. [tool.ruff.format] ниже).
-#
-# ИЗМЕНЕНО (настройка CI): `I` (isort) убран из select. Причина конкретная —
-# у isort нет настройки, при которой автофикс I001 не переписывает layout
-# импортов целиком: в дереве уживаются ДВА устоявшихся стиля, и оба
-# "неправильные" для любой из настроек:
-#   * компактная упаковка "по нескольку имён на строку" — launcher,
-#     prompt_builder, imagine (24 файла, ~150 строк);
-#   * по одному имени на строку с trailing comma — promptvault/ui (30 файлов).
-# `split-on-trailing-comma = true` (умолчание) разворачивает первые,
-# `= false` схлопывает вторые — то есть в ЛЮБОМ случае `ruff check --fix`
-# даёт косметический diff на ~30 файлов, не меняя поведение. Это ровно та же
-# развилка, из-за которой здесь уже отложен `ruff format` (см. ниже), поэтому
-# I001 отложен тем же решением, а не спрятан флагом в CI: `ruff check .`
-# локально и в CI дают один и тот же результат. Включить `I` обратно стоит
-# вместе с отдельным коммитом "нормализовать импорты", а не попутно.
-select = ["E", "F"]
+# намеренно небольшой набор правил на старте — Pyflakes (ошибки) +
+# наведение порядка импортов; расширять по мере обкатки на реальном коде
+select = ["E", "F", "I"]
 ignore = [
     "E501",  # длина строки — уже покрыта line-length, не дублируем как ошибку
 ]

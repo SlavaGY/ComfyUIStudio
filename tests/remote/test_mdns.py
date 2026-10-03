@@ -15,14 +15,6 @@ import asyncio
 
 import pytest
 
-# `zeroconf` объявлен в extra `imagine` (это рантайм-зависимость самого
-# mDNS-объявления), а не в `dev`: без него импорт
-# comfyui_studio.remote.mdns падает на уровне модуля и весь файл не
-# собирается -- `pytest` из корня спотыкался об это ещё до запуска
-# тестов. Пропускаем модуль, если пакета нет; CI ставит `.[imagine,dev]`,
-# так что там тесты реально выполняются, а не скипаются.
-pytest.importorskip("zeroconf")
-
 from comfyui_studio.remote import mdns
 
 

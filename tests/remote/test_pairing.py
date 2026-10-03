@@ -54,19 +54,11 @@ def test_confirm_with_correct_code_creates_device_and_burns_code():
 def test_confirm_with_wrong_code_decrements_attempts():
     manager = PairingManager()
     session = manager.start()
-    # ВАЖНО: start() возвращает ТОТ ЖЕ объект PairingSession, что лежит в
-    # manager._session (не копию) -- поэтому `session.attempts_left`
-    # после неудачной попытки тоже станет 4, и сравнение
-    # `current_status().attempts_left == session.attempts_left - 1` не
-    # может выполниться никогда (оба выражения -- одно и то же поле одного
-    # объекта). Фиксируем ЗНАЧЕНИЕ до попытки.
-    initial_attempts = session.attempts_left
-    assert initial_attempts == 5
 
     with pytest.raises(PairingError):
         manager.confirm("000-000", "Телефон")
 
-    assert manager.current_status().attempts_left == initial_attempts - 1
+    assert manager.current_status().attempts_left == session.attempts_left - 1
 
 
 def test_confirm_exhausts_attempts_then_requires_new_code():
