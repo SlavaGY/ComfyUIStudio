@@ -651,7 +651,52 @@ def create_window(app: QApplication) -> "MainWindow":
     loc.apply_language(loc.current_language())
 
     log.info("=== Запуск %s ===", APP_NAME)
-    return MainWindow(theme_manager, loc)
+    window = MainWindow(theme_manager, loc)
+    # Предупреждение о недоступной папке данных -- через singleShot(0), а не
+    # здесь: create_window() не должен блокироваться модальным диалогом
+    # раньше, чем главное окно вообще показано.
+    QTimer.singleShot(0, lambda: _warn_if_data_dir_unwritable(window))
+    return window
+
+
+def _warn_if_data_dir_unwritable(window: "MainWindow") -> None:
+    """Показывает в интерфейсе, что папка данных недоступна на запись.
+
+    Зачем это в UI, а не только в логе: в %APPDATA%\\ComfyUILauncher лежат
+    и логи, и config.json, причём `config.save_config()` глотает
+    исключения -- при недоступной папке настройки МОЛЧА не сохраняются.
+    Из консоли это видно, только если запускать из исходников; в собранной
+    сборке (`--console=False`) консоли нет вовсе, поэтому пользователь
+    оставался без единого признака проблемы. Живой случай 2026-10-03:
+    запуск падал трейсбеком из-за одного файла лога, а после того, как
+    падение убрали, выяснилось, что писать в папку запрещено целиком
+    (Windows Defender, «Контролируемый доступ к папкам», блокирует
+    `python.exe`, не меняя права на папку).
+
+    Проверяем по факту открытия файлового лога (см.
+    logging_setup.file_log_available): это тот же каталог и та же попытка
+    записи, что и у config.json, поэтому отдельная проверка не нужна.
+    """
+    from comfyui_studio.launcher.core import logging_setup
+    from comfyui_studio.launcher.core.constants import APP_DIR
+
+    if logging_setup.file_log_available():
+        return
+
+    log.warning("Папка данных недоступна на запись: %s", APP_DIR)
+    QMessageBox.warning(
+        window,
+        "ComfyUI Studio: нет доступа к папке данных",
+        "Не удалось писать в папку данных:\n"
+        f"{APP_DIR}\n\n"
+        "Настройки и логи сохраняться не будут (настройки — молча, без "
+        "сообщений об ошибке).\n\n"
+        "Частая причина на Windows — «Контролируемый доступ к папкам» "
+        "(Windows Security → Защита от программ-шантажистов → "
+        "Контролируемый доступ к папкам): он запрещает запись конкретной "
+        "программе, не меняя права на папку. Разрешите приложение в этом "
+        "же разделе (или выдайте права на папку) и перезапустите Studio.",
+    )
 
 
 
