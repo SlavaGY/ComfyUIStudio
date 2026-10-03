@@ -9,7 +9,6 @@ import logging
 import sys
 import time
 from datetime import datetime
-from pathlib import Path
 
 from comfyui_studio.promptvault.config import LOG_DIR, LOG_DIR_MAX_BYTES, LOG_MAX_AGE_DAYS
 from comfyui_studio.promptvault.utils import enforce_dir_size_limit
@@ -23,46 +22,24 @@ def setup_logging(level: int = logging.INFO) -> None:
     не ротируются автоматически — это осознанно просто, чтобы не
     тащить лишнюю зависимость ради ротации; при необходимости логи в
     ~/.promptvault/logs можно чистить вручную.
-
-    Файловый хендлер -- best-effort: если каталог логов недоступен
-    (нет прав, занят, профиль только для чтения), логирование остаётся
-    консольным, а не роняет открытие окна PromptVault. Тот же принцип,
-    что и в launcher/core/logging_setup.py и mem_diagnostics.py --
-    из-за них запуск комплекта уже один раз падал трейсбеком вместо
-    окна (см. историю правок от 2026-10-03).
     """
 
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(
-        logging.Formatter("%(asctime)s | %(levelname)-8s | %(name)s | %(message)s")
-    )
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-    handlers: list[logging.Handler] = [console_handler]
-    log_file: Path | None = None
-    file_error = None
-
-    try:
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
-        log_file = LOG_DIR / f"promptvault_{datetime.now():%Y%m%d_%H%M%S}.log"
-        handlers.insert(0, logging.FileHandler(log_file, encoding="utf-8"))
-    except OSError as exc:
-        file_error = exc
+    log_file = LOG_DIR / f"promptvault_{datetime.now():%Y%m%d_%H%M%S}.log"
 
     logging.basicConfig(
         level=level,
         format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-        handlers=handlers,
+        handlers=[
+            logging.FileHandler(log_file, encoding="utf-8"),
+            logging.StreamHandler(sys.stdout),
+        ],
     )
 
-    log = logging.getLogger(__name__)
-    if file_error is not None:
-        log.warning(
-            "Каталог логов недоступен (%s) -- пишу только в консоль: %s",
-            LOG_DIR,
-            file_error,
-        )
-    else:
-        log.info("Логирование запущено, файл: %s", log_file)
+    logging.getLogger(__name__).info(
+        "Логирование запущено, файл: %s", log_file
+    )
 
 
 def cleanup_old_logs(
