@@ -73,6 +73,17 @@ def _log_path() -> str:
         return os.path.join(os.getcwd(), "mem_diagnostics.log")
 
 
+def _candidate_log_paths() -> list[str]:
+    """Пути-кандидаты для файла диагностики, в порядке предпочтения:
+    сначала рядом с launcher.log (APP_DIR), затем рядом с текущей рабочей
+    папкой. Нужен список, а не один путь, потому что недоступным может
+    оказаться именно первый (см. _ensure_configured)."""
+
+    primary = _log_path()
+    fallback = os.path.join(os.getcwd(), "mem_diagnostics.log")
+    return [primary] if primary == fallback else [primary, fallback]
+
+
 def _ensure_configured() -> None:
     global _configured, _process
 
@@ -87,13 +98,37 @@ def _ensure_configured() -> None:
             "%(asctime)s | %(message)s", "%H:%M:%S"
         )
 
-        file_handler = logging.FileHandler(_log_path(), encoding="utf-8")
-        file_handler.setFormatter(fmt)
-        _logger.addHandler(file_handler)
+        # Файловый хендлер -- best-effort, ровно как в
+        # launcher/core/logging_setup.py (см. там подробное объяснение).
+        # Раньше здесь стоял безусловный logging.FileHandler, и это стоило
+        # запуска ВСЕГО комплекта: main.py вызывает log_memory() до
+        # создания QApplication (см. main.py), так что недоступность
+        # одного файла (нет прав, файл занят, каталог только для чтения)
+        # превращалась в трейсбек вместо окна. Диагностика памяти -- не та
+        # функциональность, ради которой стоит не запуститься.
+        file_error = None
+        for path in _candidate_log_paths():
+            try:
+                file_handler = logging.FileHandler(path, encoding="utf-8")
+            except OSError as exc:
+                file_error = exc
+                continue
+            file_handler.setFormatter(fmt)
+            _logger.addHandler(file_handler)
+            file_error = None
+            break
 
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(fmt)
         _logger.addHandler(console_handler)
+
+        if file_error is not None:
+            _logger.warning(
+                "Файл диагностики памяти недоступен (%s) -- контрольные "
+                "точки идут только в консоль, на работу комплекта это не "
+                "влияет.",
+                file_error,
+            )
 
         if psutil is None:
             _logger.warning(
