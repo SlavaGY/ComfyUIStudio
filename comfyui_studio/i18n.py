@@ -131,7 +131,14 @@ TRANSLATIONS = {
         "Готово — откроется в этом же приложении.": "Ready — opens in this same app.",
         "{} открыт.": "{} opened.",
         "{} запущен в отдельном процессе.": "{} launched in a separate process.",
-        "Запуск ComfyUI, ожидание сервера...": "Launching ComfyUI, waiting for the server...",
+        # ИСПРАВЛЕНО (ruff F601): ключ "Запуск ComfyUI, ожидание сервера..."
+        # был объявлен в словаре ДВА раза -- здесь и ниже, в блоке про
+        # Imagine (строка ниже "Запуск Imagine..."). В Python побеждает
+        # последнее объявление, то есть наружу уходил вариант из того блока
+        # ("Starting..."), а здешний ("Launching...") был мёртвым кодом.
+        # Дубль убран, а формулировка сохранена здесь, рядом с вариантом
+        # "... ({}с)" -- чтобы текст в UI не изменился ни на символ.
+        "Запуск ComfyUI, ожидание сервера...": "Starting ComfyUI, waiting for the server...",
         "Запуск ComfyUI, ожидание сервера... ({}с)": "Launching ComfyUI, waiting for the server... ({}s)",
         "Процесс ComfyUI неожиданно завершился (код выхода: {}). Подробности — в логе ниже.": (
             "The ComfyUI process exited unexpectedly (exit code: {}). See the log below for details."
@@ -394,7 +401,6 @@ TRANSLATIONS = {
             "design choice — see its documentation): dev mode is only "
             "enabled here, with this toggle, when launched from Studio."
         ),
-        "Запуск ComfyUI, ожидание сервера...": "Starting ComfyUI, waiting for the server...",
         "Запуск Imagine, ожидание сервера...": "Starting Imagine, waiting for the server...",
         "Imagine не поднялся за {} секунд.": "Imagine did not come up within {} seconds.",
         (
@@ -455,7 +461,10 @@ TRANSLATIONS = {
         ),
         "Не удалось получить код: {}": "Failed to get a code: {}",
         "Сопряжённые устройства": "Paired devices",
-        "Имя": "Name",
+        # ИСПРАВЛЕНО (ruff F601): "Имя" уже объявлено выше, в блоке общих
+        # настроек (там же "Значение"/"Добавить переменную"), причём с тем же
+        # значением "Name" -- то есть этот дубль не менял ничего, кроме
+        # читаемости. Ключ оставлен в одном месте.
         "Создано": "Created",
         "Последний раз в сети": "Last seen",
         "Статус": "Status",

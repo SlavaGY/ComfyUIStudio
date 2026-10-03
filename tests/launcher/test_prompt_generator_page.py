@@ -305,4 +305,11 @@ def test_open_logs_button_creates_folder_and_opens_it(qapp, settings_file, monke
     page = PromptGeneratorSettingsPage()
     page.open_logs_btn.click()
     assert (tmp_path / "logs").is_dir()
-    assert opened == [str(tmp_path / "logs")]
+    # QUrl.toLocalFile() на Windows возвращает путь с ПРЯМЫМИ слэшами
+    # (C:/Users/...), тогда как str(tmp_path) даёт обратные -- сравнение
+    # "как есть" проходило только на Linux. Сравниваем нормализованные
+    # пути (os.path.normpath приводит разделители к нативным на обеих
+    # платформах).
+    assert [os.path.normpath(p) for p in opened] == [
+        os.path.normpath(str(tmp_path / "logs"))
+    ]

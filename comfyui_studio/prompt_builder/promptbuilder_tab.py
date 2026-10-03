@@ -20,7 +20,7 @@ from typing import Any, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QGroupBox,
+    QAbstractItemView, QCheckBox, QComboBox, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QMessageBox,
     QPushButton, QScrollArea, QSpinBox, QSplitter, QStackedWidget,
     QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QTreeWidget,

@@ -7,9 +7,9 @@
 константы путей.
 """
 
+import logging
 import os
 import sys
-import logging
 from logging.handlers import RotatingFileHandler
 
 from .constants import APP_DIR, APP_LOG_PATH, app_base_dir
@@ -29,7 +29,24 @@ ICON_PATH = resource_path(os.path.join("assets", "icon.ico"))
 
 
 def setup_logging():
-    os.makedirs(APP_DIR, exist_ok=True)
+    r"""Настраивает логгер "comfyui_launcher": файл в %APPDATA% + консоль.
+
+    Файловый хендлер -- best-effort. Раньше `RotatingFileHandler(...)`
+    вызывался безусловно, и `log = setup_logging()` на уровне модуля
+    означал, что ЛЮБОЙ импорт `logging_setup` (а через него --
+    `launcher.core.config`, `launcher.core.comfy_process`,
+    `remote.app` -- headless-сервер Remote тянет его транзитивно)
+    выполняет запись в `%APPDATA%\ComfyUILauncher\`: пакет становился
+    неимпортируемым там, где этот путь недоступен (read-only профиль,
+    песочница, чужой CI-раннер). Живое следствие: 5 тест-файлов
+    `tests/launcher` и `tests/remote` не собирались вообще с
+    `PermissionError: [Errno 13] ...\launcher.log`.
+
+    Теперь недоступность каталога/файла логируется предупреждением в
+    консоль, а приложение продолжает работать без файлового лога --
+    логирование не та функциональность, ради которой стоит падать на
+    старте.
+    """
     logger = logging.getLogger("comfyui_launcher")
     logger.setLevel(logging.DEBUG)
 
@@ -37,18 +54,31 @@ def setup_logging():
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S"
     )
 
-    file_handler = RotatingFileHandler(
-        APP_LOG_PATH, maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8"
-    )
-    file_handler.setFormatter(fmt)
-    file_handler.setLevel(logging.DEBUG)
+    file_error = None
+    try:
+        os.makedirs(APP_DIR, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            APP_LOG_PATH, maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
+    except OSError as exc:
+        file_error = exc
+    else:
+        file_handler.setFormatter(fmt)
+        file_handler.setLevel(logging.DEBUG)
+        logger.addHandler(file_handler)
 
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(fmt)
     console_handler.setLevel(logging.INFO)
 
-    logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+
+    if file_error is not None:
+        logger.warning(
+            "Файловый лог недоступен (%s) -- пишу только в консоль: %s",
+            APP_LOG_PATH,
+            file_error,
+        )
     return logger
 
 

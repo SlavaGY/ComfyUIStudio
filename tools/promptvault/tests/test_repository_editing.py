@@ -58,7 +58,10 @@ class TestUpdateGeneration:
     def test_updates_db_fields(self, repo):
 
         repository, folder = repo
-        json_path = _write_json(folder / "gen1.json")
+        # Вызов нужен ради побочного эффекта (создаёт JSON-файл на диске),
+        # а возвращаемый путь в этом тесте не используется -- присваивание
+        # убрано по ruff F841.
+        _write_json(folder / "gen1.json")
 
         gen_id = _sync_and_get_id(repository, folder)
 
@@ -96,7 +99,9 @@ class TestUpdateGeneration:
         идентичности записи в БД."""
 
         repository, folder = repo
-        json_path = _write_json(folder / "gen1.json")
+        # см. комментарий выше: вызов ради побочного эффекта, без
+        # присваивания (ruff F841).
+        _write_json(folder / "gen1.json")
 
         gen_id = _sync_and_get_id(repository, folder)
 

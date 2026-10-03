@@ -547,6 +547,14 @@ class ResourceMonitor(QObject):
 
 
 
+def _no_translation(text):
+    """Заглушка "перевода нет": tr=None в форматтерах ниже означает
+    "строки остаются на русском". Отдельная функция, а не lambda (ruff
+    E731), и одна на оба форматтера вместо двух одинаковых лямбд.
+    """
+    return text
+
+
 def format_eta_seconds(seconds, tr=None) -> str:
     """"~2 мин 30 с" / "~45 с" / "оценка..." (скорость шага ещё не
     замерена) -- используется и в чипе очереди, и в подсказке трея.
@@ -555,7 +563,7 @@ def format_eta_seconds(seconds, tr=None) -> str:
     если не передана, строки остаются на русском (поведение по
     умолчанию, как раньше)."""
     if tr is None:
-        tr = lambda text: text
+        tr = _no_translation
     if seconds is None:
         return tr("оценка...")
     if seconds < 1:
@@ -576,7 +584,7 @@ def format_stats_tooltip(stats: dict, tr=None) -> str:
     tr -- необязательная функция перевода, см. format_eta_seconds().
     """
     if tr is None:
-        tr = lambda text: text
+        tr = _no_translation
     lines = []
     if "cpu_percent" in stats:
         lines.append(f"CPU {stats['cpu_percent']:.0f}%")

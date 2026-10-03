@@ -74,7 +74,6 @@ comfyui_studio/promptgen_history.py.
 from __future__ import annotations
 
 import atexit
-import collections
 import datetime
 import http.client
 import json
