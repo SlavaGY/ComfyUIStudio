@@ -13,9 +13,7 @@ ImagineProcess.start() ниже) и показывает уже ЕГО инте�
 tools/imagine/dist/Imagine/Imagine.exe — которого build_exe.bat никогда
 не собирал (весь комплект собирается ОДНИМ exe, см. его шапку и
 main.py), поэтому после сборки Imagine не находил себя и падал. Вместо
-этого используется тот же приём, что уже решает ровно эту же задачу для
-воркера эмбеддингов PromptVault (см.
-comfyui_studio/promptvault/core/embedding_ipc.py, _worker_command() и
+этого используется приём "self-exec со скрытым CLI-флагом" (см.
 IMAGINE_CLI_FLAG-диспетчеризацию в main.py): при frozen=True
 sys.executable — это сам же собранный ComfyUIStudio.exe (отдельного
 python.exe рядом нет), поэтому вместо поиска стороннего exe лаунчер
@@ -108,10 +106,8 @@ def resolve_imagine_launch(host, port, comfy_host, comfy_port, dev_mode, remote_
 
     if getattr(sys, "frozen", False):
         # sys.executable -- это сам собранный ComfyUIStudio.exe (нет
-        # отдельного python.exe рядом) -- см. докстринг модуля и
-        # аналогичный _worker_command() в embedding_ipc.py. cwd
-        # намеренно не переопределяется (та же логика, что и у
-        # WorkerHandle._spawn() там же) -- наследуется от текущего
+        # отдельного python.exe рядом) -- см. докстринг модуля. cwd
+        # намеренно не переопределяется -- наследуется от текущего
         # процесса лаунчера, Imagine сам резолвит все свои пути
         # абсолютно от расположения пакета (см. backend/main.py
         # _STATIC_DIR, backend/workflow.py _ASSETS_DIR).

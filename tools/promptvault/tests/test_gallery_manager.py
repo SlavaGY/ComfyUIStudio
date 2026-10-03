@@ -492,91 +492,12 @@ class TestCustomTags:
         assert gm._refresh_timer.isActive()
 
 
-class TestEmbeddingModelAndDeviceSettings:
-    """Задача: выбор модели эмбеддинга и устройства — настройки
-    сохраняются в QSettings и переживают пересоздание GalleryManager."""
-
-    def test_default_embedding_model_is_e5_large(self, gallery):
-
-        gm, _ = gallery
-        assert gm.embedding_model_key() == "e5-large-v2"
-
-    def test_set_embedding_model_persists_across_instances(self, gallery, tmp_path):
-
-        gm, folder = gallery
-
-        gm.set_embedding_model("all-MiniLM-L6-v2")
-        assert gm.embedding_model_key() == "all-MiniLM-L6-v2"
-
-        repository2 = GenerationRepository(tmp_path / "test2.db")
-        gm2 = GalleryManager(repository2)
-        try:
-            assert gm2.embedding_model_key() == "all-MiniLM-L6-v2"
-        finally:
-            gm2.close()
-
-    def test_set_embedding_model_none_persists_as_disabled(self, gallery, tmp_path):
-
-        gm, folder = gallery
-
-        gm.set_embedding_model(None)
-        assert gm.embedding_model_key() is None
-
-        repository2 = GenerationRepository(tmp_path / "test2.db")
-        gm2 = GalleryManager(repository2)
-        try:
-            assert gm2.embedding_model_key() is None
-        finally:
-            gm2.close()
-
-    def test_available_embedding_models_matches_registry(self, gallery):
-
-        gm, _ = gallery
-        assert "e5-large-v2" in gm.available_embedding_models()
-
-    def test_default_device_preference_is_auto(self, gallery):
-
-        gm, _ = gallery
-        assert gm.device_preference() == "auto"
-
-    def test_set_device_preference_persists(self, gallery, tmp_path):
-
-        gm, folder = gallery
-
-        gm.set_device_preference("cpu")
-        assert gm.device_preference() == "cpu"
-
-        repository2 = GenerationRepository(tmp_path / "test2.db")
-        gm2 = GalleryManager(repository2)
-        try:
-            assert gm2.device_preference() == "cpu"
-        finally:
-            gm2.close()
-
-    def test_recompute_all_embeddings_delegates_to_repository(self, gallery, monkeypatch):
-
-        gm, folder = _load(gallery, count=2)
-
-        calls = {}
-
-        def _fake_recompute(batch_size=200):
-            calls["called"] = True
-            return 2
-
-        monkeypatch.setattr(gm._repository, "recompute_all_embeddings", _fake_recompute)
-
-        total = gm.recompute_all_embeddings()
-
-        assert total == 2
-        assert calls.get("called") is True
-
-
 class TestFilterStateNotPersisted:
-    """Фильтры и поиск (обычный и семантический) больше НЕ переживают
-    перезапуск приложения — новая сессия всегда начинается с пустых
-    FilterOptions, даже если QSettings того же пользователя/приложения
-    хранит что-то с прошлого раза. Сортировка (set_sort_mode) этим не
-    затрагивается и продолжает сохраняться как раньше."""
+    """Фильтры и поиск больше НЕ переживают перезапуск приложения —
+    новая сессия всегда начинается с пустых FilterOptions, даже если
+    QSettings того же пользователя/приложения хранит что-то с прошлого
+    раза. Сортировка (set_sort_mode) этим не затрагивается и
+    продолжает сохраняться как раньше."""
 
     def test_new_instance_ignores_filters_set_by_previous_one(self, gallery, tmp_path):
 
@@ -600,21 +521,6 @@ class TestFilterStateNotPersisted:
             assert fresh.search == ""
             assert fresh.model is None
             assert fresh.favorites_only is None
-        finally:
-            gm2.close()
-
-    def test_new_instance_ignores_semantic_query_set_by_previous_one(self, gallery, tmp_path):
-
-        gm, folder = gallery
-
-        gm.set_semantic_search("a cat sitting on a chair")
-        assert gm.filter_options().semantic_query == "a cat sitting on a chair"
-
-        repository2 = GenerationRepository(tmp_path / "test2.db")
-        gm2 = GalleryManager(repository2)
-
-        try:
-            assert gm2.filter_options().semantic_query == ""
         finally:
             gm2.close()
 

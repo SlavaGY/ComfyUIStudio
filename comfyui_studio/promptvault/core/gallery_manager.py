@@ -16,14 +16,11 @@ from typing import Any
 from PySide6.QtCore import QObject, QSettings, QTimer, Signal
 
 from comfyui_studio.promptvault.config import (
-    DEFAULT_EMBEDDING_MODEL,
     GENERATIONS_PAGE_SIZE,
     REFRESH_DEBOUNCE_MS,
 )
-from comfyui_studio.promptvault.core import embedding
-from comfyui_studio.promptvault.core import generation_filter as _generation_filter_module
 from comfyui_studio.promptvault.core.generation import Generation
-from comfyui_studio.promptvault.core.generation_filter import FilterOptions, GenerationFilter
+from comfyui_studio.promptvault.core.generation_filter import FilterOptions
 from comfyui_studio.promptvault.core.repository import GenerationRepository
 from comfyui_studio.promptvault.core.sort_options import SortMode
 from comfyui_studio.promptvault.core.statistics import Statistics, compute_statistics
@@ -107,17 +104,6 @@ class GalleryManager(QObject):
         self._filtered_total = 0
         self._loading_more = False
 
-        # при активном семантическом поиске ранжировать по сходству
-        # приходится сразу над ВСЕМ набором кандидатов (см.
-        # GenerationRepository.load_filtered_for_semantic и
-        # GenerationFilter.rank_by_semantic_query — векторное сходство
-        # не выразить обычным SQL LIMIT/OFFSET) — здесь хранится этот
-        # уже посчитанный полный ранжированный список, чтобы
-        # load_more_filtered() просто "раздавал" из него следующий кусок,
-        # не пересчитывая ранжирование заново на каждую подгружаемую
-        # страницу
-        self._semantic_ranked: list[Generation] | None = None
-
         self.current_generation: Generation | None = None
         self.current_folder: str | None = None
         self._closed = False
@@ -135,32 +121,6 @@ class GalleryManager(QObject):
 
         self._filter_options = self._load_filter_state()
         self._sort_mode = self._load_sort_state()
-
-        # семантический поиск (задача: оптимизация памяти) — модель
-        # эмбеддингов (~1.3 ГБ весов) грузится лениво при первом реальном
-        # обращении (см. app/core/embedding.py), поэтому применяем
-        # сохранённый пользовательский выбор ДО первого load_folder —
-        # если пользователь ранее отключил семантический поиск, модель
-        # не загрузится вообще ни разу за время жизни процесса
-        #
-        # порядок важен (задача: выбор модели эмбеддинга): сначала
-        # применяем выбор МОДЕЛИ (определяет MODEL_NAME/EMBEDDING_DIM/
-        # префиксы) — кроме случая "без модели", когда модель
-        # полностью отключается и это состояние ничем ниже не
-        # перезаписывается; иначе (модель выбрана) применяем отдельный
-        # флаг "включён ли поиск вообще", который может временно
-        # выключать поиск, не теряя при этом выбранную модель
-        embedding_model_key = self._load_embedding_model_key()
-        embedding.set_model(embedding_model_key)
-
-        if embedding_model_key is not None:
-            embedding.set_enabled(self._load_semantic_search_enabled_state())
-
-        embedding.set_device_preference(self.device_preference())
-
-        _generation_filter_module.SEMANTIC_SIMILARITY_THRESHOLD = (
-            embedding.current_similarity_threshold()
-        )
 
         # см. REFRESH_DEBOUNCE_MS — быстрые повторные клики по
         # избранному/рейтингу не должны пересобирать список на каждый
@@ -212,16 +172,6 @@ class GalleryManager(QObject):
         self._settings.setValue("last_folder", folder)
 
         self._repository.sync_folder(folder)
-
-        # догоняет эмбеддинги для записей, которые sync_folder не тронул,
-        # потому что их JSON-файл не менялся — унаследованные от версии
-        # приложения до задачи 3.1 записи и записи, для которых модель
-        # эмбеддингов была недоступна при первой синхронизации (см.
-        # docstring backfill_missing_embeddings). Ограничено батчем,
-        # так что при очень большой библиотеке не блокирует открытие
-        # папки надолго — библиотека дозаполняется постепенно, при
-        # каждом следующем открытии/пересинхронизации.
-        self._repository.backfill_missing_embeddings()
 
         self._invalidate_available_cache()
         self.apply_filters()
@@ -290,18 +240,6 @@ class GalleryManager(QObject):
         self._filter_options.search = text
         self.apply_filters()
 
-    def set_semantic_search(self, text: str) -> None:
-        """Устанавливает запрос семантического (векторного) поиска —
-        см. GenerationFilter/embedding.py — и сразу применяет фильтры.
-
-        Отдельно от set_search(): комбинируется с обычным текстовым
-        поиском и остальными фильтрами через И, а не заменяет их. Не
-        сохраняется между запусками приложения (см. _load_filter_state).
-        """
-
-        self._filter_options.semantic_query = text
-        self.apply_filters()
-
     def set_filter_options(self, options: FilterOptions) -> None:
         """Заменяет все параметры фильтрации разом (используется
         попапом фильтров, где несколько полей меняются одновременно
@@ -327,169 +265,6 @@ class GalleryManager(QObject):
     def sort_mode(self) -> SortMode:
 
         return self._sort_mode
-
-    # ------------------------------------------------------------
-    # семантический поиск: вкл/выкл (задача: оптимизация памяти)
-
-    def set_semantic_search_enabled(self, enabled: bool) -> None:
-        """Включает/выключает семантический поиск целиком и запоминает
-        выбор в QSettings (переживает перезапуск приложения).
-
-        При отключении модель эмбеддингов (~1.3 ГБ весов) не будет
-        загружена ни разу за время жизни процесса — ни при
-        синхронизации папки, ни при досчитывании отсутствующих
-        эмбеддингов (см. app.core.embedding.set_enabled). Уже
-        загруженную модель это НЕ выгружает из памяти (простого способа
-        освободить память CPU-модели PyTorch обратно ОС нет) — эффект
-        полный только если применить настройку ДО первого использования
-        семантического поиска в этом запуске приложения.
-        """
-
-        embedding.set_enabled(enabled)
-        self._settings.setValue("semantic_search_enabled", enabled)
-
-    def semantic_search_enabled(self) -> bool:
-
-        return self._load_semantic_search_enabled_state()
-
-    def semantic_search_available(self) -> bool:
-        """True, если семантический поиск в принципе может заработать
-        на этой машине — то есть установлен пакет sentence-transformers
-        (см. embedding.library_installed()).
-
-        Отличается от semantic_search_enabled(): "enabled" — это
-        пользовательский выбор (сохранённый в QSettings, который имеет
-        смысл, только когда поиск ДОСТУПЕН), "available" — это факт
-        окружения (этап 3 дорожной карты рефакторинга, опциональная
-        зависимость `pip install .[promptvault]`). UI (SettingsWindow)
-        использует именно этот метод, чтобы задизейблить переключатель
-        и объяснить пользователю, чего не хватает, вместо того чтобы
-        позволить включить настройку, которая не будет иметь эффекта.
-
-        Намеренно НЕ embedding.is_available(): та функция дополнительно
-        учитывает пользовательский выбор (_disabled_by_user), из-за
-        чего выключение семантического поиска само делало бы этот
-        метод False и, следовательно, дизейблило бы сам переключатель
-        в UI — включить поиск обратно стало бы невозможно ни через
-        что, кроме удаления QSettings вручную. library_installed()
-        смотрит только на физическое наличие библиотеки.
-        """
-
-        return embedding.library_installed()
-
-    def _load_semantic_search_enabled_state(self) -> bool:
-
-        value = self._settings.value("semantic_search_enabled", True)
-
-        if isinstance(value, str):
-            return value.lower() not in ("false", "0", "")
-
-        return bool(value)
-
-    # ------------------------------------------------------------
-    # выбор модели эмбеддинга и устройства (CPU/GPU) — задача:
-    # настройка модели эмбеддинга
-
-    def available_embedding_models(self) -> dict[str, dict]:
-        """Реестр поддерживаемых моделей (см. EMBEDDING_MODELS в
-        app/config.py) — для построения списка выбора в SettingsWindow."""
-
-        return embedding.available_models()
-
-    def embedding_model_key(self) -> str | None:
-        """Текущий сохранённый выбор модели эмбеддинга, либо None,
-        если выбран вариант "без модели" (семантический поиск
-        полностью отключён)."""
-
-        return self._load_embedding_model_key()
-
-    def set_embedding_model(self, model_key: str | None) -> None:
-        """Переключает модель эмбеддинга (см. EMBEDDING_MODELS) и
-        запоминает выбор в QSettings (переживает перезапуск).
-
-        Старые эмбеддинги в БД остаются посчитанными ПРЕЖНЕЙ моделью —
-        разные модели дают несовместимые векторы (разное пространство,
-        даже при одинаковой размерности), поэтому после смены модели
-        нужен полный пересчёт (см. recompute_all_embeddings) —
-        предложить его пользователю должен вызывающий UI-код
-        (SettingsWindow), само переключение модели пересчёт не
-        запускает автоматически.
-        """
-
-        embedding.set_model(model_key)
-
-        self._settings.setValue("embedding_model", model_key or "")
-
-        # выбор конкретной модели явно подразумевает включённый поиск;
-        # "без модели" — наоборот, полное отключение (см. порядок
-        # применения в __init__)
-        self._settings.setValue("semantic_search_enabled", model_key is not None)
-
-        _generation_filter_module.SEMANTIC_SIMILARITY_THRESHOLD = (
-            embedding.current_similarity_threshold()
-        )
-
-    def _load_embedding_model_key(self) -> str | None:
-
-        value = self._settings.value("embedding_model", DEFAULT_EMBEDDING_MODEL)
-        value = str(value)
-
-        # пустая строка — сохранённый пользователем выбор "без модели"
-        return value if value else None
-
-    def device_preference(self) -> str:
-        """Предпочтение устройства для модели эмбеддинга: "auto"
-        (по умолчанию), "cpu" или "cuda"."""
-
-        return str(self._settings.value("embedding_device", "auto"))
-
-    def set_device_preference(self, preference: str) -> None:
-        """См. embedding.set_device_preference — принудительный выбор
-        "cuda" без установленного torch с CUDA-сборкой молча
-        откатывается на CPU (см. gpu_available для предупреждения в UI)."""
-
-        embedding.set_device_preference(preference)
-        self._settings.setValue("embedding_device", preference)
-
-    def gpu_available(self) -> bool:
-        """Чисто информационная проверка для UI (SettingsWindow) —
-        установлен ли torch с CUDA-сборкой и физически доступен ли GPU."""
-
-        return embedding.gpu_available()
-
-    def recompute_all_embeddings(self) -> int:
-        """Полный пересчёт эмбеддингов ВСЕХ генераций в БД текущей
-        моделью (например, после смены модели эмбеддинга) — см.
-        GenerationRepository.recompute_all_embeddings.
-
-        Может быть небыстрым для больших библиотек — вызывающий UI-код
-        должен предупредить пользователя об этом до вызова. Возвращает
-        количество пересчитанных генераций."""
-
-        total = self._repository.recompute_all_embeddings()
-
-        logger.info("Пересчитаны эмбеддинги для %d генераций", total)
-
-        if self.current_folder is not None:
-            self.apply_filters()
-
-        return total
-
-    def clear_all_embeddings(self) -> int:
-        """Удаляет посчитанные векторы у ВСЕХ генераций в БД, без
-        пересчёта — см. GenerationRepository.clear_all_embeddings и
-        кнопку "Delete vectors" в настройках
-        (SettingsWindow._on_delete_vectors_clicked). Возвращает число
-        записей, у которых был вектор."""
-
-        total = self._repository.clear_all_embeddings()
-
-        logger.info("Удалены векторы эмбеддингов для %d генераций", total)
-
-        if self.current_folder is not None:
-            self.apply_filters()
-
-        return total
 
     # ------------------------------------------------------------
     # производительность: размер страницы ленивой загрузки (задача 3.3,
@@ -565,15 +340,6 @@ class GalleryManager(QObject):
         пагинация) — вызывается из UI при прокрутке списка к уже
         показанному концу (см. GenerationList.moreNeeded).
 
-        Единственное исключение — активный семантический поиск:
-        векторное сходство не выразить обычным SQL, так что кандидаты
-        (уже суженные SQL по всем ОСТАЛЬНЫМ условиям) приходится
-        получить и проранжировать в Python целиком за один раз (см.
-        GenerationRepository.load_filtered_for_semantic и
-        GenerationFilter.rank_by_semantic_query) — load_more_filtered()
-        в этом случае просто раздаёт уже посчитанный результат по
-        страницам, а не запрашивает БД заново на каждую.
-
         В конце пытается сохранить текущий выбор (по id, см.
         select_generation)."""
 
@@ -596,8 +362,6 @@ class GalleryManager(QObject):
             else None
         )
 
-        self._semantic_ranked = None
-
         if self.current_folder is None:
             self._set_filtered([])
             self._filtered_total = 0
@@ -607,32 +371,12 @@ class GalleryManager(QObject):
             return
 
         page_size = self._page_size()
-        semantic_query = self._filter_options.semantic_query.strip()
 
-        if semantic_query:
-
-            candidates = self._repository.load_filtered_for_semantic(
-                self.current_folder, self._filter_options, self._sort_mode
-            )
-
-            # при активном семантическом поиске обычная сортировка
-            # (по дате/модели/CFG и т.п.) намеренно пропускается —
-            # ranked уже упорядочен по убыванию релевантности (или, в
-            # деградированном режиме без модели эмбеддингов, сохраняет
-            # порядок candidates, т.е. sort_mode из SQL-запроса выше —
-            # см. GenerationFilter.rank_by_semantic_query)
-            ranked = GenerationFilter.rank_by_semantic_query(candidates, semantic_query)
-
-            self._semantic_ranked = ranked
-            total = len(ranked)
-            first_page = ranked[:page_size]
-
-        else:
-            total = self._repository.count_filtered(self.current_folder, self._filter_options)
-            first_page = self._repository.load_filtered_page(
-                self.current_folder, self._filter_options, self._sort_mode,
-                offset=0, limit=page_size
-            )
+        total = self._repository.count_filtered(self.current_folder, self._filter_options)
+        first_page = self._repository.load_filtered_page(
+            self.current_folder, self._filter_options, self._sort_mode,
+            offset=0, limit=page_size
+        )
 
         self._filtered_total = total
         self._set_filtered(first_page)
@@ -704,15 +448,10 @@ class GalleryManager(QObject):
         try:
             page_size = self._page_size()
 
-            if self._semantic_ranked is not None:
-                # уже полностью ранжировано в памяти (см. apply_filters)
-                # — просто отдаём следующий кусок, без обращения к БД
-                page = self._semantic_ranked[loaded:loaded + page_size]
-            else:
-                page = self._repository.load_filtered_page(
-                    self.current_folder, self._filter_options, self._sort_mode,
-                    offset=loaded, limit=page_size
-                )
+            page = self._repository.load_filtered_page(
+                self.current_folder, self._filter_options, self._sort_mode,
+                offset=loaded, limit=page_size
+            )
 
             if not page:
                 return False

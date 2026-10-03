@@ -19,14 +19,13 @@ IN_PROCESS_WINDOW_FACTORIES = {}
 # в comfyui_studio/launcher/ui/settings_page.py), для освобождения
 # module-level состояния, которое переживает уничтожение самого окна.
 #
-# Понадобился из-за PromptVault: WA_DeleteOnClose в
-# _open_in_process_window уничтожает C++-объект окна и освобождает то,
-# что держал ОН, но загруженная модель эмбеддингов (torch/
-# sentence-transformers, до ~1.3 ГБ в зависимости от выбранной модели)
-# кешируется в module-level `_model` в comfyui_studio/promptvault/
-# core/embedding.py -- она не принадлежит окну и не была бы освобождена
-# закрытием только самого окна. См. embedding.unload_model() и то, как
-# main.py передаёт его сюда через on_close при регистрации PromptVault.
+# Общий механизм: WA_DeleteOnClose в _open_in_process_window уничтожает
+# C++-объект окна и освобождает то, что держал ОН, но module-level
+# состояние инструмента (кеши, синглтоны и т.п.) не принадлежит окну и
+# не было бы освобождено закрытием только самого окна -- для этого и
+# нужен этот словарь. Сейчас ни один зарегистрированный инструмент
+# такой callback не передаёт (register_in_process_app вызывается без
+# on_close), но сам механизм остаётся на будущее.
 ON_CLOSE_CALLBACKS = {}
 
 

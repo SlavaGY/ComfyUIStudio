@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -31,39 +30,16 @@ class FilterPopup(QFrame):
     applied = Signal()
     resetRequested = Signal()
 
-    def __init__(self, parent=None, semantic_search_enabled: bool = True):
-        """semantic_search_enabled: если False, строка "Semantic search"
-        вообще не строится (не просто дизейблится) — семантический
-        поиск выключен в настройках PromptVault (см. SettingsWindow,
-        раздел Search) или физически недоступен (нет sentence-
-        transformers/torch). Раньше поле показывалось всегда, даже
-        когда семантический поиск не работал бы — вводило в
-        заблуждение. Проверяется один раз при построении (значение
-        читается из GalleryManager в MainWindow.__init__) — включение
-        семантического поиска обратно в настройках применяется после
-        перезапуска PromptVault, как и остальные последствия этого
-        переключателя (см. semantic_search_hint в SettingsWindow)."""
+    def __init__(self, parent=None):
 
         super().__init__(parent, Qt.Tool | Qt.FramelessWindowHint)
 
         self.setObjectName("filterPopup")
         self.setWindowTitle(self.tr("Filters"))
-        self._semantic_search_enabled = semantic_search_enabled
 
         layout = QVBoxLayout(self)
 
         form = QFormLayout()
-
-        self.semantic_search_box = QLineEdit()
-        self.semantic_search_box.setPlaceholderText(
-            self.tr("e.g. 'a girl in a forest at night' (ru/en, matches by meaning)")
-        )
-        self.semantic_search_box.setToolTip(
-            self.tr(
-                "Semantic search — finds prompts by meaning (works across "
-                "Russian/English), not just exact substring matches."
-            )
-        )
 
         self.model_box = QComboBox()
         self.model_box.addItem(self.tr("Any"))
@@ -86,8 +62,6 @@ class FilterPopup(QFrame):
             "★★★★★ 5",
         ])
 
-        if semantic_search_enabled:
-            form.addRow(self.tr("Semantic search"), self.semantic_search_box)
         form.addRow(self.tr("Model"), self.model_box)
         form.addRow(self.tr("Sampler"), self.sampler_box)
         form.addRow(self.tr("Favorites"), self.favorites_box)
@@ -192,7 +166,6 @@ class FilterPopup(QFrame):
 
     def reset(self):
 
-        self.semantic_search_box.clear()
         self.model_box.setCurrentIndex(0)
         self.sampler_box.setCurrentIndex(0)
         self.favorites_box.setCurrentIndex(0)
@@ -431,20 +404,6 @@ class FilterPopup(QFrame):
 
         return selected or None
 
-    def semantic_query(self) -> str:
-        """Пустая строка, если строка "Semantic search" не показана
-        (см. __init__, semantic_search_enabled) — даже если в самом
-        self.semantic_search_box случайно оказался непустой текст
-        (например, restore() ниже подставил его из ранее сохранённого
-        состояния фильтров, записанного, пока семантический поиск ещё
-        был включён): раз поле не видно и недоступно для
-        редактирования, оно не должно незаметно продолжать влиять на
-        результат фильтрации."""
-
-        if not self._semantic_search_enabled:
-            return ""
-        return self.semantic_search_box.text().strip()
-
     def model(self):
         """Индекс 0 = "Any" (см. favorites_only — тот же повод не
         сравнивать currentText() с непереведённым литералом)."""
@@ -508,7 +467,7 @@ class FilterPopup(QFrame):
         """
 
         widgets = (
-            self.semantic_search_box, self.model_box, self.sampler_box,
+            self.model_box, self.sampler_box,
             self.favorites_box, self.rating_box, self.cfg_min_box,
             self.cfg_max_box, self.steps_min_box, self.steps_max_box,
             *self.lora_checkboxes.values(),
@@ -519,8 +478,6 @@ class FilterPopup(QFrame):
 
             for w in widgets:
                 blockers.enter_context(QSignalBlocker(w))
-
-            self.semantic_search_box.setText(options.semantic_query)
 
             if options.model:
                 index = self.model_box.findText(options.model)

@@ -378,6 +378,7 @@ def comfyui_free_memory():
 class PromptGenStartRequest(BaseModel):
     text: str = ""
     image: Optional[str] = None  # data:image/...;base64,...
+    image_name: Optional[str] = None  # имя исходного файла -- только для истории запросов
 
 
 @app.get("/api/promptgen/status")
@@ -394,7 +395,9 @@ def promptgen_start(req: PromptGenStartRequest):
             pass  # ComfyUI не запущен -- выгружать нечего
 
     try:
-        job_id = promptgen.generator.start(req.text, req.image, pre_start=_free_comfy_memory)
+        job_id = promptgen.generator.start(
+            req.text, req.image, pre_start=_free_comfy_memory, image_name=req.image_name
+        )
     except promptgen.PromptGenError as exc:
         raise HTTPException(exc.status_code, str(exc)) from exc
     return {"job_id": job_id}

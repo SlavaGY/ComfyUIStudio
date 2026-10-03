@@ -16,8 +16,7 @@ setlocal enabledelayedexpansion
 ::
 :: Собирает через PyInstaller в РЕЖИМЕ "one-folder" (по умолчанию у
 :: PyInstaller, без --onefile). Одним .exe не пакуем сознательно:
-:: PySide6 + torch + sentence-transformers/transformers в сумме дают
-:: сотни МБ (а с CUDA-сборкой torch -- больше гигабайта); --onefile
+:: PySide6 в сумме с остальным даёт десятки МБ; --onefile
 :: распаковывал бы всё это заново во временную папку при КАЖДОМ
 :: запуске -- заметно медленнее, чем прямой запуск .exe, и особенно
 :: болезненно с учётом того, что кнопка "Restart" в самом приложении
@@ -69,13 +68,13 @@ call ".venv-build\Scripts\activate.bat" || exit /b 1
 echo.
 echo === [3/6] Зависимости ===
 
-:: Зависимости ставятся из корневого pyproject.toml (группа
-:: `promptvault` -- torch/sentence-transformers, см. его комментарии),
-:: а не из requirements.txt: этот standalone-инструмент не имеет своего
-:: отдельного набора зависимостей с этапа 2 (перенос под comfyui_studio/
-:: namespace) -- он использует тот же venv-набор, что и весь комплект.
+:: Зависимости ставятся из корневого pyproject.toml (базовый набор,
+:: без опциональных групп) -- этот standalone-инструмент не имеет
+:: своего отдельного набора зависимостей с этапа 2 (перенос под
+:: comfyui_studio/ namespace) -- он использует тот же venv-набор, что
+:: и весь комплект.
 python -m pip install --upgrade pip >nul
-pip install "%ROOT_DIR%[promptvault]" || exit /b 1
+pip install "%ROOT_DIR%" || exit /b 1
 pip install --upgrade pyinstaller || exit /b 1
 
 echo.
@@ -123,18 +122,6 @@ if exist "PromptVault.spec" del /q "PromptVault.spec"
 :: корень, эти Path(__file__)-вычисления перестанут находить
 :: resources/themes рядом с собой. Та же раскладка datas уже
 :: используется корневым ComfyUIStudio-full.spec -- см. его комментарии.
-::
-:: --collect-all на sentence_transformers/transformers/tokenizers:
-:: сами веса модели эмбеддинга (~1.3 ГБ e5-large-v2 по умолчанию, см.
-:: TODO.md) НЕ бандлятся -- они грузятся с HuggingFace Hub и кэшируются
-:: в домашней папке пользователя при первой синхронизации папки с
-:: включённым семантическим поиском (см.
-:: comfyui_studio/promptvault/core/embedding.py), как и при обычном
-:: запуске из исходников. --collect-all здесь только подтягивает
-:: служебные data-файлы/сабмодули самих библиотек, которые PyInstaller
-:: не всегда находит статическим анализом импортов (эти импорты в
-:: embedding.py лежат внутри функций, а не на верхнем уровне модуля --
-:: см. docstring embedding.py).
 pyinstaller ^
     --name PromptVault ^
     --noconfirm ^
@@ -144,18 +131,14 @@ pyinstaller ^
     %ICON_ARG% ^
     --add-data "%ROOT_DIR%\comfyui_studio\promptvault\resources;comfyui_studio\promptvault\resources" ^
     --add-data "%ROOT_DIR%\comfyui_studio\promptvault\themes;comfyui_studio\promptvault\themes" ^
-    --collect-all sentence_transformers ^
-    --collect-all transformers ^
-    --collect-all tokenizers ^
     "%ROOT_DIR%\comfyui_studio\promptvault\main.py"
 
 if errorlevel 1 (
     echo.
     echo Сборка упала -- см. вывод PyInstaller выше.
-    echo Частая причина с этим стеком: PyInstaller не нашёл какой-то
-    echo субмодуль/data-файл torch или sentence-transformers -- ищите в
-    echo выводе "ModuleNotFoundError"/"No module named" при первом запуске
-    echo собранного .exe и добавляйте недостающее через ^^^^
+    echo Частая причина: PyInstaller не нашёл какой-то субмодуль/data-файл --
+    echo ищите в выводе "ModuleNotFoundError"/"No module named" при первом
+    echo запуске собранного .exe и добавляйте недостающее через
     echo --hidden-import=^<имя^> или --collect-all=^<пакет^> выше.
     exit /b 1
 )

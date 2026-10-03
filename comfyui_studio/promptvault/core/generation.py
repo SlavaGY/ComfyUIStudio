@@ -57,17 +57,6 @@ class Generation:
     # переживают редактирование метаданных и ре-синхронизацию с диском
     custom_tags: list[str] = field(default_factory=list)
 
-    # кэшированный семантический эмбеддинг промпта (только positive,
-    # см. app/core/repository._embedding_text) — bytes (float32) или
-    # None, если ещё не посчитан (либо библиотека эмбеддингов недоступна)
-    embedding: bytes | None = None
-
-    # оценка релевантности при семантическом поиске (0..1, см.
-    # GenerationFilter) — не персистентна, пересчитывается на лету при
-    # каждом apply(); вне контекста активного semantic_query не имеет
-    # смысла и остаётся 0.0
-    semantic_score: float = 0.0
-
     # первичный ключ в БД; None для генераций, ещё не сохранённых
     id: int | None = None
 

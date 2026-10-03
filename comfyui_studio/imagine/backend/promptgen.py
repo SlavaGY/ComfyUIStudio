@@ -44,6 +44,17 @@
   * llama-server/<время>-<id>.log -- полный вывод llama-server каждого
     запуска (последние LLAMA_LOGS_KEEP штук).
 
+История запросов (%APPDATA%\\ComfyUIStudio\\promptgen_history.db, SQLite)
+--------------------------------------------------------------------------
+В отличие от promptgen.log, сюда пишется СОДЕРЖИМОЕ: по одной записи на
+каждую задачу (в т. ч. ошибочную и отменённую) -- префикс, текст
+пользователя, итоговый запрос, была ли картинка и её имя, ответ модели,
+токены (запрос/ответ/всего), тайминги и время начала. Запись делается в
+конце задачи (finally в _run), ошибки записи только логируются и на
+генерацию не влияют. Отключается настройкой log_requests. Смотреть --
+вкладка «История промптов» в настройках Studio; схема и запросы -- в
+comfyui_studio/promptgen_history.py.
+
 Защита от «осиротевшего» llama-server (он держит гигабайты VRAM)
 -----------------------------------------------------------------
   * процесс всегда убивается вместе с деревом потомков (psutil; на
@@ -90,6 +101,11 @@ try:
     from comfyui_studio import shared_promptgen
 except ImportError:  # pragma: no cover - Imagine запущен отдельно от Studio
     shared_promptgen = None
+
+try:
+    from comfyui_studio import promptgen_history
+except ImportError:  # pragma: no cover - то же самое: история есть только внутри Studio
+    promptgen_history = None
 
 log = logging.getLogger("imagine.promptgen")
 
@@ -845,6 +861,15 @@ class Job:
         self.warnings: list[dict] = []
         self.timings: Optional[dict] = None   # блок timings из последнего SSE-чанка llama-server
         self.marks: dict[str, float] = {"created": time.monotonic()}
+        self.created_wall = time.time()          # для истории: время начала в unix-секундах
+        self.finished_wall: Optional[float] = None
+        self.usage: Optional[dict] = None        # блок usage из последнего SSE-чанка (stream_options.include_usage)
+        # что именно было запрошено (заполняется в _run, пишется в историю)
+        self.prefix = ""
+        self.user_text = ""
+        self.full_prompt = ""
+        self.has_image = False
+        self.image_name = ""
         self.finished: Optional[float] = None
         self.cancel_event = threading.Event()
         self.proc: Optional[subprocess.Popen] = None
@@ -894,17 +919,20 @@ class Job:
             self.state = "done"
             self.thinking = False
             self.finished = time.monotonic()
+            self.finished_wall = time.time()
 
     def finish_error(self, message: str) -> None:
         with self._lock:
             self.error = message
             self.state = "error"
             self.finished = time.monotonic()
+            self.finished_wall = time.time()
 
     def finish_cancelled(self) -> None:
         with self._lock:
             self.state = "cancelled"
             self.finished = time.monotonic()
+            self.finished_wall = time.time()
 
     # -- чтение -------------------------------------------------------------
 
@@ -1005,6 +1033,7 @@ class PromptGenerator:
         text: str,
         image: Optional[str] = None,
         pre_start: Optional[Callable[[], None]] = None,
+        image_name: Optional[str] = None,
     ) -> str:
         if shared_promptgen is None:
             raise PromptGenError("Генератор промптов доступен только внутри ComfyUI Studio.", 400)
@@ -1050,7 +1079,7 @@ class PromptGenerator:
 
         thread = threading.Thread(
             target=self._run,
-            args=(job, cfg, text, image, pre_start),
+            args=(job, cfg, text, image, pre_start, _clean_image_name(image_name)),
             daemon=True,
             name=f"promptgen-{job.id}",
         )
@@ -1079,10 +1108,20 @@ class PromptGenerator:
 
     # -- рабочий поток --------------------------------------------------------
 
-    def _run(self, job: Job, cfg: dict, text: str, image: Optional[str], pre_start) -> None:
+    def _run(
+        self, job: Job, cfg: dict, text: str, image: Optional[str], pre_start,
+        image_name: str = "",
+    ) -> None:
         proc = None
         log_fh = None
         llama_log = ""
+        # что именно запрошено -- фиксируем до любых этапов, чтобы запись в
+        # историю (в finally) была полной и при ошибке на раннем этапе
+        job.prefix = cfg["prefix"]
+        job.user_text = text
+        job.has_image = bool(image)
+        job.image_name = image_name if image else ""
+        job.full_prompt = shared_promptgen.compose_prompt(cfg["prefix"], text, has_image=bool(image))
         try:
             _jlog(
                 job, logging.INFO,
@@ -1142,7 +1181,7 @@ class PromptGenerator:
             _jlog(job, logging.INFO, "после загрузки: %s", _system_snapshot())
             job.set_state("generating")
 
-            prompt = shared_promptgen.compose_prompt(cfg["prefix"], text, has_image=bool(image))
+            prompt = job.full_prompt
             _jlog(job, logging.DEBUG, "запрос к модели: %d симв. (префикс + текст)", len(prompt))
             self._stream_completion(job, port, prompt, image, proc, llama_log)
             job.mark("generated")
@@ -1189,6 +1228,7 @@ class PromptGenerator:
                 self._last_stop = time.monotonic()
             elif log_fh is not None:
                 log_fh.close()
+            self._save_history(job, cfg)
             started_pid = job.proc.pid if job.proc is not None else None
             if started_pid is not None:
                 _unregister_process(started_pid)
@@ -1343,6 +1383,90 @@ class PromptGenerator:
                     _jlog(job, logging.WARNING, "кодировщик изображений работает на CPU → картинки будут обрабатываться медленно")
                     job.add_warning({"code": "clip_cpu"})
 
+    @staticmethod
+    def _token_counts(job: Job) -> tuple[Optional[int], Optional[int], Optional[int], str]:
+        """(запрос, ответ, всего, источник). Приоритет: usage от llama-server
+        -> блок timings (prompt_n + cache_n / predicted_n) -> число принятых
+        SSE-чанков (≈ токенов ответа; запрос неизвестен)."""
+        def num(value):
+            return int(value) if isinstance(value, (int, float)) else None
+
+        u = job.usage
+        if u and num(u.get("completion_tokens")) is not None:
+            prompt, completion = num(u.get("prompt_tokens")), num(u.get("completion_tokens"))
+            total = num(u.get("total_tokens"))
+            if total is None and prompt is not None:
+                total = prompt + completion
+            return prompt, completion, total, "usage"
+        t = job.timings
+        if t and num(t.get("predicted_n")) is not None:
+            prompt_n = num(t.get("prompt_n"))
+            prompt = None if prompt_n is None else prompt_n + (num(t.get("cache_n")) or 0)
+            completion = num(t.get("predicted_n"))
+            total = None if prompt is None else prompt + completion
+            return prompt, completion, total, "timings"
+        if job.tokens:
+            return None, job.tokens, None, "chunks"
+        return None, None, None, ""
+
+    def _save_history(self, job: Job, cfg: dict) -> None:
+        """Одна запись в базу истории (см. promptgen_history.py). Любая
+        ошибка только логируется: журнал не должен ломать генерацию."""
+        if promptgen_history is None or not cfg.get("log_requests", True):
+            return
+        try:
+            m = job.marks
+            end = job.finished if job.finished is not None else time.monotonic()
+
+            def span(a, b):
+                return round(m[b] - m[a], 3) if a in m and b in m else None
+
+            load_s = span("spawned", "ready")
+            ttft_s = span("ready", "first_token")
+            gen_s = span("first_token", "generated")
+            prompt_tokens, completion_tokens, total_tokens, source = self._token_counts(job)
+            rate = None
+            t = job.timings
+            if t and t.get("predicted_per_second"):
+                rate = round(float(t["predicted_per_second"]), 2)  # скорость из самого llama-server
+            elif gen_s and completion_tokens:
+                rate = round(completion_tokens / gen_s, 2)
+
+            with job._lock:
+                final = job._final
+                raw = job._raw
+                state, error = job.state, job.error
+            output = final if final is not None else clean_output(raw)
+            promptgen_history.add_record({
+                "job_id": job.id,
+                "started_at": job.created_wall,
+                "finished_at": job.finished_wall or time.time(),
+                "state": state,
+                "error": error or "",
+                "prefix": job.prefix,
+                "user_text": job.user_text,
+                "full_prompt": job.full_prompt,
+                "has_image": job.has_image,
+                "image_name": job.image_name,
+                "output_text": output,
+                "raw_output": raw if raw and raw.strip() != output else "",
+                "truncated": job.truncated,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "tokens_source": source,
+                "total_s": round(end - job.created, 3),
+                "load_s": load_s,
+                "ttft_s": ttft_s,
+                "gen_s": gen_s,
+                "tok_per_s": rate,
+                "model_name": os.path.basename(cfg.get("model_path") or ""),
+                "mmproj_name": os.path.basename(cfg.get("mmproj_path") or ""),
+                "ctx_size": cfg.get("ctx_size"),
+            })
+        except Exception:
+            _jlog(job, logging.WARNING, "не удалось записать запрос в историю", exc_info=True)
+
     def _log_stats(self, job: Job, result_len: int) -> None:
         m = job.marks
         load = m["ready"] - m["spawned"]
@@ -1382,6 +1506,8 @@ class PromptGenerator:
             "messages": [{"role": "user", "content": content}],
             "max_tokens": MAX_TOKENS,
             "stream": True,
+            # финальный чанк с точным числом токенов (usage) -- для истории
+            "stream_options": {"include_usage": True},
             # Qwen3 и похожие: не «думать» перед ответом. Модели без
             # такого параметра шаблона его игнорируют.
             "chat_template_kwargs": {"enable_thinking": False},
@@ -1413,6 +1539,8 @@ class PromptGenerator:
                         raise PromptGenError(f"llama-server: {_error_text(obj['error'])}", 502)
                     if isinstance(obj.get("timings"), dict):
                         job.timings = obj["timings"]
+                    if isinstance(obj.get("usage"), dict):
+                        job.usage = obj["usage"]
                     choices = obj.get("choices") or []
                     if not choices:
                         continue
@@ -1466,6 +1594,15 @@ class PromptGenerator:
             time.sleep(0.2)  # дочитать вывод
             return _exit_message(proc, log_path, "во время генерации")
         return f"Соединение с llama-server потеряно: {reason}"
+
+
+def _clean_image_name(name: Optional[str]) -> str:
+    """Имя файла картинки из браузера: только последний компонент пути
+    (на всякий случай -- браузеры и так отдают без пути), без
+    управляющих символов, не длиннее 255."""
+    name = (name or "").replace("\\", "/").rsplit("/", 1)[-1]
+    name = "".join(ch for ch in name if ch.isprintable()).strip()
+    return name[:255]
 
 
 def _file_mb(path: str) -> int:

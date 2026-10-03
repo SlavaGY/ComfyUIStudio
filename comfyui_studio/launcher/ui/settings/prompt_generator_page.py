@@ -27,6 +27,7 @@ import os
 from PySide6.QtCore import QRegularExpression, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QRegularExpressionValidator
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -171,6 +172,10 @@ class PromptGeneratorSettingsPage(QWidget):
         self.image_side_label = QLabel()
         adv_form.addRow(self.image_side_label, self.image_side_spin)
 
+        self.log_requests_check = QCheckBox()
+        self.log_requests_check.setChecked(bool(cfg["log_requests"]))
+        adv_form.addRow(self.log_requests_check)
+
         logs_row = QHBoxLayout()
         self.open_logs_btn = QPushButton()
         self.open_logs_btn.clicked.connect(self._open_logs_folder)
@@ -192,6 +197,7 @@ class PromptGeneratorSettingsPage(QWidget):
         self.ctx_spin.valueChanged.connect(self._on_field_changed)
         self.free_comfy_combo.currentIndexChanged.connect(self._on_field_changed)
         self.image_side_spin.valueChanged.connect(self._on_field_changed)
+        self.log_requests_check.toggled.connect(self._on_field_changed)
 
         self._loading = False
         self._refresh_status()
@@ -265,6 +271,7 @@ class PromptGeneratorSettingsPage(QWidget):
             "extra_args": self.extra_args_edit.text().strip(),
             "free_comfy_mode": self.free_comfy_combo.currentData(),
             "image_max_side": self.image_side_spin.value(),
+            "log_requests": self.log_requests_check.isChecked(),
         }
 
     def save(self) -> bool:
@@ -416,6 +423,14 @@ class PromptGeneratorSettingsPage(QWidget):
                 "Прикреплённая картинка уменьшается до этого размера перед "
                 "отправкой: чем меньше, тем меньше токенов зрения и тем быстрее "
                 "обработка запроса."
+            )
+        )
+        self.log_requests_check.setText(self._tr("Сохранять историю запросов (вкладка «История промптов»)"))
+        self.log_requests_check.setToolTip(
+            self._tr(
+                "Каждый запрос — полный текст, ответ модели, токены и время — "
+                "записывается в локальную базу SQLite. Если отключить, новые "
+                "запросы сохраняться не будут; уже записанные останутся."
             )
         )
         self.open_logs_btn.setText(self._tr("Открыть папку с логами"))

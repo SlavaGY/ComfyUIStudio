@@ -753,21 +753,19 @@ pip install .
 python main.py
 ```
 
-`pyproject.toml` разбивает зависимости на обязательные и опциональную
-группу `promptvault` (torch/sentence-transformers — семантический поиск
-в PromptVault, самые тяжёлые зависимости всего комплекта): `pip
-install .` ставит комплект БЕЗ семантического поиска (PromptVault при
-этом всё равно открывается и работает — обычный текстовый поиск,
-фильтры, галерея; в его настройках чекбокс «Enable semantic search»
-просто задизейблен с пояснением), `pip install .[promptvault]` — с ним,
-`pip install .[dev]` — плюс pytest/ruff/mypy для разработки (см.
+`pyproject.toml` объединяет все зависимости комплекта в одном списке —
+никаких опциональных groups больше нет (семантический поиск в
+PromptVault, ранее самая тяжёлая опциональная зависимость всего
+комплекта — torch/sentence-transformers, — полностью удалён из
+PromptVault): `pip install .` ставит весь комплект целиком, `pip
+install .[dev]` — плюс pytest/ruff/mypy для разработки (см.
 `tools/promptvault/CONTRIBUTING.md` — конфигурация этих инструментов
 живёт в этом же корневом `pyproject.toml`, слита туда из отдельного
 `tools/promptvault/pyproject.toml` на этапе 5 дорожной карты
 рефакторинга). Прежний корневой `requirements.txt` дублировал этот же
 набор зависимостей отдельным источником правды и был слит в
 `pyproject.toml`/удалён; `build_exe.bat` уже ставил зависимости через
-`pip install .`/`pip install .[promptvault]` и не менялся.
+`pip install .` и не менялся.
 
 `main.py` — единая точка входа монолита: поднимает один `QApplication`
 и показывает окно лаунчера; Prompt Builder и PromptVault открываются из

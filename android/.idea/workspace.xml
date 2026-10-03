@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="NONE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="c2324e42-76bb-47cb-bc11-edf21cdf5973" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/../README.md" beforeDir="false" afterPath="$PROJECT_DIR$/../README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/9.3.0/checksums/checksums.lock" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/9.3.0/checksums/checksums.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/9.3.0/checksums/md5-checksums.bin" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/9.3.0/checksums/sha1-checksums.bin" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/9.3.0/executionHistory/executionHistory.bin" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/9.3.0/executionHistory/executionHistory.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/9.3.0/executionHistory/executionHistory.lock" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/9.3.0/executionHistory/executionHistory.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/9.3.0/fileHashes/fileHashes.bin" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/9.3.0/fileHashes/fileHashes.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/9.3.0/fileHashes/fileHashes.lock" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/9.3.0/fileHashes/fileHashes.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/9.3.0/fileHashes/resourceHashesCache.bin" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/9.3.0/fileHashes/resourceHashesCache.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/buildOutputCleanup/buildOutputCleanup.lock" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/buildOutputCleanup/buildOutputCleanup.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/buildOutputCleanup/cache.properties" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/buildOutputCleanup/cache.properties" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/buildOutputCleanup/outputFiles.bin" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/buildOutputCleanup/outputFiles.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/config.properties" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/config.properties" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gradle/file-system.probe" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/file-system.probe" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/google-services.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/local.properties" beforeDir="false" afterPath="$PROJECT_DIR$/local.properties" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../build_exe.bat" beforeDir="false" afterPath="$PROJECT_DIR$/../build_exe.bat" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/i18n.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/i18n.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/imagine/__main__.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/imagine/__main__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/imagine/static/js/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/imagine/static/js/app.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/launcher/core/imagine_process.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/launcher/core/imagine_process.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/launcher/core/remote_process.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/launcher/core/remote_process.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/launcher/integration/tool_registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/launcher/integration/tool_registry.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/launcher/ui/settings/promptvault_page.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/launcher/ui/settings/promptvault_page.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/launcher/ui/settings_page.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/launcher/ui/settings_page.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/launcher/ui/widgets/models_nodes_dialog.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/launcher/ui/widgets/queue_history_dialog.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/mem_diagnostics.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/mem_diagnostics.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/prompt_builder/lora_combo.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/prompt_builder/lora_combo.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/promptvault/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/core/embedding.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/core/embedding_ipc.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/core/embedding_worker.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/core/gallery_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/promptvault/core/gallery_manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/core/generation.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/promptvault/core/generation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/core/generation_filter.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/promptvault/core/generation_filter.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/core/hotkeys.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/promptvault/core/hotkeys.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/core/repository.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/promptvault/core/repository.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/promptvault/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/promptvault/settings.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/ui/filter_popup.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/promptvault/ui/filter_popup.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/ui/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/promptvault/ui/main_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../comfyui_studio/promptvault/ui/settings_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/../comfyui_studio/promptvault/ui/settings_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../main.py" beforeDir="false" afterPath="$PROJECT_DIR$/../main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../phone_key" beforeDir="false" afterPath="$PROJECT_DIR$/../phone_key" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../phone_key.pub" beforeDir="false" afterPath="$PROJECT_DIR$/../phone_key.pub" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/../pyproject.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../tools/promptvault/PromptVault.spec" beforeDir="false" afterPath="$PROJECT_DIR$/../tools/promptvault/PromptVault.spec" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../tools/promptvault/build.bat" beforeDir="false" afterPath="$PROJECT_DIR$/../tools/promptvault/build.bat" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../tools/promptvault/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/../tools/promptvault/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../tools/promptvault/tests/conftest.py" beforeDir="false" afterPath="$PROJECT_DIR$/../tools/promptvault/tests/conftest.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../tools/promptvault/tests/test_embedding.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../tools/promptvault/tests/test_embedding_worker.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../tools/promptvault/tests/test_gallery_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/../tools/promptvault/tests/test_gallery_manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../tools/promptvault/tests/test_generation_filter.py" beforeDir="false" afterPath="$PROJECT_DIR$/../tools/promptvault/tests/test_generation_filter.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../tools/promptvault/tests/test_repository_embeddings.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../tools/promptvault/tests/test_repository_filtering.py" beforeDir="false" afterPath="$PROJECT_DIR$/../tools/promptvault/tests/test_repository_filtering.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../tools/promptvault/tests/test_semantic_search_toggle.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../tools/promptvault/tests/test_settings_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/../tools/promptvault/tests/test_settings_window.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ClangdSettings">
+    <option name="formatViaClangd" value="false" />
+  </component>
+  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[PhysicalDevice::serial=SCYBER0000000016463]" />
+  <component name="ExternalProjectsData">
+    <projectState path="$PROJECT_DIR$">
+      <ProjectState />
+    </projectState>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 0
+}</component>
+  <component name="ProjectId" id="3JuqptR3FD0MWLxeiHMOHGjA621" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Android App.app.executor": "Run",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "com.google.services.firebase.aqiPopupShown": "true",
+    "git-widget-placeholder": "main",
+    "kotlin-language-version-configured": "true"
+  }
+}]]></component>
+  <component name="RunManager">
+    <configuration name="app" type="AndroidRunConfigurationType" factoryName="Android App" activateToolWindowBeforeRun="false">
+      <module name="ComfyUIStudioTerminal.app" />
+      <option name="ANDROID_RUN_CONFIGURATION_SCHEMA_VERSION" value="1" />
+      <option name="DEPLOY" value="true" />
+      <option name="DEPLOY_APK_FROM_BUNDLE" value="false" />
+      <option name="DEPLOY_AS_INSTANT" value="false" />
+      <option name="ARTIFACT_NAME" value="" />
+      <option name="PM_INSTALL_OPTIONS" value="" />
+      <option name="ALL_USERS" value="false" />
+      <option name="ALWAYS_INSTALL_WITH_PM" value="false" />
+      <option name="ALLOW_ASSUME_VERIFIED" value="false" />
+      <option name="CLEAR_APP_STORAGE" value="false" />
+      <option name="DYNAMIC_FEATURES_DISABLED_LIST" value="" />
+      <option name="ACTIVITY_EXTRA_FLAGS" value="" />
+      <option name="MODE" value="default_activity" />
+      <option name="RESTORE_ENABLED" value="false" />
+      <option name="RESTORE_FILE" value="" />
+      <option name="RESTORE_FRESH_INSTALL_ONLY" value="false" />
+      <option name="CLEAR_LOGCAT" value="false" />
+      <option name="SHOW_LOGCAT_AUTOMATICALLY" value="false" />
+      <option name="TARGET_SELECTION_MODE" value="DEVICE_AND_SNAPSHOT_COMBO_BOX" />
+      <option name="DEBUGGER_TYPE" value="Auto" />
+      <Auto>
+        <option name="USE_JAVA_AWARE_DEBUGGER" value="false" />
+        <option name="SHOW_STATIC_VARS" value="true" />
+        <option name="WORKING_DIR" value="" />
+        <option name="TARGET_LOGGING_CHANNELS" value="lldb process:gdb-remote packets" />
+        <option name="SHOW_OPTIMIZED_WARNING" value="true" />
+        <option name="ATTACH_ON_WAIT_FOR_DEBUGGER" value="false" />
+      </Auto>
+      <Hybrid>
+        <option name="USE_JAVA_AWARE_DEBUGGER" value="false" />
+        <option name="SHOW_STATIC_VARS" value="true" />
+        <option name="WORKING_DIR" value="" />
+        <option name="TARGET_LOGGING_CHANNELS" value="lldb process:gdb-remote packets" />
+        <option name="SHOW_OPTIMIZED_WARNING" value="true" />
+        <option name="ATTACH_ON_WAIT_FOR_DEBUGGER" value="false" />
+      </Hybrid>
+      <Java>
+        <option name="ATTACH_ON_WAIT_FOR_DEBUGGER" value="false" />
+      </Java>
+      <Native>
+        <option name="USE_JAVA_AWARE_DEBUGGER" value="false" />
+        <option name="SHOW_STATIC_VARS" value="true" />
+        <option name="WORKING_DIR" value="" />
+        <option name="TARGET_LOGGING_CHANNELS" value="lldb process:gdb-remote packets" />
+        <option name="SHOW_OPTIMIZED_WARNING" value="true" />
+        <option name="ATTACH_ON_WAIT_FOR_DEBUGGER" value="false" />
+      </Native>
+      <Profilers>
+        <option name="ADVANCED_PROFILING_ENABLED" value="false" />
+        <option name="STARTUP_PROFILING_ENABLED" value="false" />
+        <option name="STARTUP_CPU_PROFILING_ENABLED" value="false" />
+        <option name="STARTUP_CPU_PROFILING_CONFIGURATION_NAME" value="Java/Kotlin Method Sample (legacy)" />
+        <option name="STARTUP_NATIVE_MEMORY_PROFILING_ENABLED" value="false" />
+        <option name="NATIVE_MEMORY_SAMPLE_RATE_BYTES" value="2048" />
+      </Profilers>
+      <option name="DEEP_LINK" value="" />
+      <option name="ACTIVITY" value="" />
+      <option name="ACTIVITY_CLASS" value="" />
+      <option name="SEARCH_ACTIVITY_IN_GLOBAL_SCOPE" value="false" />
+      <option name="SKIP_ACTIVITY_VALIDATION" value="false" />
+      <method v="2">
+        <option name="Android.Gradle.BeforeRunTask" enabled="true" />
+      </method>
+    </configuration>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="c2324e42-76bb-47cb-bc11-edf21cdf5973" name="Changes" comment="" />
+      <created>1790521488313</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1790521488313</updated>
+    </task>
+    <servers />
+  </component>
+</project>

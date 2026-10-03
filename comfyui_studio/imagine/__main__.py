@@ -33,9 +33,7 @@ import os
 import sys
 
 # Скрытый флаг для диспетчеризации того же frozen exe (см. main.py в
-# корне репозитория, ту же роль для воркера эмбеддингов PromptVault
-# играет WORKER_CLI_FLAG в comfyui_studio/promptvault/core/
-# embedding_ipc.py) -- собранный ComfyUIStudio.exe, запущенный с этим
+# корне репозитория) -- собранный ComfyUIStudio.exe, запущенный с этим
 # флагом первым аргументом, становится Imagine-подпроцессом вместо
 # обычного GUI (см. launcher/core/imagine_process.py,
 # resolve_imagine_launch()). Импортируется отдельно от main() этого

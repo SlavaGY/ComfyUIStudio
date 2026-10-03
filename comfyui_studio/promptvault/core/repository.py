@@ -14,7 +14,6 @@ from comfyui_studio.promptvault.config import (
     STATISTICS_HISTOGRAM_BUCKETS,
     STATISTICS_TOP_N,
 )
-from comfyui_studio.promptvault.core import embedding
 from comfyui_studio.promptvault.core.database import connect
 from comfyui_studio.promptvault.core.generation import Generation, ImageData, LoraData
 from comfyui_studio.promptvault.core.generation_filter import FilterOptions, GenerationFilterSQL
@@ -41,30 +40,6 @@ class GenerationRepository:
 
     def __init__(self, db_path: str | Path | None = None):
         self._conn = connect(db_path)
-
-    # ------------------------------------------------------------
-    # семантические эмбеддинги
-
-    @staticmethod
-    def _embedding_text(data: dict[str, Any]) -> str:
-        """Текст, из которого считается семантический эмбеддинг
-        генерации — ТОЛЬКО позитивный промпт.
-
-        Изначально сюда добавлялся ещё и негативный промпт (в расчёте
-        на поиск и по тому, что исключалось из изображения), но на
-        практике это оказалось источником шума: негативный промпт почти
-        всегда состоит из универсальных технических исключений (bad
-        hands, blurry, watermark, censored и т.п.), не описывающих
-        содержимое конкретной генерации. При по-теговом max-pooling
-        сравнении (см. app/core/embedding.py: cosine_similarity берёт
-        ЛУЧШЕЕ совпадение среди тегов, а не среднее) один-единственный
-        такой "мусорный" тег из негатива может перевесить весь
-        осмысленный позитивный промпт и вызвать ложное совпадение —
-        это и наблюдалось на практике."""
-
-        positive = (data.get("positive") or "").strip()
-
-        return positive
 
     # ------------------------------------------------------------
     # синхронизация с диском
@@ -121,12 +96,6 @@ class GenerationRepository:
         updated = 0
         parse_errors = 0
 
-        # первый проход: только парсинг JSON — эмбеддинги считаются
-        # ниже одним батчем сразу для всех изменившихся файлов, а не
-        # по одному внутри цикла upsert'ов, т.к. у трансформера заметные
-        # накладные расходы на каждый отдельный вызов encode() — при
-        # синхронизации папки с сотнями новых файлов это на порядок
-        # быстрее, чем считать эмбеддинг сразу после парсинга каждого
         parsed: list[tuple[str, float, dict[str, Any], str]] = []
 
         for path, mtime in disk_files.items():
@@ -145,15 +114,11 @@ class GenerationRepository:
 
             parsed.append((path, mtime, data, extra_json))
 
-        embeddings = embedding.compute_embeddings_batch(
-            [self._embedding_text(data) for _, _, data, _ in parsed]
-        )
-
-        for (path, mtime, data, extra_json), emb in zip(parsed, embeddings):
+        for path, mtime, data, extra_json in parsed:
 
             try:
                 gen_id, is_new = self._upsert_generation(
-                    folder, path, mtime, data, extra_json, emb
+                    folder, path, mtime, data, extra_json
                 )
             except sqlite3.IntegrityError as e:
                 # исчезающе маловероятная коллизия identity — не роняем
@@ -211,18 +176,10 @@ class GenerationRepository:
         mtime: float,
         data: dict[str, Any],
         extra_json: str,
-        embedding_bytes: bytes | None = None,
     ) -> tuple[int, bool]:
         """Вставляет генерацию, либо, если запись с таким
         (timestamp, generation_time) уже есть — обновляет её (в т.ч.
         переносит path на новое место).
-
-        embedding_bytes — заранее посчитанный (см. sync_folder, батчем)
-        семантический эмбеддинг промпта; None, если для этого текста
-        эмбеддинг посчитать не удалось (пустой текст либо библиотека
-        эмбеддингов недоступна) — в этом случае колонка просто
-        обновляется на NULL, генерация участвует в обычном текстовом
-        поиске, но не в семантическом.
 
         Возвращает (id записи, True если запись новая / False если
         обновлена существующая).
@@ -242,12 +199,12 @@ class GenerationRepository:
             conn.execute(
                 """UPDATE generations SET
                     folder=?, path=?, model=?, sampler=?, cfg=?, steps=?,
-                    positive=?, negative=?, extra_data=?, mtime=?, embedding=?
+                    positive=?, negative=?, extra_data=?, mtime=?
                    WHERE id=?""",
                 (
                     folder, path, data["model"], data["sampler"], data["cfg"],
                     data["steps"], data["positive"], data["negative"],
-                    extra_json, mtime, embedding_bytes, gen_id
+                    extra_json, mtime, gen_id
                 )
             )
 
@@ -256,13 +213,12 @@ class GenerationRepository:
         cur = conn.execute(
             """INSERT INTO generations
                 (folder, path, model, sampler, cfg, steps, timestamp,
-                 generation_time, positive, negative, extra_data, mtime, embedding)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                 generation_time, positive, negative, extra_data, mtime)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 folder, path, data["model"], data["sampler"], data["cfg"],
                 data["steps"], data["timestamp"], data["generation_time"],
                 data["positive"], data["negative"], extra_json, mtime,
-                embedding_bytes
             )
         )
 
@@ -293,8 +249,7 @@ class GenerationRepository:
     _GENERATION_SELECT = """
         SELECT g.id, g.path, g.model, g.sampler, g.cfg, g.steps,
                g.timestamp, g.generation_time, g.positive, g.negative,
-               COALESCE(u.favorite, 0), COALESCE(u.rating, 0),
-               g.embedding
+               COALESCE(u.favorite, 0), COALESCE(u.rating, 0)
         FROM generations g
         LEFT JOIN user_data u ON u.generation_id = g.id
     """
@@ -391,22 +346,18 @@ class GenerationRepository:
     # GenerationFilter/GenerationSorter на SQL — Этап 1)
     #
     # В отличие от load_generations/load_generations_page (фильтруют
-    # только по пути), эти три метода дополнительно применяют
-    # FilterOptions и SortMode ЦЕЛИКОМ в самом SQL-запросе (см.
-    # GenerationFilterSQL/GenerationSorterSQL) — раньше это делалось
-    # построчным разбором в Python над уже загруженным в память полным
-    # списком генераций папки (см. GenerationFilter.apply/
-    # GenerationSorter.sort), даже если сама загрузка из БД уже была
-    # постраничной. Единственное исключение — FilterOptions.semantic_query
-    # (векторное сходство не выразить обычным SQL): см.
-    # load_filtered_for_semantic ниже и
-    # GenerationFilter.rank_by_semantic_query.
+    # только по пути), эти методы дополнительно применяют FilterOptions
+    # и SortMode ЦЕЛИКОМ в самом SQL-запросе (см. GenerationFilterSQL/
+    # GenerationSorterSQL) — раньше это делалось построчным разбором в
+    # Python над уже загруженным в память полным списком генераций
+    # папки (см. GenerationFilter.apply/GenerationSorter.sort), даже
+    # если сама загрузка из БД уже была постраничной.
 
     def count_filtered(self, folder: str | Path, options: FilterOptions) -> int:
-        """Считает генерации папки, проходящие все условия options
-        (КРОМЕ semantic_query — см. класс выше), без их загрузки —
-        используется для планирования виртуальной пагинации
-        отфильтрованного списка (см. GalleryManager.apply_filters)."""
+        """Считает генерации папки, проходящие все условия options, без
+        их загрузки — используется для планирования виртуальной
+        пагинации отфильтрованного списка (см.
+        GalleryManager.apply_filters)."""
 
         pattern = self._folder_like_pattern(folder)
         extra_where, extra_params = GenerationFilterSQL.build_where(options)
@@ -430,11 +381,10 @@ class GenerationRepository:
     ) -> list[Generation]:
         """Основной метод виртуальной пагинации (задача: настоящая
         виртуальная пагинация — Этап 2): возвращает уже отфильтрованную
-        (по всем условиям options, КРОМЕ semantic_query) и
-        отсортированную (sort_mode, избранные первыми) страницу
-        генераций папки — SQL WHERE + ORDER BY + LIMIT/OFFSET одним
-        запросом, без разбора в Python и без загрузки остальных
-        страниц."""
+        (по всем условиям options) и отсортированную (sort_mode,
+        избранные первыми) страницу генераций папки — SQL WHERE +
+        ORDER BY + LIMIT/OFFSET одним запросом, без разбора в Python и
+        без загрузки остальных страниц."""
 
         pattern = self._folder_like_pattern(folder)
         extra_where, extra_params = GenerationFilterSQL.build_where(options)
@@ -449,11 +399,10 @@ class GenerationRepository:
         return self._build_generations(rows)
 
     def get_filtered_ids(self, folder: str | Path, options: FilterOptions) -> list[int]:
-        """Все id генераций папки, проходящих условия options (КРОМЕ
-        semantic_query), без LIMIT/OFFSET и без загрузки самих
-        генераций — для массовых операций над ВСЕМ отфильтрованным
-        набором разом (например, "выделить все", не только видимую
-        страницу)."""
+        """Все id генераций папки, проходящих условия options, без
+        LIMIT/OFFSET и без загрузки самих генераций — для массовых
+        операций над ВСЕМ отфильтрованным набором разом (например,
+        "выделить все", не только видимую страницу)."""
 
         pattern = self._folder_like_pattern(folder)
         extra_where, extra_params = GenerationFilterSQL.build_where(options)
@@ -466,40 +415,6 @@ class GenerationRepository:
         ).fetchall()
 
         return [row[0] for row in rows]
-
-    def load_filtered_for_semantic(
-        self,
-        folder: str | Path,
-        options: FilterOptions,
-        sort_mode: SortMode,
-    ) -> list[Generation]:
-        """Как load_filtered_page, но БЕЗ LIMIT/OFFSET и без учёта
-        options.semantic_query — используется только когда
-        semantic_query непустой: возвращает ВСЕ генерации папки,
-        прошедшие остальные условия (уже суженные SQL-запросом, а не
-        всю папку целиком), которые GalleryManager затем ранжирует по
-        векторному сходству в Python (см.
-        GenerationFilter.rank_by_semantic_query) — сравнить эмбеддинги
-        обычным SQL не получится, так что для этого (и только этого)
-        случая полный список кандидатов неизбежно оказывается в
-        памяти, как и раньше.
-
-        sort_mode здесь нужен только на случай деградации без модели
-        эмбеддингов (см. rank_by_semantic_query) — реальное
-        ранжирование по сходству, когда модель доступна, этот порядок
-        полностью заменяет собой."""
-
-        pattern = self._folder_like_pattern(folder)
-        extra_where, extra_params = GenerationFilterSQL.build_where(options)
-        order_sql = GenerationSorterSQL.build_order_by(sort_mode)
-
-        rows = self._conn.execute(
-            f"{self._GENERATION_SELECT} WHERE g.path LIKE ? ESCAPE '\\'{extra_where} "
-            f"ORDER BY {order_sql}",
-            [pattern, *extra_params]
-        ).fetchall()
-
-        return self._build_generations(rows)
 
     def available_models(self, folder: str | Path) -> set[str]:
         """Множество различных непустых значений model среди генераций
@@ -612,7 +527,7 @@ class GenerationRepository:
 
             (gid, path, model, sampler, cfg, steps, timestamp,
              generation_time, positive, negative,
-             favorite, rating, embedding_bytes) = row
+             favorite, rating) = row
 
             generations.append(Generation(
                 id=gid,
@@ -634,7 +549,6 @@ class GenerationRepository:
                 extra_data={},
                 favorite=bool(favorite),
                 rating=rating or 0,
-                embedding=embedding_bytes,
                 custom_tags=tags_by_gen.get(gid, []),
             ))
 
@@ -786,19 +700,18 @@ class GenerationRepository:
 
         mtime = path.stat().st_mtime
         extra_json = json.dumps(data["extra_data"], ensure_ascii=False)
-        embedding_bytes = embedding.compute_embedding(self._embedding_text(data))
 
         conn = self._conn
 
         conn.execute(
             """UPDATE generations SET
                 model=?, sampler=?, cfg=?, steps=?, positive=?, negative=?,
-                extra_data=?, mtime=?, embedding=?
+                extra_data=?, mtime=?
                WHERE id=?""",
             (
                 data["model"], data["sampler"], data["cfg"], data["steps"],
                 data["positive"], data["negative"], extra_json, mtime,
-                embedding_bytes, generation_id
+                generation_id
             )
         )
 
@@ -1179,12 +1092,11 @@ class GenerationRepository:
 
         mtime = path.stat().st_mtime
         extra_json = json.dumps(data["extra_data"], ensure_ascii=False)
-        embedding_bytes = embedding.compute_embedding(self._embedding_text(data))
 
         conn = self._conn
 
         gen_id, _is_new = self._upsert_generation(
-            str(path.parent), str(path), mtime, data, extra_json, embedding_bytes
+            str(path.parent), str(path), mtime, data, extra_json
         )
 
         conn.execute("DELETE FROM loras WHERE generation_id = ?", (gen_id,))
@@ -1315,184 +1227,6 @@ class GenerationRepository:
         ).fetchall()
 
         return {row[0] for row in rows}
-
-    # ------------------------------------------------------------
-    # семантический поиск
-
-    def backfill_missing_embeddings(self, batch_size: int = 200) -> int:
-        """Досчитывает эмбеддинги для генераций, у которых их ещё нет —
-        закрывает два случая, для которых sync_folder сам их не считает:
-
-        1) записи, унаследованные от версии приложения ДО задачи 3.1
-           (миграция БД добавляет колонку embedding как NULL, а не
-           пересчитывает её — файл на диске при этом не менялся, так
-           что обычный sync_folder такую запись как "изменившуюся" не
-           увидит и никогда не досчитает);
-        2) записи, для которых модель эмбеддингов была недоступна в
-           момент их первой синхронизации (например, несовместимая
-           версия torch), а впоследствии окружение починили.
-
-        Обрабатывает не более batch_size записей за один вызов — чтобы
-        не блокировать UI надолго на большой библиотеке при первом
-        запуске после обновления; при регулярных вызовах (например, при
-        каждом открытии папки) библиотека дозаполняется постепенно.
-
-        Возвращает количество реально обновлённых записей. Если модель
-        эмбеддингов недоступна, ничего не делает и возвращает 0 сразу
-        (не тратит время на бесполезные попытки на каждую строку).
-        """
-
-        if not embedding.is_available():
-            return 0
-
-        conn = self._conn
-
-        rows = conn.execute(
-            """SELECT id, positive FROM generations
-               WHERE embedding IS NULL AND COALESCE(positive, '') != ''
-               LIMIT ?""",
-            (batch_size,)
-        ).fetchall()
-
-        if not rows:
-            return 0
-
-        texts = [
-            self._embedding_text({"positive": positive})
-            for _id, positive in rows
-        ]
-
-        embeddings = embedding.compute_embeddings_batch(texts)
-
-        updated = 0
-
-        for (gen_id, _positive), emb in zip(rows, embeddings):
-
-            if emb is None:
-                continue
-
-            conn.execute(
-                "UPDATE generations SET embedding = ? WHERE id = ?",
-                (emb, gen_id)
-            )
-            updated += 1
-
-        conn.commit()
-
-        logger.info(
-            "Досчитано эмбеддингов: %d из %d просмотренных (batch_size=%d)",
-            updated, len(rows), batch_size
-        )
-
-        return updated
-
-    def recompute_all_embeddings(self, batch_size: int = 200) -> int:
-        """Принудительно пересчитывает эмбеддинги ВСЕХ генераций в БД
-        (сначала обнуляя существующие), а не только тех, для кого он
-        ещё не посчитан — в отличие от backfill_missing_embeddings.
-
-        Нужен разово после смены логики вычисления эмбеддинга (в этой
-        версии — переход на по-теговое кодирование промпта вместо
-        одного вектора на весь текст целиком, см. app/core/embedding.py).
-        Старые эмбеддинги, посчитанные до этого перехода, остаются
-        формально валидными (не ломают поиск — при чтении BLOB просто
-        интерпретируется как один "тег"), но дают заметно менее точные
-        результаты и сами по себе не заменятся, пока не изменится JSON
-        на диске — этот метод нужен, чтобы пересчитать их явно.
-
-        Возвращает общее количество пересчитанных записей.
-        """
-
-        self._conn.execute("UPDATE generations SET embedding = NULL")
-        self._conn.commit()
-
-        total = 0
-
-        while True:
-
-            updated = self.backfill_missing_embeddings(batch_size=batch_size)
-
-            if updated == 0:
-                break
-
-            total += updated
-
-        logger.info("Принудительный пересчёт эмбеддингов завершён: %d записей", total)
-
-        return total
-
-    def clear_all_embeddings(self) -> int:
-        """Удаляет посчитанные векторы эмбеддингов у ВСЕХ генераций (просто
-        `embedding = NULL`, без пересчёта — в отличие от
-        recompute_all_embeddings выше). Кнопка "Delete vectors" в
-        настройках (см. SettingsWindow._on_delete_vectors_clicked) —
-        освободить место в БД, если семантический поиск больше не
-        используется, не дожидаясь следующего pip-install/переключения
-        зависимостей. Работает независимо от того, доступна ли сейчас
-        сама библиотека sentence-transformers/torch (это чистая
-        операция над БД, вычислений не требует) — так что доступна,
-        даже если пользователь уже удалил тяжёлые зависимости и просто
-        хочет подчистить то, что от них осталось в БД.
-
-        Возвращает число записей, у которых был вектор (и он был
-        удалён) — 0, если удалять было нечего."""
-
-        cursor = self._conn.execute(
-            "UPDATE generations SET embedding = NULL WHERE embedding IS NOT NULL"
-        )
-        self._conn.commit()
-
-        deleted = cursor.rowcount if cursor.rowcount is not None and cursor.rowcount >= 0 else 0
-
-        logger.info("Векторы эмбеддингов удалены: %d записей", deleted)
-
-        return deleted
-
-    def search_semantic(self, query: str, limit: int = 100) -> list[int]:
-        """Возвращает id генераций из ВСЕЙ БД (а не только текущей
-        открытой папки), чей промпт семантически ближе всего к query,
-        отсортированные по убыванию сходства — до limit штук.
-
-        В отличие от GenerationFilter (который ранжирует уже
-        загруженный в память список генераций текущей папки — см. его
-        FilterOptions.semantic_query), этот метод обращается прямо к
-        БД и годится, например, для поиска по всей когда-либо
-        просканированной библиотеке независимо от того, какая папка
-        открыта в галерее сейчас.
-
-        Возвращает пустой список, если query пустой, библиотека
-        эмбеддингов недоступна, либо в БД ещё нет ни одной генерации
-        с посчитанным эмбеддингом.
-        """
-
-        query = query.strip()
-
-        if not query:
-            return []
-
-        query_bytes = embedding.compute_query_embedding(query)
-
-        if query_bytes is None:
-            logger.info(
-                "search_semantic: не удалось вычислить эмбеддинг запроса "
-                "(пустой текст либо модель недоступна)"
-            )
-            return []
-
-        query_vec = embedding.bytes_to_array(query_bytes)
-
-        rows = self._conn.execute(
-            "SELECT id, embedding FROM generations WHERE embedding IS NOT NULL"
-        ).fetchall()
-
-        scored = [
-            (gen_id, embedding.cosine_similarity(query_vec, emb_bytes))
-            for gen_id, emb_bytes in rows
-        ]
-
-        scored.sort(key=lambda pair: pair[1], reverse=True)
-
-        return [gen_id for gen_id, _score in scored[:limit]]
 
     # ------------------------------------------------------------
     # статистика (задача 3.2)

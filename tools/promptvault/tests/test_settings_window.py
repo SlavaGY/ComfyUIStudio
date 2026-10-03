@@ -1,6 +1,6 @@
 """Тесты для comfyui_studio/promptvault/ui/settings_window.py — окно настроек, куда перенесены
-тема/язык/семантический поиск из Toolbar, плюс новые настройки
-производительности (размер страницы) и автоочистки (миниатюры/логи).
+тема/язык из Toolbar, плюс новые настройки производительности (размер
+страницы) и автоочистки (миниатюры/логи).
 
 Требуют QT_QPA_PLATFORM=offscreen (см. tests/conftest.py).
 """
@@ -11,7 +11,6 @@ import pytest
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import QMessageBox
 
-from comfyui_studio.promptvault.core import embedding
 from comfyui_studio.promptvault.core.gallery_manager import GalleryManager
 from comfyui_studio.promptvault.core.hotkeys import DEFAULT_HOTKEYS, HOTKEY_ACTIONS, HotkeyManager
 from comfyui_studio.promptvault.core.repository import GenerationRepository
@@ -43,13 +42,6 @@ def _isolated_settings(tmp_path, monkeypatch):
     yield
 
     QSettings("PromptVault", "PromptVault").clear()
-
-
-@pytest.fixture(autouse=True)
-def _reset_embedding_state():
-
-    yield
-    embedding.set_enabled(True)
 
 
 @pytest.fixture
@@ -213,169 +205,6 @@ class TestHotkeysSection:
             _label, edit, _reset_btn = window._hotkey_rows[action_id]
             assert window.hotkey_manager.is_default(action_id)
             assert edit.keySequence() == QKeySequence(DEFAULT_HOTKEYS[action_id])
-
-
-class TestSearchSection:
-
-    def test_checkbox_reflects_initial_state(self, settings_window):
-
-        window, gallery, _theme, _loc, _toolbar = settings_window
-
-        assert window.semantic_search_checkbox.isChecked() == gallery.semantic_search_enabled()
-
-    def test_unchecking_disables_semantic_search(self, settings_window):
-
-        window, gallery, _theme, _loc, _toolbar = settings_window
-
-        window.semantic_search_checkbox.setChecked(False)
-
-        assert gallery.semantic_search_enabled() is False
-        assert embedding.is_available() is False
-
-
-class TestEmbeddingModelSection:
-    """Задача: выбор модели эмбеддинга и устройства."""
-
-    def test_model_combo_lists_all_models_plus_no_model_option(self, settings_window):
-
-        window, _gallery, _theme, _loc, _toolbar = settings_window
-
-        items = [
-            window.embedding_model_box.itemText(i)
-            for i in range(window.embedding_model_box.count())
-        ]
-
-        assert any(item.startswith("e5-large-v2") for item in items)
-        assert any(item.startswith("all-MiniLM-L6-v2") for item in items)
-        assert any("No model" in item for item in items)
-
-    def test_model_combo_reflects_current_selection(self, settings_window):
-
-        window, gallery, _theme, _loc, _toolbar = settings_window
-
-        current_key = window._embedding_model_keys[window.embedding_model_box.currentIndex()]
-        assert current_key == gallery.embedding_model_key() == "e5-large-v2"
-
-    def test_selecting_a_different_model_updates_gallery(self, settings_window, monkeypatch):
-
-        window, gallery, _theme, _loc, _toolbar = settings_window
-
-        # ответ "No" на предложение немедленного пересчёта — сама смена
-        # модели должна примениться независимо от этого ответа
-        monkeypatch.setattr(
-            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.question",
-            lambda *a, **kw: QMessageBox.No,
-        )
-
-        index = window._embedding_model_keys.index("all-MiniLM-L6-v2")
-        window.embedding_model_box.setCurrentIndex(index)
-
-        assert gallery.embedding_model_key() == "all-MiniLM-L6-v2"
-
-    def test_selecting_no_model_disables_semantic_search(self, settings_window, monkeypatch):
-
-        window, gallery, _theme, _loc, _toolbar = settings_window
-
-        monkeypatch.setattr(
-            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.question",
-            lambda *a, **kw: QMessageBox.No,
-        )
-
-        index = window._embedding_model_keys.index(None)
-        window.embedding_model_box.setCurrentIndex(index)
-
-        assert gallery.embedding_model_key() is None
-        assert embedding.is_available() is False
-
-    def test_confirming_recompute_prompt_triggers_recompute(self, settings_window, monkeypatch):
-
-        window, gallery, _theme, _loc, _toolbar = settings_window
-
-        monkeypatch.setattr(
-            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.question",
-            lambda *a, **kw: QMessageBox.Yes,
-        )
-        monkeypatch.setattr(
-            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.information",
-            lambda *a, **kw: None,
-        )
-
-        calls = []
-        monkeypatch.setattr(gallery, "recompute_all_embeddings", lambda: calls.append(1) or 0)
-
-        index = window._embedding_model_keys.index("e5-base-v2")
-        window.embedding_model_box.setCurrentIndex(index)
-
-        assert calls == [1]
-
-    def test_declining_recompute_prompt_does_not_recompute(self, settings_window, monkeypatch):
-
-        window, gallery, _theme, _loc, _toolbar = settings_window
-
-        monkeypatch.setattr(
-            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.question",
-            lambda *a, **kw: QMessageBox.No,
-        )
-
-        calls = []
-        monkeypatch.setattr(gallery, "recompute_all_embeddings", lambda: calls.append(1) or 0)
-
-        index = window._embedding_model_keys.index("e5-base-v2")
-        window.embedding_model_box.setCurrentIndex(index)
-
-        assert calls == []
-
-    def test_device_combo_reflects_default_auto(self, settings_window):
-
-        window, gallery, _theme, _loc, _toolbar = settings_window
-
-        assert window.embedding_device_box.currentText() == "Auto"
-        assert gallery.device_preference() == "auto"
-
-    def test_selecting_cpu_device_updates_gallery(self, settings_window):
-
-        window, gallery, _theme, _loc, _toolbar = settings_window
-
-        window.embedding_device_box.setCurrentText("CPU")
-
-        assert gallery.device_preference() == "cpu"
-
-    def test_selecting_gpu_without_torch_warns_but_still_applies(
-        self, settings_window, monkeypatch
-    ):
-
-        window, gallery, _theme, _loc, _toolbar = settings_window
-
-        warned = []
-        monkeypatch.setattr(
-            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.warning",
-            lambda *a, **kw: warned.append(1),
-        )
-
-        window.embedding_device_box.setCurrentText("GPU")
-
-        assert warned == [1]
-        assert gallery.device_preference() == "cuda"
-
-    def test_recompute_button_recomputes_after_confirmation(self, settings_window, monkeypatch):
-
-        window, gallery, _theme, _loc, _toolbar = settings_window
-
-        monkeypatch.setattr(
-            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.question",
-            lambda *a, **kw: QMessageBox.Yes,
-        )
-        monkeypatch.setattr(
-            "comfyui_studio.promptvault.ui.settings_window.QMessageBox.information",
-            lambda *a, **kw: None,
-        )
-
-        calls = []
-        monkeypatch.setattr(gallery, "recompute_all_embeddings", lambda: calls.append(1) or 3)
-
-        window._on_recompute_clicked()
-
-        assert calls == [1]
 
 
 class TestPerformanceSection:

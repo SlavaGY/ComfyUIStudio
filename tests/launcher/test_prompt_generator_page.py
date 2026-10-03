@@ -223,6 +223,33 @@ def test_dialog_has_prompt_generator_section(dialog):
     assert titles == [t for t, _page in dialog._sections]
 
 
+def test_dialog_has_prompt_history_section_right_after_generator(dialog):
+    titles = [item.text(0) for item in dialog._tree_items]
+    idx = titles.index("История промптов")
+    assert idx == titles.index("Генератор промптов") + 1
+    holder = dialog.stack.widget(idx)  # страница лежит внутри QScrollArea
+    assert holder is dialog.prompt_history_page or holder.widget() is dialog.prompt_history_page
+    assert titles == [t for t, _page in dialog._sections]
+    assert dialog.stack.count() == len(titles)
+
+
+def test_history_section_title_is_translated(dialog):
+    dialog.loc = EnLoc()
+    dialog.retranslate_ui()
+    titles = [item.text(0) for item in dialog._tree_items]
+    assert "Prompt history" in titles
+
+
+def test_log_requests_checkbox_roundtrip(dialog, settings_file):
+    page = dialog.prompt_generator_page
+    assert page.log_requests_check.isChecked()          # по умолчанию включено
+    page.log_requests_check.setChecked(False)
+    dialog._save_timer.stop()
+    dialog._auto_save()
+    assert json.load(open(settings_file, encoding="utf-8"))["log_requests"] is False
+    assert sp.read_settings()["log_requests"] is False
+
+
 def test_dialog_autosave_writes_shared_file(dialog, settings_file):
     dialog.prompt_generator_page.model_edit.setText("D:\\models\\x.gguf")
     assert dialog._save_timer.isActive()

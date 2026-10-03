@@ -111,7 +111,6 @@ def main():
     from comfyui_studio.launcher.ui.launcher_window import create_window as create_launcher_window
     from comfyui_studio.prompt_builder.main import create_window as create_prompt_builder_window
     from comfyui_studio.promptvault.main import create_window as create_promptvault_window
-    from comfyui_studio.promptvault.core import embedding as promptvault_embedding
 
     register_in_process_app(
         "prompt_builder",
@@ -129,18 +128,6 @@ def main():
         # аналог -- см. AdvancedSettingsPage ("Application") в
         # comfyui_studio/launcher/ui/settings/advanced_page.py.
         lambda: create_promptvault_window(app, standalone=False),
-        # on_close=... -- закрытие окна PromptVault само по себе НЕ
-        # останавливает подпроцесс-воркер эмбеддингов (если он был
-        # поднят) -- WA_DeleteOnClose уничтожает только сам Qt-объект
-        # окна, а подпроцесс живёт независимо от него (см.
-        # embedding_ipc.WorkerHandle/embedding_worker.py и docstring
-        # embedding.unload_model()). Без этого подпроцесс пережил бы
-        # закрытие окна PromptVault и продолжал бы висеть в памяти до
-        # закрытия всего ComfyUIStudio, даже когда само окно PromptVault
-        # давно закрыто -- ровно та утечка, ради которой и был вынесен
-        # весь этот механизм в отдельный процесс (см. дорожную карту,
-        # запись от 2026-08-20).
-        on_close=promptvault_embedding.unload_model,
     )
 
 
@@ -154,37 +141,19 @@ def main():
 
 
 if __name__ == "__main__":
-    # Диспетчеризация в режим подпроцесса-воркера эмбеддингов PromptVault
-    # -- ДО любых других импортов (даже PySide6/Qt), максимально рано.
-    # WorkerHandle (comfyui_studio/promptvault/core/embedding_ipc.py)
-    # спавнит подпроцесс воркера через sys.executable: из исходников это
-    # системный python (запускается через `-m ...`, отдельная ветка, эта
-    # проверка даже не сработает), а из собранного PyInstaller-exe
-    # sys.executable -- это САМ ЖЕ frozen-exe (нет отдельного python.exe
-    # рядом) -- поэтому воркер-режим запускается ТЕМ ЖЕ exe со скрытым
-    # CLI-флагом (WORKER_CLI_FLAG), и вот эта проверка здесь ловит его
-    # раньше, чем main() успеет создать QApplication или загрузить
-    # что-либо из GUI-части комплекта -- воркеру Qt не нужен вообще,
-    # тянуть его в подпроцесс было бы лишней и весьма немалой памятью
-    # (PySide6 сама по себе тоже не бесплатна) поверх и без того тяжёлого
-    # torch. Тот же принцип, что решает multiprocessing.freeze_support()
-    # для обычного stdlib-модуля multiprocessing во frozen-сборках.
-    if len(sys.argv) > 1:
-        from comfyui_studio.promptvault.core.embedding_ipc import WORKER_CLI_FLAG
-        if sys.argv[1] == WORKER_CLI_FLAG:
-            from comfyui_studio.promptvault.core.embedding_worker import run_worker
-            run_worker()
-            sys.exit(0)
-
-    # Та же диспетчеризация, тем же принципом -- для Imagine (см.
+    # Диспетчеризация в режим подпроцесса -- для Imagine (см.
     # comfyui_studio/imagine/, launcher/core/imagine_process.py): из
     # исходников лаунчер спавнит `python -m comfyui_studio.imagine`
     # (отдельный процесс системного python, эта проверка не сработает),
     # а из собранного exe -- сам себя же со скрытым IMAGINE_CLI_FLAG,
-    # ловится здесь до QApplication и до любых Qt-импортов. В отличие от
-    # воркера эмбеддингов, у Imagine есть свои аргументы командной
-    # строки (--host/--port/--comfy-host/--comfy-port/--dev) -- они
-    # передаются дальше как есть, __main__.main() сам их разбирает.
+    # ловится здесь до QApplication и до любых Qt-импортов, максимально
+    # рано -- Imagine's backend не нуждается в Qt вообще, тянуть его в
+    # подпроцесс было бы лишней памятью поверх PySide6. У Imagine есть
+    # свои аргументы командной строки (--host/--port/--comfy-host/
+    # --comfy-port/--dev) -- они передаются дальше как есть,
+    # __main__.main() сам их разбирает. Тот же принцип, что решает
+    # multiprocessing.freeze_support() для обычного stdlib-модуля
+    # multiprocessing во frozen-сборках.
     if len(sys.argv) > 1:
         from comfyui_studio.imagine.__main__ import IMAGINE_CLI_FLAG
         if sys.argv[1] == IMAGINE_CLI_FLAG:

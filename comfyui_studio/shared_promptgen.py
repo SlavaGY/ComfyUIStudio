@@ -119,6 +119,9 @@ DEFAULTS = {
     "free_comfy_mode": "auto",
     # см. DEFAULT_IMAGE_MAX_SIDE
     "image_max_side": DEFAULT_IMAGE_MAX_SIDE,
+    # писать ли каждый запрос (полный текст, ответ, токены, тайминги) в
+    # базу истории -- см. promptgen_history.py и вкладку «История промптов»
+    "log_requests": True,
 }
 
 

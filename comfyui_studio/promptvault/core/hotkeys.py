@@ -16,9 +16,7 @@ QShortcut, создаваемый в MainWindow._register_hotkeys — реаль
 toggle_favorite и т.п.) — только про id действий и назначенные им
 комбинации. Сама привязка id -> обработчик — в MainWindow
 (_register_hotkeys), сама привязка id -> переводимая подпись — в
-SettingsWindow (_hotkey_label), как и EMBEDDING_MODELS в app/config.py
-хранит только нейтральные ключи ("quality": "excellent"), а готовый
-текст на нужном языке собирает UI-слой.
+SettingsWindow (_hotkey_label).
 """
 
 from __future__ import annotations

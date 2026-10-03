@@ -19,8 +19,6 @@ import os
 ROOT_DIR = os.path.abspath(os.path.join(SPECPATH, '..', '..'))
 PROMPTVAULT_SRC = os.path.join(ROOT_DIR, 'comfyui_studio', 'promptvault')
 
-from PyInstaller.utils.hooks import collect_all
-
 # Назначение (второй элемент каждого кортежа) ЗЕРКАЛИТ пакетный путь
 # comfyui_studio/promptvault/... неспроста -- comfyui_studio/promptvault/
 # config.py и .../themes/theme_manager.py находят свои файлы через
@@ -36,23 +34,7 @@ datas = [
     (os.path.join(PROMPTVAULT_SRC, 'themes'), os.path.join('comfyui_studio', 'promptvault', 'themes')),
 ]
 binaries = []
-hiddenimports = [
-    # embedding_worker.py/embedding_ipc.py импортируются лениво/условно
-    # (в самом верху comfyui_studio/promptvault/main.py, до остальных
-    # импортов -- см. диспетчеризацию в режим подпроцесса воркера
-    # эмбеддингов там) -- PyInstaller обычно находит такие и без этого
-    # через обычный AST-анализ, но раз от их отсутствия в сборке тихо
-    # сломался бы весь семантический поиск (а не упал с понятной
-    # ошибкой), лучше перечислить явно, а не полагаться на анализ.
-    "comfyui_studio.promptvault.core.embedding_worker",
-    "comfyui_studio.promptvault.core.embedding_ipc",
-]
-tmp_ret = collect_all('sentence_transformers')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('transformers')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('tokenizers')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+hiddenimports = []
 
 
 a = Analysis(

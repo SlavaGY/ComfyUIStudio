@@ -281,13 +281,13 @@ TRANSLATIONS = {
         "Поиск, производительность и хранение": "Search, performance & storage",
         (
             "Открывает собственное окно настроек PromptVault "
-            "(семантический поиск, размер страницы ленивой загрузки, "
-            "автоочистка миниатюр/логов, горячие клавиши) — без запуска "
-            "самого PromptVault целиком."
+            "(размер страницы ленивой загрузки, автоочистка "
+            "миниатюр/логов, горячие клавиши) — без запуска самого "
+            "PromptVault целиком."
         ): (
-            "Opens PromptVault's own settings window (semantic search, "
-            "lazy-loading page size, thumbnail/log auto-cleanup, "
-            "hotkeys) — without launching PromptVault itself."
+            "Opens PromptVault's own settings window (lazy-loading "
+            "page size, thumbnail/log auto-cleanup, hotkeys) — "
+            "without launching PromptVault itself."
         ),
         "Открыть настройки PromptVault...": "Open PromptVault settings...",
         "Не удалось открыть настройки PromptVault: {error}": (
@@ -534,6 +534,63 @@ TRANSLATIONS = {
         "Файл модели не найден: {}": "Model file not found: {}",
         "Файл mmproj не найден: {}": "mmproj file not found: {}",
         "Дополнительная папка с DLL не найдена: {}": "Extra DLL folder not found: {}",
+        # -- История промптов, см. ui/settings/prompt_history_page.py --
+        'Сохранять историю запросов (вкладка «История промптов»)': 'Save request history ("Prompt history" tab)',
+        'Каждый запрос — полный текст, ответ модели, токены и время — записывается в локальную базу SQLite. Если отключить, новые запросы сохраняться не будут; уже записанные останутся.': 'Every request — full text, model output, tokens and time — is written to a local SQLite database. If turned off, new requests are not saved; existing ones stay.',
+        'История промптов': 'Prompt history',
+        'Все запросы, отправленные Генератору промптов из Imagine: полный текст запроса, ответ модели, токены и время. Щёлкните по заголовку столбца, чтобы отсортировать; в поиске можно указать несколько слов — найдутся записи, где есть все.': 'All requests sent to the Prompt generator from Imagine: full request text, model output, tokens and time. Click a column header to sort; you can enter several search words — records containing all of them are found.',
+        'Поиск по запросу, ответу, имени изображения…': 'Search request, output, image name…',
+        'Копировать вкладку': 'Copy tab',
+        'Очистить всё…': 'Clear all…',
+        'Сводка': 'Summary',
+        'Полный запрос': 'Full request',
+        'Ответ': 'Output',
+        'Дата и время': 'Date and time',
+        'Запрос': 'Request',
+        'Изображение': 'Image',
+        'Токены': 'Tokens',
+        'Время, с': 'Time, s',
+        'Ток/с': 'Tok/s',
+        'Не удалось прочитать историю: {}': 'Could not read the history: {}',
+        'да': 'yes',
+        'да (имя неизвестно)': 'yes (name unknown)',
+        'нет': 'no',
+        'всего (запрос + ответ)': 'total (request + output)',
+        'Ошибка': 'Error',
+        'Стр. {} из {} · записей: {}': 'Page {} of {} · records: {}',
+        'Найдено': 'Found',
+        'Всего': 'Total',
+        '{}: {} · токенов всего: {}': '{}: {} · total tokens: {}',
+        ' · среднее время: {:.1f} с': ' · average time: {:.1f} s',
+        ' · средняя скорость: {:.1f} ток/с': ' · average speed: {:.1f} tok/s',
+        'Ошибка:': 'Error:',
+        'Сырой ответ модели (с рассуждениями)': 'Raw model output (with reasoning)',
+        'Начало': 'Started',
+        'Конец': 'Finished',
+        'запрос': 'request',
+        'ответ': 'output',
+        'всего': 'total',
+        'точно, от llama-server': 'exact, from llama-server',
+        'по данным llama-server': 'from llama-server timings',
+        'приблизительно: число принятых частей ответа': 'approximate: number of received output chunks',
+        '⚠ Ответ обрезан лимитом max_tokens': '⚠ Output was cut off by the max_tokens limit',
+        'Хронология (секунды от начала задачи):': 'Timeline (seconds since the job started):',
+        'старт задачи': 'job started',
+        'модель загружена': 'model loaded',
+        'загрузка': 'loading',
+        'первый токен': 'first token',
+        'обработка запроса': 'request processing',
+        'ответ получен': 'output received',
+        'генерация': 'generation',
+        'конец задачи': 'job finished',
+        'Скорость генерации': 'Generation speed',
+        'ток/с': 'tok/s',
+        'Модель': 'Model',
+        'Контекст': 'Context',
+        'Удаление записей': 'Delete records',
+        'Удалить выбранные записи из истории: {}?': 'Delete the selected records from the history: {}?',
+        'Очистка истории': 'Clear history',
+        'Удалить ВСЮ историю запросов? Это нельзя отменить.': 'Delete the ENTIRE request history? This cannot be undone.',
     }
 }
 

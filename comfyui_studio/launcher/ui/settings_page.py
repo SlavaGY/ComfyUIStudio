@@ -337,14 +337,12 @@ class SettingsPage(QWidget):
         прячется: WA_DeleteOnClose заставляет Qt реально уничтожить его
         C++-объект после closeEvent, сигнал destroyed чистит запись в
         self._child_windows, а gc.collect() сразу забирает то, что окно
-        держало в памяти. Отдельно от самого окна -- через
-        ON_CLOSE_CALLBACKS/register_in_process_app (см.
-        _on_child_window_destroyed ниже) -- освобождается и то, что
-        окну не принадлежит, но переживает его уничтожение: для
-        PromptVault это загруженная модель эмбеддингов
-        (torch/sentence-transformers), которая кешируется как
-        module-level состояние в comfyui_studio/promptvault/core/
-        embedding.py, а не в самом окне (см. embedding.unload_model()).
+        держало в памяти. Отдельно от самого окна доступен и общий
+        механизм ON_CLOSE_CALLBACKS/register_in_process_app (см.
+        _on_child_window_destroyed ниже) -- для освобождения того, что
+        окну не принадлежит, но переживает его уничтожение (module-level
+        кеши инструмента); сейчас ни один зарегистрированный инструмент
+        такой callback не использует.
         """
         window = self._child_windows.get(app.subdir)
         if window is None:
@@ -379,13 +377,13 @@ class SettingsPage(QWidget):
         self._child_windows.pop(subdir, None)
         log_memory(f"окно '{subdir}' уничтожено (Qt-объект), до on_close callback")
 
-        # module-level кеши инструмента (например, загруженная модель
-        # эмбеддингов PromptVault, см. embedding.py) не принадлежат
-        # самому Qt-окну и не освобождаются его уничтожением -- см.
-        # ON_CLOSE_CALLBACKS/register_in_process_app в tool_registry.py.
-        # Вызываем ДО gc.collect() ниже, чтобы то, что этот callback
-        # дереференсит (например, `_model = None` в embedding.py),
-        # успело попасть под сборку мусора в этом же проходе.
+        # module-level кеши инструмента не принадлежат самому Qt-окну и
+        # не освобождаются его уничтожением -- см.
+        # ON_CLOSE_CALLBACKS/register_in_process_app в tool_registry.py
+        # (сейчас ни один зарегистрированный инструмент такой callback
+        # не использует). Вызываем ДО gc.collect() ниже, чтобы то, что
+        # этот callback дереференсит, успело попасть под сборку мусора
+        # в этом же проходе.
         on_close = ON_CLOSE_CALLBACKS.get(subdir)
         if on_close is not None:
             try:

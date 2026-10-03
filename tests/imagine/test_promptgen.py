@@ -26,6 +26,7 @@ import time
 
 import pytest
 
+from comfyui_studio import promptgen_history as ph
 from comfyui_studio import shared_promptgen as sp
 from comfyui_studio.imagine.backend import promptgen as pg
 
@@ -89,6 +90,8 @@ class H(BaseHTTPRequestHandler):
         if ctl.get("timings"):
             last = {"choices": [{"delta": {}, "finish_reason": "stop"}], "timings": ctl["timings"]}
             chunk(("data: " + json.dumps(last) + "\n\n").encode())
+        if ctl.get("usage"):
+            chunk(("data: " + json.dumps({"choices": [], "usage": ctl["usage"]}) + "\n\n").encode())
         chunk(b"data: [DONE]\n\n")
         self.wfile.write(b"0\r\n\r\n")
         self.wfile.flush()
@@ -979,3 +982,137 @@ def test_missing_cuda_cache_dir_is_silently_skipped(env, gen, monkeypatch):
     env.configure({"pieces": ["ok"]})
     assert wait_finished(gen, gen.start("x", None))["state"] == "done"
     assert "кэш CUDA-ядер" not in wait_log("модель загружена за")
+
+
+# ---------------------------------------------------------------------------
+# история запросов (SQLite, promptgen_history.py)
+# ---------------------------------------------------------------------------
+
+def _history_after(gen, job_id):
+    """Ждёт конца задачи и хвоста её потока (запись в историю -- в finally)."""
+    wait_finished(gen, job_id)
+    gen._job.thread.join(10)
+    return ph.query()
+
+
+def test_history_records_full_request_output_tokens_and_timings(env, gen):
+    env.configure(
+        {
+            "pieces": ["A cat", " on a roof"],
+            "timings": {"prompt_n": 120, "cache_n": 0, "predicted_n": 7, "predicted_per_second": 35.5},
+        },
+        prefix='Describe:\n"{input}"',
+        mmproj_path=str(env.tmp / "mmproj.gguf"),
+    )
+    (env.tmp / "mmproj.gguf").write_text("x")
+    job_id = gen.start("кот", image="data:image/png;base64,AAAA", image_name="C:\\pics\\cat 1.png")
+    rows = _history_after(gen, job_id)
+    assert len(rows) == 1
+    rec = ph.get(rows[0]["id"])
+    assert rec["job_id"] == job_id
+    assert rec["state"] == "done"
+    assert rec["prefix"] == 'Describe:\n"{input}"'
+    assert rec["user_text"] == "кот"
+    assert rec["full_prompt"] == 'Describe:\n"кот"'
+    assert rec["has_image"] == 1 and rec["image_name"] == "cat 1.png"  # путь отброшен
+    assert rec["output_text"] == "A cat on a roof"
+    assert (rec["prompt_tokens"], rec["completion_tokens"], rec["total_tokens"]) == (120, 7, 127)
+    assert rec["tokens_source"] == "timings"
+    assert rec["tok_per_s"] == 35.5
+    assert rec["total_s"] > 0 and rec["load_s"] > 0 and rec["gen_s"] is not None
+    assert rec["started_at"] <= rec["finished_at"]
+    assert rec["model_name"] == "model.gguf"
+
+
+def test_history_prefers_exact_usage_over_timings(env, gen):
+    env.configure({
+        "timings": {"prompt_n": 1, "predicted_n": 1},
+        "usage": {"prompt_tokens": 300, "completion_tokens": 40, "total_tokens": 340},
+    })
+    job_id = gen.start("x")
+    rec = ph.get(_history_after(gen, job_id)[0]["id"])
+    assert (rec["prompt_tokens"], rec["completion_tokens"], rec["total_tokens"]) == (300, 40, 340)
+    assert rec["tokens_source"] == "usage"
+    # бэкенд просит у llama-server финальный чанк с usage
+    assert env.request()["stream_options"] == {"include_usage": True}
+
+
+def test_history_without_server_stats_counts_chunks(env, gen):
+    env.configure({"pieces": ["a", "b", "c"]})
+    rec = ph.get(_history_after(gen, gen.start("x"))[0]["id"])
+    assert rec["tokens_source"] == "chunks"
+    assert rec["prompt_tokens"] is None and rec["completion_tokens"] == 3
+
+
+def test_history_text_only_request_has_no_image(env, gen):
+    env.configure()
+    rec = ph.get(_history_after(gen, gen.start("hi", image_name="ignored.png"))[0]["id"])
+    assert rec["has_image"] == 0 and rec["image_name"] == ""
+
+
+def test_history_keeps_failed_job_with_error(env, gen):
+    env.configure({"crash": 3})
+    rec = ph.get(_history_after(gen, gen.start("hello"))[0]["id"])
+    assert rec["state"] == "error"
+    assert "llama-server" in rec["error"]
+    assert rec["user_text"] == "hello" and rec["full_prompt"]
+
+
+def test_history_keeps_cancelled_job(env, gen):
+    env.configure({"pieces": ["x"] * 200, "delay": 0.05})
+    job_id = gen.start("long one")
+    deadline = time.monotonic() + 15
+    while gen.get_job(job_id)["state"] != "generating" and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert gen.cancel(job_id)
+    rec = ph.get(_history_after(gen, job_id)[0]["id"])
+    assert rec["state"] == "cancelled"
+
+
+def test_history_keeps_raw_output_only_when_it_differs(env, gen):
+    env.configure({"pieces": ["<think>hm</think>", "Answer"]})
+    rec = ph.get(_history_after(gen, gen.start("x"))[0]["id"])
+    assert rec["output_text"] == "Answer"
+    assert rec["raw_output"] == "<think>hm</think>Answer"
+
+
+def test_history_can_be_turned_off(env, gen):
+    env.configure(log_requests=False)
+    job_id = gen.start("secret")
+    wait_finished(gen, job_id)
+    gen._job.thread.join(10)
+    assert ph.count() == 0
+    assert gen.get_job(job_id)["state"] == "done"
+
+
+def test_history_failure_does_not_break_generation(env, gen, monkeypatch):
+    def boom(*_a, **_k):
+        raise OSError("disk full")
+    monkeypatch.setattr(ph, "add_record", boom)
+    env.configure()
+    snap = wait_finished(gen, gen.start("x"))
+    assert snap["state"] == "done" and snap["text"] == "Hello world"
+
+
+def test_http_start_passes_image_name_to_history(env, monkeypatch):
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from comfyui_studio.imagine.backend import main
+
+    fresh = pg.PromptGenerator()
+    monkeypatch.setattr(pg, "generator", fresh)
+    monkeypatch.setattr(main.promptgen, "generator", fresh)
+    client = TestClient(main.app)
+    env.configure({"pieces": ["ok"]}, mmproj_path=str(env.tmp / "mmproj.gguf"))
+    (env.tmp / "mmproj.gguf").write_text("x")
+    try:
+        r = client.post("api/promptgen/start", json={
+            "text": "", "image": "data:image/jpeg;base64,/9j/AAAA", "image_name": "holiday.jpg",
+        })
+        assert r.status_code == 200
+        rows = _history_after(fresh, r.json()["job_id"])
+        assert rows[0]["image_name"] == "holiday.jpg" and rows[0]["has_image"] == 1
+    finally:
+        fresh.shutdown()

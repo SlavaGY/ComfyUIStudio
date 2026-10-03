@@ -5,14 +5,13 @@
 умолчанию, зашитые в код) — здесь то же самое, но с возможностью
 переопределения пользователем через QSettings.
 
-Тема, язык, семантический поиск и размер страницы ленивой загрузки
-(GENERATIONS_PAGE_SIZE) НЕ хранятся здесь — у них уже есть собственные
-менеджеры с собственной персистентностью (ThemeManager,
-LocalizationManager, GalleryManager.set_semantic_search_enabled /
-generations_page_size) — дублировать эту логику незачем, SettingsWindow
-обращается к ним напрямую. Здесь — только автоочистка (задача 3.5),
-у которой естественного "владельца"-менеджера нет: она применяется в
-app/main.py, до создания GalleryManager/MainWindow.
+Тема, язык и размер страницы ленивой загрузки (GENERATIONS_PAGE_SIZE)
+НЕ хранятся здесь — у них уже есть собственные менеджеры с собственной
+персистентностью (ThemeManager, LocalizationManager,
+GalleryManager.generations_page_size) — дублировать эту логику
+незачем, SettingsWindow обращается к ним напрямую. Здесь — только
+автоочистка (задача 3.5), у которой естественного "владельца"-менеджера
+нет: она применяется в app/main.py, до создания GalleryManager/MainWindow.
 """
 
 from __future__ import annotations

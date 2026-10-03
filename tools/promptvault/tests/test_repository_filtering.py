@@ -2,10 +2,7 @@
 
 - count_filtered / load_filtered_page / get_filtered_ids —
   GenerationFilterSQL/GenerationSorterSQL применяются целиком в SQL
-  (задача: перенос GenerationFilter/GenerationSorter на SQL);
-- load_filtered_for_semantic — тот же набор условий (кроме
-  semantic_query), без LIMIT/OFFSET, для ранжирования по векторному
-  сходству в Python.
+  (задача: перенос GenerationFilter/GenerationSorter на SQL).
 
 Запуск: pytest tests/test_repository_filtering.py -v
 """
@@ -380,21 +377,3 @@ class TestGetFilteredIds:
 
         ids = repository.get_filtered_ids(root, FilterOptions(model="modelA"))
         assert ids == [gens["t1"]]
-
-
-class TestLoadFilteredForSemantic:
-
-    def test_applies_non_semantic_filters_without_limit(self, repo):
-
-        repository, root = repo
-
-        _write_json(root / "g1.json", timestamp="t1", model_name="modelA")
-        _write_json(root / "g2.json", timestamp="t2", model_name="modelA")
-        _write_json(root / "g3.json", timestamp="t3", model_name="modelB")
-
-        repository.sync_folder(root)
-
-        options = FilterOptions(model="modelA")
-
-        result = repository.load_filtered_for_semantic(root, options, SortMode.NEWEST)
-        assert {g.timestamp for g in result} == {"t1", "t2"}

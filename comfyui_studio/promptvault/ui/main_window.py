@@ -98,13 +98,7 @@ class MainWindow(QMainWindow):
         self.folder_sync = FolderSync(self.repository, self)
 
         self.toolbar = Toolbar(standalone=self.standalone)
-        self.filter_popup = FilterPopup(
-            parent=self,
-            semantic_search_enabled=(
-                self.gallery.semantic_search_enabled()
-                and self.gallery.semantic_search_available()
-            ),
-        )
+        self.filter_popup = FilterPopup(parent=self)
         self.sort_popup = SortPopup()
 
         self.generation_list = GenerationList()
@@ -258,7 +252,6 @@ class MainWindow(QMainWindow):
     def _push_filters_to_gallery(self) -> None:
 
         options = self.gallery.filter_options()
-        options.semantic_query = self.filter_popup.semantic_query()
         options.model = self.filter_popup.model()
         options.sampler = self.filter_popup.sampler()
         options.loras = self.filter_popup.loras()

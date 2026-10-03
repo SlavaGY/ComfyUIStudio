@@ -54,10 +54,13 @@ def set_lora_folder(path: str):
 
 def scan_lora_files(folder: str) -> list[str]:
     """Рекурсивно ищет файлы LoRA в folder, возвращает отсортированный
-    список путей относительно folder (с расширением, разделитель '/'
-    независимо от ОС). Тихо возвращает [] на отсутствующую/недоступную
-    папку — вызывающий код (LoraFileCombo) сам решает, показывать ли
-    предупреждение."""
+    список путей относительно folder (с расширением, нативный для ОС
+    разделитель — на Windows это '\\', именно его ждёт расширение LoRA
+    для вложенных путей вида "pony\\Name-000005.safetensors"; раньше
+    здесь стоял as_posix(), который всегда отдавал '/' и расширение
+    такие пути не принимало). Тихо возвращает [] на отсутствующую/
+    недоступную папку — вызывающий код (LoraFileCombo) сам решает,
+    показывать ли предупреждение."""
     if not folder:
         return []
     root = Path(folder)
@@ -67,7 +70,7 @@ def scan_lora_files(folder: str) -> list[str]:
     try:
         for p in root.rglob("*"):
             if p.is_file() and p.suffix.lower() in LORA_FILE_EXTENSIONS:
-                results.append(p.relative_to(root).as_posix())
+                results.append(p.relative_to(root).as_posix().replace("/", "\\"))
     except OSError:
         pass
     return sorted(results, key=str.lower)

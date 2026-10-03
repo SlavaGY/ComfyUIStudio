@@ -101,32 +101,47 @@ async function init() {
 // уведомления: `GET /api/generate/recent` отдаёт последние N (по
 // умолчанию сервера) завершённых заданий разом, независимо от того, по
 // какому именно уведомлению был переход.
+//
+// ТРЕТИЙ живой отчёт (обычный запуск апп с телефона, не по push): та же
+// пустая "новая сессия" оказалась и у плитки "Imagine" на домашней
+// странице (см. `_render_tile` в routes/home.py) -- это простой
+// `<a href="{app.path}">`, без `prompt_id` в query, так что этот early
+// return срабатывал ВСЕГДА при обычном запуске, а не только когда
+// recent-запрос был не нужен. Раз показ общей галереи из
+// `/api/generate/recent` не привязан к конкретному prompt_id (см. цикл
+// по items ниже, он и раньше строился независимо от уведомления) --
+// правильно грузить её при КАЖДОМ открытии страницы, а не только при
+// переходе по push; специфичный для push путь (опрос ИМЕННО того
+// prompt_id, которого ещё может не быть в recent) остаётся нужен только
+// когда prompt_id вообще был передан.
 async function initDeepLinkedGeneration() {
   const promptId = new URLSearchParams(location.search).get('prompt_id');
-  if (!promptId) return;
+  // Без prompt_id (обычный запуск апп) искать в recent нечего -- сразу
+  // считаем "найденным", чтобы не уйти ниже в опрос несуществующего id.
+  let foundTappedOne = !promptId;
 
   let items = [];
-  let foundTappedOne = false;
   try {
     const res = await fetch('api/generate/recent?limit=20');
     const data = await res.json();
     items = data.items || [];
   } catch (e) {
     // Сеть/бэкенд подвели -- не страшно, ниже всё равно есть запасной
-    // путь конкретно для той генерации, что упомянута в уведомлении.
+    // путь конкретно для той генерации, что упомянута в уведомлении
+    // (если она вообще была).
   }
 
   if (items.length) {
     el('galleryEmpty').hidden = true;
     for (const item of items) {
-      if (item.prompt_id === promptId) foundTappedOne = true;
+      if (promptId && item.prompt_id === promptId) foundTappedOne = true;
       for (const img of item.images) {
         appendPlate(img.url);
       }
     }
   }
 
-  if (!foundTappedOne) {
+  if (promptId && !foundTappedOne) {
     // Генерация из уведомления либо ещё не попала в /history (только
     // что завершилась/вот-вот завершится -- гонка между push и записью
     // в историю ComfyUI), либо recent-запрос выше не удался вовсе --
@@ -1672,6 +1687,7 @@ const pg = {
   vision: false,
   problem: null,
   image: null,     // data:image/jpeg;base64,... (уже уменьшенная), либо null
+  imageName: null, // имя выбранного файла (для истории запросов)
   imageMaxSide: PG_DEFAULT_IMAGE_SIDE,  // до скольких px уменьшать картинку перед отправкой
   jobId: null,
   busy: false,
@@ -1784,6 +1800,7 @@ function setPromptGenBusy(busy) {
 
 function clearPromptGenImage() {
   pg.image = null;
+  pg.imageName = null;
   el('pgThumb').removeAttribute('src');
   el('pgThumbWrap').hidden = true;
 }
@@ -1823,6 +1840,7 @@ async function onPromptGenFile(e) {
   if (!file) return;
   try {
     pg.image = await downscaleImageToDataUrl(file, pg.imageMaxSide);
+    pg.imageName = file.name || null;  // уходит на бэкенд только для истории запросов
     el('pgThumb').src = pg.image;
     el('pgThumbWrap').hidden = false;
     setPromptGenStatus('');
@@ -1845,7 +1863,7 @@ async function onPromptGenWrite() {
     const res = await fetch('api/promptgen/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, image: pg.image }),
+      body: JSON.stringify({ text, image: pg.image, image_name: pg.image ? pg.imageName : null }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {

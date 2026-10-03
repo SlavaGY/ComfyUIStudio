@@ -3,8 +3,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from comfyui_studio.promptvault.config import SEMANTIC_SIMILARITY_THRESHOLD
-from comfyui_studio.promptvault.core import embedding
 from comfyui_studio.promptvault.core.generation import Generation
 
 logger = logging.getLogger(__name__)
@@ -14,11 +12,6 @@ logger = logging.getLogger(__name__)
 class FilterOptions:
 
     search: str = ""
-
-    # поиск по смыслу промпта (векторный, а не по подстроке) — см.
-    # app/core/embedding.py; работает независимо от search и
-    # комбинируется с ним и остальными условиями через И
-    semantic_query: str = ""
 
     model: str | None = None
     sampler: str | None = None
@@ -71,28 +64,6 @@ class GenerationFilter:
         result = []
 
         search = options.search.lower().strip()
-
-        # ---------- семантический поиск: вектор запроса считается один
-        # раз на весь apply(), а не на каждую генерацию ----------
-
-        semantic_query = options.semantic_query.strip()
-        query_vec = None
-
-        if semantic_query:
-
-            query_bytes = embedding.compute_query_embedding(semantic_query)
-
-            if query_bytes is not None:
-                query_vec = embedding.bytes_to_array(query_bytes)
-            else:
-                # библиотека эмбеддингов недоступна (не установлена,
-                # либо не удалось загрузить модель) — не проваливаем
-                # поиск молча в "ничего не найдено", а деградируем до
-                # обычного текстового AND-поиска по тем же словам
-                logger.info(
-                    "Семантический поиск недоступен — используется обычный "
-                    "текстовый поиск по запросу '%s'", semantic_query
-                )
 
         for gen in generations:
 
@@ -251,132 +222,7 @@ class GenerationFilter:
                 if not all(word in haystack for word in words):
                     continue
 
-            # ---------- семантический поиск ----------
-
-            if semantic_query:
-
-                if query_vec is not None:
-
-                    if gen.embedding is None:
-                        # эмбеддинг ещё не посчитан (например, только
-                        # что добавленный файл, sync_folder не успел
-                        # его обработать) — не участвует в семантическом
-                        # поиске, но и не считается совпадением
-                        continue
-
-                    score = embedding.cosine_similarity(query_vec, gen.embedding)
-
-                    if logger.isEnabledFor(logging.DEBUG) and score >= SEMANTIC_SIMILARITY_THRESHOLD - 0.1:
-                        # временная диагностика для подбора порога —
-                        # показывает и прошедшие, и близкие к порогу
-                        # непрошедшие совпадения; включается обычным
-                        # DEBUG-логированием, ничего не пишет в проде
-                        # по умолчанию (см. app/core/logger.py)
-                        preview = (gen.positive or "")[:60].replace("\n", " ")
-                        logger.debug(
-                            "Semantic %s: id=%s score=%.3f '%s...'",
-                            "match" if score >= SEMANTIC_SIMILARITY_THRESHOLD else "near-miss",
-                            gen.id, score, preview
-                        )
-
-                    if score < SEMANTIC_SIMILARITY_THRESHOLD:
-                        continue
-
-                    gen.semantic_score = score
-
-                else:
-                    # деградация без модели эмбеддингов — см. выше
-                    haystack = f"{gen.positive}\n{gen.negative}".lower()
-                    words = semantic_query.lower().split()
-
-                    if not all(word in haystack for word in words):
-                        continue
-
             result.append(gen)
-
-        if semantic_query and query_vec is not None:
-            # при активном семантическом поиске порядок результатов —
-            # по убыванию релевантности; вызывающий код (GalleryManager)
-            # намеренно не применяет поверх этого обычную сортировку
-            # (иначе релевантность потерялась бы), см. apply_filters()
-            result.sort(key=lambda g: g.semantic_score, reverse=True)
-
-        return result
-
-    @staticmethod
-    def rank_by_semantic_query(
-        generations: list[Generation],
-        semantic_query: str,
-    ) -> list[Generation]:
-        """Ранжирует уже отфильтрованный по остальным критериям список
-        генераций по семантическому сходству с запросом — та же логика,
-        что и ветка semantic_query внутри apply(), вынесенная отдельно
-        для GalleryManager (задача: перенос GenerationFilter на SQL).
-
-        Остальные условия (model/sampler/cfg/steps/loras/tags/favorites/
-        rating/search) теперь фильтруются в SQL напрямую (см.
-        GenerationFilterSQL и GenerationRepository.load_filtered_for_semantic)
-        — векторное сходство там не выразить, так что генерации,
-        прошедшие SQL-фильтры, дальше ранжируются здесь, в Python, как
-        и раньше.
-
-        Как и apply(): если модель эмбеддингов недоступна, деградирует
-        до обычного текстового AND-поиска по позитив/негатив промпту,
-        а не проваливается молча в "ничего не найдено". В этом случае
-        (в отличие от ранжирования по сходству) порядок generations на
-        входе сохраняется как есть — вызывающий код должен передать его
-        уже отсортированным нужным образом (см. GenerationSorterSQL)."""
-
-        semantic_query = semantic_query.strip()
-
-        if not semantic_query:
-            return list(generations)
-
-        query_bytes = embedding.compute_query_embedding(semantic_query)
-        query_vec = (
-            embedding.bytes_to_array(query_bytes) if query_bytes is not None else None
-        )
-
-        if query_vec is None:
-
-            logger.info(
-                "Семантический поиск недоступен — используется обычный "
-                "текстовый поиск по запросу '%s'", semantic_query
-            )
-
-            words = semantic_query.lower().split()
-
-            return [
-                gen for gen in generations
-                if all(word in f"{gen.positive}\n{gen.negative}".lower() for word in words)
-            ]
-
-        result = []
-
-        for gen in generations:
-
-            if gen.embedding is None:
-                # эмбеддинг ещё не посчитан — не участвует в
-                # семантическом поиске, но и не считается совпадением
-                continue
-
-            score = embedding.cosine_similarity(query_vec, gen.embedding)
-
-            if logger.isEnabledFor(logging.DEBUG) and score >= SEMANTIC_SIMILARITY_THRESHOLD - 0.1:
-                preview = (gen.positive or "")[:60].replace("\n", " ")
-                logger.debug(
-                    "Semantic %s: id=%s score=%.3f '%s...'",
-                    "match" if score >= SEMANTIC_SIMILARITY_THRESHOLD else "near-miss",
-                    gen.id, score, preview
-                )
-
-            if score < SEMANTIC_SIMILARITY_THRESHOLD:
-                continue
-
-            gen.semantic_score = score
-            result.append(gen)
-
-        result.sort(key=lambda g: g.semantic_score, reverse=True)
 
         return result
 
@@ -388,13 +234,7 @@ class GenerationFilterSQL:
     Строит фрагмент WHERE (готовый к конкатенации после уже
     существующего условия ``g.path LIKE ?``, начинается с " AND ", либо
     пустая строка, если фильтровать нечего) и список параметров — под
-    все поля FilterOptions, КРОМЕ semantic_query: векторное сходство
-    промпта не выразить обычным SQL-запросом, оно по-прежнему считается
-    в Python (см. GenerationFilter.rank_by_semantic_query и
-    GenerationRepository.load_filtered_for_semantic — кандидаты для
-    ранжирования получаются уже отфильтрованными по всем ОСТАЛЬНЫМ
-    условиям через build_where, чтобы ранжировать в Python приходилось
-    как можно меньше строк).
+    все поля FilterOptions.
 
     Ожидает алиасы ``g`` (generations) и ``u`` (user_data, LEFT JOIN по
     g.id = u.generation_id) — как в GenerationRepository._GENERATION_SELECT.

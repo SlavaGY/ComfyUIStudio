@@ -4,11 +4,10 @@
 §0.1/этап 1).
 
 По архитектуре — 1:1 та же схема диспетчеризации, что уже отработана
-для Imagine (imagine_process.py) и воркера эмбеддингов PromptVault
-(embedding_ipc.py): при frozen=True sys.executable — сам собранный
-ComfyUIStudio.exe (отдельного python.exe рядом нет), поэтому вместо
-поиска стороннего exe лаунчер запускает САМ СЕБЯ со скрытым флагом
-REMOTE_CLI_FLAG — main.py ловит его в самом начале, до создания
+для Imagine (imagine_process.py): при frozen=True sys.executable — сам
+собранный ComfyUIStudio.exe (отдельного python.exe рядом нет), поэтому
+вместо поиска стороннего exe лаунчер запускает САМ СЕБЯ со скрытым
+флагом REMOTE_CLI_FLAG — main.py ловит его в самом начале, до создания
 QApplication и любых Qt-импортов (см. корневой main.py), и вместо
 обычного GUI-запуска вызывает comfyui_studio.remote.__main__.main() с
 оставшимися аргументами.

@@ -6,63 +6,35 @@ setlocal enabledelayedexpansion
 :: (Windows). Один процесс, одно окно на инструмент (см. main.py в
 :: корне репозитория).
 ::
-:: Этап 3 дорожной карты рефакторинга ("Влияние на сборку") добавил
-:: ДВА профиля сборки вместо одного:
-::   build_exe.bat core   -- Launcher + Prompt Builder + PromptVault
-::                            БЕЗ семантического поиска (без torch/
-::                            sentence-transformers/transformers) --
-::                            заметно меньше и быстрее собирается
-::   build_exe.bat full   -- то же самое + семантический поиск (как
-::                            было раньше, единственный вариант)
-:: Без аргумента -- собирается full (совместимость с прежним
-:: поведением скрипта).
+:: Раньше здесь было два профиля сборки (core/full, в зависимости от
+:: того, включён ли семантический поиск в PromptVault) -- семантический
+:: поиск с тех пор полностью удалён из исходников, так что деление на
+:: профили больше не нужно: один .spec (ComfyUIStudio.spec), один venv,
+:: один результат сборки, как было до этапа 3 дорожной карты
+:: рефакторинга ("Влияние на сборку").
 ::
-:: Ставит зависимости через pyproject.toml (`pip install .` для core,
-:: `pip install .[promptvault]` для full) -- ОБА .spec-профиля
-:: (ComfyUIStudio-core.spec / ComfyUIStudio-full.spec) сами по себе
-:: одинаковы в части datas, разница только в наборе зависимостей venv
-:: и excludes самого core.spec (страховка, см. его комментарии). Раньше
-:: здесь были прямые pyinstaller-флаги (--add-data/--collect-all) --
-:: теперь они вынесены в сами .spec-файлы, этот батник только выбирает
-:: нужный.
+:: Ставит зависимости через pyproject.toml (`pip install .[imagine]`).
+:: Датасы (--add-data) и hiddenimports/collect_all заданы внутри самого
+:: .spec-файла -- этот батник только вызывает pyinstaller.
 ::
-:: one-folder, а не --onefile -- при full-профиле PySide6 + QtWebEngine
-:: (нужен ComfyUI Launcher) + torch + sentence-transformers/transformers
-:: (нужны PromptVault) в сумме дают сотни МБ-больше гигабайта;
-:: --onefile распаковывал бы всё это заново во временную папку при
-:: КАЖДОМ запуске. core-профиль легче, но one-folder оставлен и для
-:: него -- ради единообразия и потому, что QtWebEngine (тяжёлый сам по
-:: себе) нужен в обоих профилях.
+:: one-folder, а не --onefile -- PySide6 + QtWebEngine (нужен ComfyUI
+:: Launcher) в сумме дают заметный объём; --onefile распаковывал бы всё
+:: это заново во временную папку при КАЖДОМ запуске.
 ::
 :: Результат: dist\ComfyUIStudio\ComfyUIStudio.exe и вся папка рядом.
 :: Распространять нужно ВСЮ папку dist\ComfyUIStudio целиком (скрипт
-:: сам упаковывает её в dist\ComfyUIStudio-win64-<профиль>.zip) -- не
-:: только .exe.
+:: сам упаковывает её в dist\ComfyUIStudio-win64.zip) -- не только .exe.
 ::
 :: Imagine (comfyui_studio/imagine/ -- вариант запуска ComfyUI, см.
 :: "Интерфейс" в настройках ComfyUI) — ЧАСТЬ ТОГО ЖЕ ComfyUIStudio.exe,
 :: отдельного exe/спека для него нет: собранный exe запускает сам себя
 :: подпроцессом со скрытым флагом (см. main.py и launcher/core/
-:: imagine_process.py) — тот же приём, что уже используется для
-:: подпроцесса-воркера эмбеддингов PromptVault. Зависимости Imagine
-:: (fastapi/uvicorn/pydantic/python-multipart, extras 'imagine' в
-:: pyproject.toml) ставятся ниже в ОБОИХ профилях автоматически --
-:: отдельно накатывать их после сборки не нужно.
+:: imagine_process.py). Зависимости Imagine (fastapi/uvicorn/pydantic/
+:: python-multipart, extras 'imagine' в pyproject.toml) ставятся ниже
+:: автоматически -- отдельно накатывать их после сборки не нужно.
 :: ==============================================================
 
 cd /d "%~dp0"
-
-set "PROFILE=%~1"
-if "%PROFILE%"=="" set "PROFILE=full"
-
-if /i not "%PROFILE%"=="core" if /i not "%PROFILE%"=="full" (
-    echo Неизвестный профиль сборки: %PROFILE%
-    echo Использование: build_exe.bat [core^|full]
-    exit /b 1
-)
-
-echo.
-echo === Профиль сборки: %PROFILE% ===
 
 echo.
 echo === [1/6] Проверка Python ===
@@ -96,7 +68,7 @@ if not exist "comfyui_studio\promptvault\main.py" (
 echo.
 echo === [2/6] Виртуальное окружение ===
 
-set "VENV_DIR=.venv-build-%PROFILE%"
+set "VENV_DIR=.venv-build"
 
 if not exist "%VENV_DIR%\Scripts\python.exe" (
     echo Создаю %VENV_DIR%...
@@ -106,29 +78,10 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
 call "%VENV_DIR%\Scripts\activate.bat" || exit /b 1
 
 echo.
-echo === [3/6] Зависимости ^(pyproject.toml, профиль: %PROFILE%^) ===
+echo === [3/6] Зависимости ^(pyproject.toml^) ===
 
 python -m pip install --upgrade pip >nul
-
-:: ВАЖНО: комментарии с круглыми скобками внутри if/else (...) ниже
-:: ломают парсер cmd.exe, если скобка открывается на одной строке ::
-:: комментария и закрывается на другой (классическая ловушка cmd.exe
-:: с "::" внутри скобочных блоков) -- отсюда и вынесено сюда, ДО
-:: блока, а не внутрь его веток.
-::
-:: core: БЕЗ [promptvault] -- venv физически не увидит torch/
-:: sentence-transformers/transformers, поэтому даже если бы excludes в
-:: ComfyUIStudio-core.spec где-то не сработал, собрать их всё равно
-:: было бы не из чего (см. комментарии в самом .spec).
-:: [imagine] ставится в ОБОИХ профилях -- Imagine не тянет ничего
-:: тяжёлого (fastapi/uvicorn/pydantic/python-multipart, без torch),
-:: поэтому не завязан на core/full так, как PromptVault.
-if /i "%PROFILE%"=="core" (
-    pip install .[imagine] || exit /b 1
-) else (
-    pip install .[promptvault,imagine] || exit /b 1
-)
-
+pip install .[imagine] || exit /b 1
 pip install --upgrade pyinstaller || exit /b 1
 
 echo.
@@ -136,43 +89,36 @@ echo === [4/6] Иконка приложения ^(.ico^) ===
 
 if not exist "assets\icon.ico" (
     echo   assets\icon.ico не найден -- сборка .spec ожидает его по
-    echo   этому пути, см. icon=['assets/icon.ico'] в .spec-файлах.
+    echo   этому пути, см. icon=['assets/icon.ico'] в ComfyUIStudio.spec.
     exit /b 1
 )
 
 echo.
-echo === [5/6] Сборка PyInstaller ^(профиль: %PROFILE%^) ===
+echo === [5/6] Сборка PyInstaller ===
 
 if exist "build" rmdir /s /q "build"
 if exist "dist" rmdir /s /q "dist"
 
-:: Датасы (--add-data) и, для full, --collect-all на
-:: sentence_transformers/transformers/tokenizers теперь заданы внутри
-:: самих .spec-файлов (ComfyUIStudio-core.spec / ComfyUIStudio-full.spec)
-:: -- см. их комментарии про то, откуда comfyui_studio/prompt_builder/*
-:: и comfyui_studio/promptvault/* находят свои файлы данных внутри
-:: _MEIPASS. Сами веса модели эмбеддинга (~1.3 ГБ) НЕ бандлятся ни в
-:: одном профиле -- грузятся с HuggingFace Hub при первом запуске
-:: (только в full, где семантический поиск вообще доступен).
-pyinstaller --noconfirm --clean "ComfyUIStudio-%PROFILE%.spec"
+:: Датасы (--add-data) и --collect-all заданы внутри самого .spec-файла
+:: (ComfyUIStudio.spec) -- см. его комментарии про то, откуда
+:: comfyui_studio/prompt_builder/* и comfyui_studio/promptvault/*
+:: находят свои файлы данных внутри _MEIPASS.
+pyinstaller --noconfirm --clean "ComfyUIStudio.spec"
 
 if errorlevel 1 (
     echo.
     echo Сборка упала -- см. вывод PyInstaller выше.
-    if /i "%PROFILE%"=="full" (
-        echo Частая причина с этим стеком: PyInstaller не нашёл какой-то
-        echo субмодуль/data-файл torch или sentence-transformers -- ищите в
-        echo выводе "ModuleNotFoundError"/"No module named" при первом запуске
-        echo собранного .exe и добавляйте недостающее в hiddenimports
-        echo ComfyUIStudio-full.spec.
-    )
+    echo Частая причина: PyInstaller не нашёл какой-то субмодуль/data-файл --
+    echo ищите в выводе "ModuleNotFoundError"/"No module named" при первом
+    echo запуске собранного .exe и добавляйте недостающее в hiddenimports
+    echo ComfyUIStudio.spec.
     exit /b 1
 )
 
 echo.
 echo === [6/6] Упаковка в .zip ===
 
-set "ZIP_NAME=ComfyUIStudio-win64-%PROFILE%.zip"
+set "ZIP_NAME=ComfyUIStudio-win64.zip"
 
 if exist "dist\%ZIP_NAME%" del /q "dist\%ZIP_NAME%"
 
@@ -181,17 +127,9 @@ powershell -NoProfile -Command ^
 
 echo.
 echo ===============================================================
-echo Готово ^(профиль: %PROFILE%^):
+echo Готово:
 echo   dist\ComfyUIStudio\ComfyUIStudio.exe   ^(запуск для проверки на месте^)
 echo   dist\%ZIP_NAME%   ^(для распространения -- распаковать целиком^)
-echo.
-if /i "%PROFILE%"=="core" (
-    echo   Это core-сборка: семантический ^(по смыслу^) поиск в PromptVault
-    echo   недоступен -- чекбокс "Enable semantic search" в его настройках
-    echo   задизейблен с пояснением. Обычный текстовый поиск, фильтры,
-    echo   галерея работают как обычно. Соберите full-профиль
-    echo   ^(build_exe.bat full^), если нужен семантический поиск.
-)
 echo.
 echo   Один процесс, одно окно на инструмент: ComfyUI Launcher -- это
 echo   главное окно, кнопки "Запустить" на странице "Другие инструменты"
