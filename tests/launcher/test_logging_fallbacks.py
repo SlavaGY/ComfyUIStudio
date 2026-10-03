@@ -69,9 +69,6 @@ def test_launcher_setup_logging_does_not_raise_when_file_is_unavailable(monkeypa
             pass
 
     monkeypatch.setattr(logging_setup, "RotatingFileHandler", UnavailableRotatingFileHandler)
-    # Возвращаем модулю исходное значение после теста (setup_logging()
-    # перезапишет его).
-    monkeypatch.setattr(logging_setup, "ACTIVE_LOG_PATH", logging_setup.ACTIVE_LOG_PATH)
 
     logger = logging_setup.setup_logging()
 
@@ -81,10 +78,6 @@ def test_launcher_setup_logging_does_not_raise_when_file_is_unavailable(monkeypa
     assert any(
         isinstance(handler, logging.StreamHandler) for handler in logger.handlers
     ), "без файлового лога консольный хендлер обязан остаться"
-    # Именно по этому признаку интерфейс показывает предупреждение о
-    # недоступной папке данных (см. launcher_window._warn_if_data_dir_unwritable).
-    assert logging_setup.ACTIVE_LOG_PATH is None
-    assert logging_setup.file_log_available() is False
 
 
 if __name__ == "__main__":  # pragma: no cover

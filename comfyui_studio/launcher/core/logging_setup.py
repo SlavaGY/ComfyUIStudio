@@ -27,13 +27,6 @@ def resource_path(relative):
 
 ICON_PATH = resource_path(os.path.join("assets", "icon.ico"))
 
-# Путь, в который РЕАЛЬНО пишется файловый лог; None -- файла нет, пишем
-# только в консоль (см. setup_logging и file_log_available ниже). Нужен
-# интерфейсу, чтобы отличить «всё в порядке» от «папка данных недоступна
-# на запись»: во втором случае молча не сохраняется ещё и config.json,
-# потому что save_config() глотает исключения.
-ACTIVE_LOG_PATH: str | None = None
-
 
 def setup_logging():
     r"""Настраивает логгер "comfyui_launcher": файл в %APPDATA% + консоль.
@@ -57,8 +50,6 @@ def setup_logging():
     logger = logging.getLogger("comfyui_launcher")
     logger.setLevel(logging.DEBUG)
 
-    global ACTIVE_LOG_PATH
-
     fmt = logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S"
     )
@@ -75,7 +66,6 @@ def setup_logging():
         file_handler.setFormatter(fmt)
         file_handler.setLevel(logging.DEBUG)
         logger.addHandler(file_handler)
-        ACTIVE_LOG_PATH = APP_LOG_PATH
 
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(fmt)
@@ -93,18 +83,6 @@ def setup_logging():
 
 
 log = setup_logging()
-
-
-def file_log_available() -> bool:
-    """True, если файловый лог реально открыт (см. ACTIVE_LOG_PATH).
-
-    Нужен интерфейсу, чтобы показать пользователю В ОКНЕ, что папка
-    данных недоступна на запись: в ней же лежит config.json, а
-    `save_config()` глотает исключения -- то есть при недоступной папке
-    настройки молча не сохраняются, и в собранной сборке
-    (`--console=False`) узнать об этом было бы неоткуда.
-    """
-    return ACTIVE_LOG_PATH is not None
 
 
 # --------------------------------------------------------------------------
