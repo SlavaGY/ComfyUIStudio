@@ -2,6 +2,9 @@
 Характеризационные тесты ResourceMonitor._poll / feed_log_line /
 _compute_eta_seconds (этап R0 плана рефакторинга, раунд 2) -- фиксируют
 ТЕКУЩЕЕ поведение перед разбиением ResourceMonitor на части (этап R6).
+После R6 ожидания не менялись; изменился только Harness: сеть опроса идёт
+через spawn (синхронный в тестах). Асинхронность — tests/launcher/
+test_background_polling.py.
 
 Не дублирует tests/launcher/test_system_monitor_ws.py: тот проверяет
 WebSocket-канал и его сосуществование с feed_log_line; здесь -- HTTP-
@@ -100,7 +103,9 @@ class Harness:
         monkeypatch.setattr(sm, "psutil", FakePsutil)
         monkeypatch.setattr(sm, "pynvml", FakeNvml if nvml else None)
         self.port = None
-        self.monitor = ResourceMonitor(lambda: self.port)
+        # R6: сетевая часть опроса в проде идёт в рабочем потоке; тесты
+        # этого файла проверяют ЛОГИКУ, поэтому запуск синхронный.
+        self.monitor = ResourceMonitor(lambda: self.port, spawn=lambda fn: fn())
         self.monitor._api = FakeAPI()
         self.monitor._ensure_ws_client = lambda port: None
         self.received = []

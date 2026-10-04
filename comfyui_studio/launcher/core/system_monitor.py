@@ -19,6 +19,7 @@ import time
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
+from .background import BackgroundTask
 from .comfy_api import ComfyAPIClient
 from .constants import APP_NAME
 from .logging_setup import log
@@ -50,9 +51,19 @@ _TQDM_PROGRESS_RE = re.compile(
 class ResourceMonitor(QObject):
     stats_updated = Signal(dict)
 
-    def __init__(self, get_running_port_fn, parent=None):
+    def __init__(self, get_running_port_fn, parent=None, spawn=None):
+        """spawn — для тестов: spawn(fn) выполняет fn синхронно (тогда
+        опрос очереди детерминирован); по умолчанию — рабочий поток."""
         super().__init__(parent)
         self._get_running_port = get_running_port_fn
+        # R6: HTTP-запросы очереди (до 2 x 1.5 с на тик) идут в рабочем
+        # потоке, а не в обработчике таймера GUI — см. _poll.
+        self._fetch = BackgroundTask(self, spawn=spawn)
+        # Последние известные queue_*-ключи: пока очередной запрос очереди
+        # ещё выполняется, CPU/RAM/GPU обновляются, а очередь показывается
+        # по последнему ответу (иначе подсказка трея мигала бы «ComfyUI не
+        # запущен» из-за отсутствия ключей очереди).
+        self._last_queue_stats = {}
         # Этап 6 дорожной карты: опрос идёт через ComfyAPIClient, а не
         # напрямую через fetch_queue_status/fetch_history_ids. Порт
         # по-прежнему решается снаружи (см. _poll ниже) -- клиент
@@ -177,6 +188,7 @@ class ResourceMonitor(QObject):
 
     def stop(self):
         self._timer.stop()
+        self._fetch.cancel()
         self._teardown_ws_client()
 
     # -- прогресс сэмплера из stdout ComfyUI (см. комментарий в __init__) --
@@ -390,7 +402,7 @@ class ResourceMonitor(QObject):
             # running_ids, как и раньше (этапы 0-6).
             self._progress_for_id = prompt_id
 
-    def _poll(self):
+    def _collect_hardware_stats(self):
         stats = {}
 
         if psutil is not None:
@@ -428,121 +440,168 @@ class ResourceMonitor(QObject):
                 stats["gpu_available"] = False
         else:
             stats["gpu_available"] = False
+        return stats
+
+    def _fetch_queue_snapshot(self, port):
+        """Только сеть, без обращения к состоянию монитора: выполняется в
+        рабочем потоке. (QueueState, history_ids) или (None, None), если
+        опрос не удался (/history запрашивается только после успешного
+        /queue, как и раньше)."""
+        queue_state = self._api.get_queue(port=port)
+        if queue_state is None:
+            return None, None
+        return queue_state, self._api.get_history_ids(port=port)
+
+    def _apply_queue_snapshot(self, stats, queue_state, history_ids):
+        """Состояние сессии, счётчик «готово», смена задания, ETA, стойка
+        (stall) — всё, что раньше было телом `if queue_state is not None`
+        в _poll. Выполняется в GUI-потоке. Дополняет stats."""
+        running = queue_state.running
+        pending = queue_state.pending
+        running_ids = queue_state.running_ids
+        step_totals = queue_state.step_totals
+        stats["queue_running"] = running
+        stats["queue_pending"] = pending
+
+        if history_ids is not None:
+            if self._session_seen_history_ids is None:
+                # Первый успешный опрос за это включение ComfyUI --
+                # запоминаем то, что уже есть в /history, как "не
+                # наше", иначе в счётчик попало бы то, что было
+                # сделано ДО запуска лаунчера/в прошлые сессии.
+                self._session_seen_history_ids = set(history_ids)
+            # "Готово за сессию" = то, чего не было в /history на
+            # старте сессии, И чего СЕЙЧАС нет в running_ids по
+            # данным /queue из ЭТОГО ЖЕ опроса. Второе условие --
+            # защита от гонки: /queue и /history это два отдельных
+            # HTTP-запроса, не единый снимок состояния, и
+            # генерация может успеть попасть в /history в
+            # промежутке между ними, оставаясь в это же мгновение
+            # ещё "running" по /queue -- без этой проверки она на
+            # секунду засчитывалась готовой, хотя прогресс-бар
+            # всё ещё показывал её выполняющейся. Просто
+            # отложится до следующего опроса (2 сек), когда она
+            # уже точно пропадёт из running_ids.
+            newly_done = (
+                history_ids - self._session_seen_history_ids
+            ) - running_ids
+            self._session_done_ids |= newly_done
+        stats["queue_completed_session"] = len(self._session_done_ids)
+
+        # Сменилось ли ЗАДАНИЕ, которое сейчас единственное
+        # выполняется? Если да -- self._current_progress (если
+        # там что-то есть) относится к УЖЕ не тому заданию,
+        # обнуляем -- иначе первые секунды нового задания (пока
+        # оно ещё грузит модель и не напечатало ни одной своей
+        # строки прогресса) считались бы по остаточным цифрам от
+        # предыдущего, уже готового задания (см. комментарий у
+        # self._progress_for_id в __init__).
+        current_single_id = (
+            next(iter(running_ids)) if len(running_ids) == 1 else None
+        )
+        if current_single_id != self._progress_for_id:
+            if current_single_id not in self._logged_switch_for_ids:
+                log.info(
+                    "ETA очереди: активное задание сменилось %s -> %s "
+                    "(running_ids=%s), сбрасываю накопленный прогресс",
+                    self._progress_for_id, current_single_id, running_ids,
+                )
+                if current_single_id is not None:
+                    self._logged_switch_for_ids.add(current_single_id)
+            self._current_progress = None
+            self._progress_for_id = current_single_id
+
+        # ETA -- см. _compute_eta_seconds/feed_log_line.
+        stats["queue_eta_seconds"] = self._compute_eta_seconds(
+            step_totals, running_ids
+        )
+
+        if running_ids and self._current_progress is None:
+            # ВАЖНО: проверяем именно self._current_progress (для
+            # ТЕКУЩЕГО задания), а не self._avg_sec_per_step --
+            # последнее, однажды установившись на первом задании,
+            # больше не сбрасывается между заданиями, и проверка
+            # по нему замаскировала бы точно такое же зависание
+            # на 2-м/3-м задании.
+            self._stall_polls += 1
+            if (
+                self._stall_polls >= 5
+                and current_single_id is not None
+                and current_single_id not in self._logged_stall_warning_for_ids
+            ):
+                # ~10 секунд (5 опросов по 2 сек) активной очереди,
+                # а от feed_log_line не пришло ни одной строки
+                # прогресса ДЛЯ ЭТОГО задания -- значит строки из
+                # _LogReaderThread либо не доходят до
+                # progress_chunk_received, либо не совпадают с
+                # _TQDM_PROGRESS_RE. Дальше искать нужно уже по
+                # этому логу, а не гадать.
+                log.warning(
+                    "ETA очереди: задание %s идёт уже %d опросов "
+                    "подряд, но feed_log_line ни разу не распознал "
+                    "для него строку прогресса -- ETA останется "
+                    "'оценка...' (см. COMFY_LOG_PATH -- доходят ли "
+                    "туда вообще строки вида 'N/M [...it/s]')",
+                    current_single_id, self._stall_polls,
+                )
+                self._logged_stall_warning_for_ids.add(current_single_id)
+        else:
+            self._stall_polls = 0
+
+    def _reset_session(self):
+        # ComfyUI не запущен -- сбрасываем сессию и ETA-состояние,
+        # чтобы при следующем запуске счёт начался заново с нуля, а не
+        # продолжал считать от старого /history (это уже мог быть
+        # другой процесс ComfyUI с чистым журналом) и от скорости шага,
+        # замеренной в прошлый раз (могла быть другая модель/разрешение).
+        self._teardown_ws_client()
+        self._session_seen_history_ids = None
+        self._session_done_ids = set()
+        self._current_progress = None
+        self._progress_for_id = None
+        self._avg_sec_per_step = None
+        self._logged_switch_for_ids = set()
+        self._logged_progress_for_ids = set()
+        self._stall_polls = 0
+        self._logged_stall_warning_for_ids = set()
+
+    def _poll(self):
+        stats = self._collect_hardware_stats()
 
         port = self._get_running_port()
-        if port:
-            self._ensure_ws_client(port)
-            queue_state = self._api.get_queue(port=port)
-            if queue_state is not None:
-                running = queue_state.running
-                pending = queue_state.pending
-                running_ids = queue_state.running_ids
-                step_totals = queue_state.step_totals
-                stats["queue_running"] = running
-                stats["queue_pending"] = pending
+        if not port:
+            # ComfyUI не запущен: незавершённый запрос очереди больше не
+            # нужен, сессия и ETA-состояние сбрасываются.
+            self._fetch.cancel()
+            self._reset_session()
+            self._last_queue_stats = {}
+            self.stats_updated.emit(stats)
+            return
 
-                history_ids = self._api.get_history_ids(port=port)
-                if history_ids is not None:
-                    if self._session_seen_history_ids is None:
-                        # Первый успешный опрос за это включение ComfyUI --
-                        # запоминаем то, что уже есть в /history, как "не
-                        # наше", иначе в счётчик попало бы то, что было
-                        # сделано ДО запуска лаунчера/в прошлые сессии.
-                        self._session_seen_history_ids = set(history_ids)
-                    # "Готово за сессию" = то, чего не было в /history на
-                    # старте сессии, И чего СЕЙЧАС нет в running_ids по
-                    # данным /queue из ЭТОГО ЖЕ опроса. Второе условие --
-                    # защита от гонки: /queue и /history это два отдельных
-                    # HTTP-запроса, не единый снимок состояния, и
-                    # генерация может успеть попасть в /history в
-                    # промежутке между ними, оставаясь в это же мгновение
-                    # ещё "running" по /queue -- без этой проверки она на
-                    # секунду засчитывалась готовой, хотя прогресс-бар
-                    # всё ещё показывал её выполняющейся. Просто
-                    # отложится до следующего опроса (2 сек), когда она
-                    # уже точно пропадёт из running_ids.
-                    newly_done = (
-                        history_ids - self._session_seen_history_ids
-                    ) - running_ids
-                    self._session_done_ids |= newly_done
-                stats["queue_completed_session"] = len(self._session_done_ids)
+        self._ensure_ws_client(port)
+        started = self._fetch.run(
+            lambda: self._fetch_queue_snapshot(port),
+            lambda result, error: self._on_queue_snapshot(stats, port, result, error),
+        )
+        if not started:
+            # Предыдущий запрос очереди ещё идёт (ComfyUI отвечает
+            # медленно): железо обновляем сразу, очередь — по последнему
+            # известному ответу.
+            stats.update(self._last_queue_stats)
+            self.stats_updated.emit(stats)
 
-                # Сменилось ли ЗАДАНИЕ, которое сейчас единственное
-                # выполняется? Если да -- self._current_progress (если
-                # там что-то есть) относится к УЖЕ не тому заданию,
-                # обнуляем -- иначе первые секунды нового задания (пока
-                # оно ещё грузит модель и не напечатало ни одной своей
-                # строки прогресса) считались бы по остаточным цифрам от
-                # предыдущего, уже готового задания (см. комментарий у
-                # self._progress_for_id в __init__).
-                current_single_id = (
-                    next(iter(running_ids)) if len(running_ids) == 1 else None
-                )
-                if current_single_id != self._progress_for_id:
-                    if current_single_id not in self._logged_switch_for_ids:
-                        log.info(
-                            "ETA очереди: активное задание сменилось %s -> %s "
-                            "(running_ids=%s), сбрасываю накопленный прогресс",
-                            self._progress_for_id, current_single_id, running_ids,
-                        )
-                        if current_single_id is not None:
-                            self._logged_switch_for_ids.add(current_single_id)
-                    self._current_progress = None
-                    self._progress_for_id = current_single_id
-
-                # ETA -- см. _compute_eta_seconds/feed_log_line.
-                stats["queue_eta_seconds"] = self._compute_eta_seconds(
-                    step_totals, running_ids
-                )
-
-                if running_ids and self._current_progress is None:
-                    # ВАЖНО: проверяем именно self._current_progress (для
-                    # ТЕКУЩЕГО задания), а не self._avg_sec_per_step --
-                    # последнее, однажды установившись на первом задании,
-                    # больше не сбрасывается между заданиями, и проверка
-                    # по нему замаскировала бы точно такое же зависание
-                    # на 2-м/3-м задании.
-                    self._stall_polls += 1
-                    if (
-                        self._stall_polls >= 5
-                        and current_single_id is not None
-                        and current_single_id not in self._logged_stall_warning_for_ids
-                    ):
-                        # ~10 секунд (5 опросов по 2 сек) активной очереди,
-                        # а от feed_log_line не пришло ни одной строки
-                        # прогресса ДЛЯ ЭТОГО задания -- значит строки из
-                        # _LogReaderThread либо не доходят до
-                        # progress_chunk_received, либо не совпадают с
-                        # _TQDM_PROGRESS_RE. Дальше искать нужно уже по
-                        # этому логу, а не гадать.
-                        log.warning(
-                            "ETA очереди: задание %s идёт уже %d опросов "
-                            "подряд, но feed_log_line ни разу не распознал "
-                            "для него строку прогресса -- ETA останется "
-                            "'оценка...' (см. COMFY_LOG_PATH -- доходят ли "
-                            "туда вообще строки вида 'N/M [...it/s]')",
-                            current_single_id, self._stall_polls,
-                        )
-                        self._logged_stall_warning_for_ids.add(current_single_id)
-                else:
-                    self._stall_polls = 0
-        else:
-            # ComfyUI не запущен -- сбрасываем сессию и ETA-состояние,
-            # чтобы при следующем запуске счёт начался заново с нуля, а не
-            # продолжал считать от старого /history (это уже мог быть
-            # другой процесс ComfyUI с чистым журналом) и от скорости шага,
-            # замеренной в прошлый раз (могла быть другая модель/разрешение).
-            self._teardown_ws_client()
-            self._session_seen_history_ids = None
-            self._session_done_ids = set()
-            self._current_progress = None
-            self._progress_for_id = None
-            self._avg_sec_per_step = None
-            self._logged_switch_for_ids = set()
-            self._logged_progress_for_ids = set()
-            self._stall_polls = 0
-            self._logged_stall_warning_for_ids = set()
-
+    def _on_queue_snapshot(self, stats, port, result, error):
+        if error is not None:
+            log.warning("Ошибка опроса очереди ComfyUI: %s", error)
+            result = None
+        if self._get_running_port() != port:
+            # ComfyUI остановили или порт сменился за время запроса —
+            # ответ устарел; следующий тик сам сбросит/перестроит сессию.
+            return
+        queue_state, history_ids = result if result is not None else (None, None)
+        if queue_state is not None:
+            self._apply_queue_snapshot(stats, queue_state, history_ids)
+        self._last_queue_stats = {k: v for k, v in stats.items() if k.startswith("queue_")}
         self.stats_updated.emit(stats)
 
 

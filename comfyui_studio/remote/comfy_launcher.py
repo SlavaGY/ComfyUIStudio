@@ -32,6 +32,7 @@ from typing import Optional
 from ..launcher.core.comfy_api import ComfyAPIClient
 from ..launcher.core.config import build_extra_launch_args, load_config, prepare_launch_script
 from ..launcher.core.logging_setup import log
+from ..launcher.core.managed_process import terminate_process_tree
 from .process_by_port import find_pid_listening_on_port, kill_pid_tree
 from .state import runtime
 
@@ -175,24 +176,7 @@ def stop_comfyui() -> None:
         if _process is not None:
             pid = _process.pid
             log.info("Остановка ComfyUI (PID %s, запущен через Remote)", pid)
-            if sys.platform == "win32":
-                try:
-                    subprocess.run(
-                        ["taskkill", "/F", "/T", "/PID", str(pid)],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                except Exception:
-                    log.exception("Не удалось выполнить taskkill для PID %s", pid)
-            else:
-                try:
-                    _process.terminate()
-                except Exception:
-                    log.exception("Не удалось остановить процесс PID %s", pid)
-            try:
-                _process.wait(timeout=5)
-            except Exception:
-                pass
+            terminate_process_tree(_process, "ComfyUI")
             _process = None
             _last_error = None
             return

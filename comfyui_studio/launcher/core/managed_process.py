@@ -47,6 +47,39 @@ def find_missing_modules(names):
     return [m for m in names if importlib.util.find_spec(m) is None]
 
 
+def _taskkill_tree(pid, label):
+    """`taskkill /F /T /PID` — убивает процесс и всё его поддерево
+    (промежуточный cmd.exe, python.exe под ним, воркеры). Ошибки только
+    в лог. Единственное место в проекте, где собирается эта команда
+    (R3b: раньше копии были в comfy_launcher.py, process_by_port.py и
+    трёх классах процессов)."""
+    try:
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        log.exception("Не удалось выполнить taskkill для PID %s (%s)", pid, label)
+
+
+def terminate_pid_tree(pid, label):
+    """То же по одному PID, когда объекта Popen нет (процесс запущен
+    другим ОС-процессом, PID найден по порту — см. remote/
+    process_by_port.py). Windows: taskkill по дереву. Иначе: terminate()
+    самого процесса через psutil (импортируется лениво — модуль не должен
+    требовать psutil, пока PID-вариант не нужен). Ошибки только в лог."""
+    if sys.platform == "win32":
+        _taskkill_tree(pid, label)
+        return
+    try:
+        import psutil
+
+        psutil.Process(pid).terminate()
+    except Exception:
+        log.exception("Не удалось остановить PID %s (%s)", pid, label)
+
+
 def terminate_process_tree(proc, label, wait_timeout=5):
     """Останавливает процесс вместе со всем деревом потомков.
 
@@ -59,14 +92,7 @@ def terminate_process_tree(proc, label, wait_timeout=5):
     """
     pid = proc.pid
     if sys.platform == "win32":
-        try:
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(pid)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except Exception:
-            log.exception("Не удалось выполнить taskkill для PID %s (%s)", pid, label)
+        _taskkill_tree(pid, label)
     else:
         try:
             proc.terminate()

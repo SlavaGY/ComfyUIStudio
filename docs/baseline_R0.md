@@ -97,7 +97,11 @@ R7 это такая же секция, как остальные.
 
 ## 3. Цепочка запуска и Remote в `MainWindow` (контракт для R3–R5)
 
-Зафиксировано в `tests/launcher/test_main_window_flow.py` (38 тестов):
+Зафиксировано в тестах (R0: `test_main_window_flow.py`, 38 тестов). **После R4/R5**
+цепочка запуска живёт в `launcher/ui/launch_controller.py` (тесты —
+`tests/launcher/test_launch_controller.py`, ожидания перенесены без
+изменений), Remote — в `remote_controller.py`; в `test_main_window_flow.py`
+остались проверки того, что за окном (делегирование, страницы, браузер, тема):
 
 - `_on_launch`: `prepare_launch_script` → `ComfyProcess(root, script,
   log_bridge, env_overrides=…)` → `start()` → прогресс → `launch_watcher.
@@ -117,8 +121,9 @@ R7 это такая же секция, как остальные.
   `host != "127.0.0.1"`.
 - Pairing / список устройств / отзыв — **синхронные** вызовы
   `call_local_api` из GUI-потока; при первой же ошибке отзыв прерывается
-  и список не обновляется. (R4 переносит их в рабочий поток — это
-  единственное намеренное изменение поведения.)
+  и список не обновляется. (**Сделано в R4:** блок живёт в `launcher/ui/remote_controller.py`,
+  вызовы идут в рабочем потоке — это единственное намеренное изменение
+  поведения; тесты — `tests/launcher/test_remote_controller.py`.)
 
 ## 4. Prompt Builder (контракт для R9)
 

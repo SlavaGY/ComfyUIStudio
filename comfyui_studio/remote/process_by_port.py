@@ -29,13 +29,12 @@ launcher/core/system_monitor.py, mem_diagnostics.py) -- отдельной но�
 
 from __future__ import annotations
 
-import subprocess
-import sys
 from typing import Optional
 
 import psutil
 
 from ..launcher.core.logging_setup import log
+from ..launcher.core.managed_process import terminate_pid_tree
 
 
 def find_pid_listening_on_port(port: int) -> Optional[int]:
@@ -72,17 +71,4 @@ def kill_pid_tree(pid: int, label: str) -> None:
     отличить, что именно останавливалось, при просмотре лога Studio на
     ПК."""
     log.info("Остановка %s (PID %s, найден по порту -- запущен не через Remote)", label, pid)
-    if sys.platform == "win32":
-        try:
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(pid)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except Exception:
-            log.exception("Не удалось выполнить taskkill для PID %s (%s)", pid, label)
-        return
-    try:
-        psutil.Process(pid).terminate()
-    except Exception:
-        log.exception("Не удалось остановить PID %s (%s)", pid, label)
+    terminate_pid_tree(pid, label)
