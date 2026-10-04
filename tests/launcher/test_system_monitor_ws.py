@@ -105,6 +105,12 @@ def test_resource_monitor_computes_rate_from_successive_ws_progress(qtbot, ws_se
         )
     assert monitor._avg_sec_per_step is None  # ещё нет второй точки для расчёта скорости
 
+    # На Windows time.monotonic() до Python 3.13 тикает раз в ~15,6 мс: два события подряд
+    # получают одно и то же время, dt == 0, и скорость (по условию dt > 0 в
+    # _on_ws_progress) не считается. В жизни события идут с интервалом секунд;
+    # в тесте разводим их во времени явно.
+    qtbot.wait(50)
+
     with qtbot.waitSignal(monitor._ws_client.progress_received, timeout=5000):
         ws_server.send_text_from(
             conn, {"type": "progress", "data": {"value": 3, "max": 20, "prompt_id": "pid-1"}}

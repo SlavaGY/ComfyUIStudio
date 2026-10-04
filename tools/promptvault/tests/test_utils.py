@@ -6,6 +6,8 @@
 QDesktopServices, которому нужен QApplication.
 """
 
+from pathlib import Path
+
 import comfyui_studio.promptvault.utils as utils_module
 from comfyui_studio.promptvault.utils import group_paths_by_folder, open_file_externally, reveal_in_file_manager
 
@@ -115,7 +117,8 @@ class TestRevealInFileManager:
 
         reveal_in_file_manager([file_path])
 
-        assert opened_urls == [str(tmp_path)]
+        # toLocalFile() отдаёт "/" даже на Windows -- сравниваем как пути, не как строки.
+        assert [Path(u) for u in opened_urls] == [tmp_path]
 
     def test_uses_windows_reveal_when_platform_is_windows(self, qapp, tmp_path, monkeypatch):
 
@@ -159,4 +162,5 @@ class TestRevealInFileManager:
 
         reveal_in_file_manager([file_path])
 
-        assert opened_urls == [str(tmp_path)]
+        # toLocalFile() отдаёт "/" даже на Windows -- сравниваем как пути, не как строки.
+        assert [Path(u) for u in opened_urls] == [tmp_path]

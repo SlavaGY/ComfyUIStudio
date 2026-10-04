@@ -94,49 +94,5 @@ if not exist "assets\icon.ico" (
 )
 
 echo.
-echo === [5/6] Сборка PyInstaller ===
-
-if exist "build" rmdir /s /q "build"
-if exist "dist" rmdir /s /q "dist"
-
-:: Датасы (--add-data) и --collect-all заданы внутри самого .spec-файла
-:: (ComfyUIStudio.spec) -- см. его комментарии про то, откуда
-:: comfyui_studio/prompt_builder/* и comfyui_studio/promptvault/*
-:: находят свои файлы данных внутри _MEIPASS.
-pyinstaller --noconfirm --clean "ComfyUIStudio.spec"
-
-if errorlevel 1 (
-    echo.
-    echo Сборка упала -- см. вывод PyInstaller выше.
-    echo Частая причина: PyInstaller не нашёл какой-то субмодуль/data-файл --
-    echo ищите в выводе "ModuleNotFoundError"/"No module named" при первом
-    echo запуске собранного .exe и добавляйте недостающее в hiddenimports
-    echo ComfyUIStudio.spec.
-    exit /b 1
-)
-
-echo.
-echo === [6/6] Упаковка в .zip ===
-
-set "ZIP_NAME=ComfyUIStudio-win64.zip"
-
-if exist "dist\%ZIP_NAME%" del /q "dist\%ZIP_NAME%"
-
-powershell -NoProfile -Command ^
-    "Compress-Archive -Path 'dist\ComfyUIStudio\*' -DestinationPath 'dist\%ZIP_NAME%' -Force"
-
-echo.
-echo ===============================================================
-echo Готово:
-echo   dist\ComfyUIStudio\ComfyUIStudio.exe   ^(запуск для проверки на месте^)
-echo   dist\%ZIP_NAME%   ^(для распространения -- распаковать целиком^)
-echo.
-echo   Один процесс, одно окно на инструмент: ComfyUI Launcher -- это
-echo   главное окно, кнопки "Запустить" на странице "Другие инструменты"
-echo   открывают Character/Prompt Config Editor и PromptVault окнами
-echo   ЭТОГО ЖЕ процесса (см. register_in_process_app() в
-echo   comfyui_studio/launcher/integration/tool_registry.py и main.py в
-echo   корне).
-echo ===============================================================
 
 endlocal

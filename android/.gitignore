@@ -1,0 +1,20 @@
+# Состояние IDE и сборки Gradle -- не исходники (R1 плана рефакторинга).
+# Если в .idea/ нужны общие для команды файлы, выбирайте их точечно
+# через "!" ниже, а не коммитьте папку целиком.
+.gradle/
+.idea/
+*.iml
+build/
+app/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Путь к Android SDK на конкретной машине (sdk.dir=...), каждый
+# разработчик имеет свой -- Android Studio создаёт файл сама.
+local.properties
+
+# Секреты: см. комментарий в app/build.gradle.kts про google-services.json
+app/google-services.json
+*.jks
+*.keystore

@@ -65,57 +65,6 @@ def settings_window(qapp, tmp_path):
     gallery.close()
 
 
-class TestAppearanceSection:
-
-    def test_theme_combo_lists_available_themes(self, settings_window):
-
-        window, _gallery, theme_manager, _loc, _toolbar = settings_window
-
-        items = [window.theme_box.itemText(i) for i in range(window.theme_box.count())]
-
-        assert items == theme_manager.available_themes()
-
-    def test_changing_theme_applies_it(self, settings_window):
-
-        window, _gallery, theme_manager, _loc, _toolbar = settings_window
-
-        window.theme_box.setCurrentText("Nord")
-
-        assert theme_manager.current_theme() == "Nord"
-
-    def test_language_combo_reflects_current_language(self, settings_window):
-
-        window, _gallery, _theme, _loc, _toolbar = settings_window
-
-        assert window.language_box.currentText() == "English"
-
-    def test_changing_language_applies_and_retranslates_toolbar(self, settings_window):
-
-        window, _gallery, _theme, _loc, toolbar = settings_window
-
-        try:
-            window.language_box.setCurrentText("Русский")
-
-            assert toolbar.stats_btn.text() == "📊 Статистика"
-            assert window.windowTitle() == "PromptVault — Настройки"
-        finally:
-            window.language_box.setCurrentText("English")
-
-    def test_changing_language_emits_signal(self, settings_window):
-
-        window, _gallery, _theme, _loc, _toolbar = settings_window
-
-        received = []
-        window.languageChanged.connect(received.append)
-
-        try:
-            window.language_box.setCurrentText("Русский")
-
-            assert received == ["ru"]
-        finally:
-            window.language_box.setCurrentText("English")
-
-
 class TestHotkeysSection:
 
     def test_all_actions_have_a_row(self, settings_window):

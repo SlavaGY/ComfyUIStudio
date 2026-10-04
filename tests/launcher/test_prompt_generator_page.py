@@ -10,6 +10,7 @@ Qt запускается без экрана (QT_QPA_PLATFORM=offscreen), на�
 
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -305,4 +306,5 @@ def test_open_logs_button_creates_folder_and_opens_it(qapp, settings_file, monke
     page = PromptGeneratorSettingsPage()
     page.open_logs_btn.click()
     assert (tmp_path / "logs").is_dir()
-    assert opened == [str(tmp_path / "logs")]
+    # toLocalFile() отдаёт "/" даже на Windows -- сравниваем как пути, не как строки.
+    assert [Path(u) for u in opened] == [tmp_path / "logs"]
