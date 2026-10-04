@@ -20,13 +20,13 @@ from ..core.config import build_extra_launch_args, load_config, prepare_launch_s
 from ..core.constants import APP_NAME, PROJECT_ROOT
 from ..core.imagine_process import ImagineProcess
 from ..core.logging_setup import ICON_PATH, log, set_console_log_level
-from ..core.remote_process import (
-    RemoteProcess,
+from ..core.remote_net import (
     call_local_api,
     extract_error_detail,
     get_lan_ip,
     is_remote_available,
 )
+from ..core.remote_process import RemoteProcess
 from ..core.system_monitor import ResourceMonitor
 from ..integration.comfy_theme import COMFY_PALETTE_MAP, sync_comfyui_color_palette
 from .browser_page import BrowserPage

@@ -38,7 +38,7 @@ from typing import Optional
 from zeroconf import ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
 
-from ..launcher.core.remote_process import get_lan_ip
+from ..launcher.core.remote_net import get_lan_ip
 
 log = logging.getLogger("comfyui_studio.remote")
 

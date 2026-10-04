@@ -31,13 +31,12 @@ pydantic/python-multipart были в venv сборки и, значит, поп
 
 import os
 import sys
-import subprocess
-import threading
 import urllib.request
 import urllib.error
 
 from .constants import PROJECT_ROOT
 from .logging_setup import log
+from .managed_process import ManagedProcess, find_missing_modules
 from ...imagine.__main__ import IMAGINE_CLI_FLAG
 
 IMAGINE_MODULE_NAME = "comfyui_studio.imagine"
@@ -58,9 +57,7 @@ def _missing_imagine_dependencies():
     stderr уходил в DEVNULL (см. историю ImagineProcess.start() ниже —
     теперь он туда не уходит, но лучше вообще не запускать процесс,
     заранее зная, что он не поднимется)."""
-    import importlib.util
-    missing = [m for m in IMAGINE_REQUIRED_MODULES if importlib.util.find_spec(m) is None]
-    return missing
+    return find_missing_modules(IMAGINE_REQUIRED_MODULES)
 
 
 def resolve_imagine_launch(host, port, comfy_host, comfy_port, dev_mode, remote_port=None):
@@ -127,21 +124,25 @@ def resolve_imagine_launch(host, port, comfy_host, comfy_port, dev_mode, remote_
     )
 
 
-class ImagineProcess:
+class ImagineProcess(ManagedProcess):
     """Управляет процессом Imagine — по образцу ComfyProcess
     (core/comfy_process.py), но без парсинга/трансляции stdout в лог-
     панель лаунчера (Imagine — не ComfyUI, отдельного лог-протокола под
-    него пока нет; вывод просто уходит в DEVNULL, как у prompt_builder/
-    promptvault через launch_external_app)."""
+    него пока нет). Вывод перехватывается и при аварийном завершении
+    его хвост пишется в лог (ManagedProcess._watch_exit) — раньше он
+    уходил в DEVNULL, и ошибка запуска сводилась к «код выхода: 1».
+    Общая часть (is_running/exit_code/stop) — в ManagedProcess."""
+
+    label = "Imagine"
 
     def __init__(self, host, port, comfy_host, comfy_port, dev_mode=False, remote_port=None):
+        super().__init__()
         self.host = host
         self.port = port
         self.comfy_host = comfy_host
         self.comfy_port = comfy_port
         self.dev_mode = dev_mode
         self.remote_port = remote_port
-        self.proc = None
 
     def start(self):
         cmd, cwd, error = resolve_imagine_launch(
@@ -151,91 +152,11 @@ class ImagineProcess:
         if error:
             raise RuntimeError(error)
 
-        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         log.info(
             "Запуск Imagine: %s (cwd=%s, comfyui=%s:%s, dev=%s)",
             cmd, cwd, self.comfy_host, self.comfy_port, self.dev_mode,
         )
-        self.proc = subprocess.Popen(
-            cmd,
-            cwd=cwd,
-            creationflags=creationflags,
-            # ИЗМЕНЕНО: раньше stdout/stderr уходили в DEVNULL -- любая
-            # ошибка запуска (например ImportError из-за отсутствующих
-            # зависимостей, до того как появилась предварительная
-            # проверка выше) превращалась в голый "код выхода: 1" без
-            # единой подсказки почему. Перехватываем и логируем в
-            # _log_exit() ниже -- как минимум последний экран вывода,
-            # этого обычно достаточно, чтобы увидеть traceback.
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        watcher = threading.Thread(target=self._log_exit, daemon=True)
-        watcher.start()
-        return self.proc
-
-    def _log_exit(self):
-        proc = self.proc
-        if proc is None:
-            return
-        output = ""
-        try:
-            output = proc.stdout.read() if proc.stdout else ""
-        except Exception:
-            log.exception("Не удалось прочитать вывод процесса Imagine")
-        finally:
-            if proc.stdout:
-                try:
-                    proc.stdout.close()
-                except Exception:
-                    pass
-        code = proc.wait()
-        if code == 0:
-            log.info("Imagine (PID %s) завершился, код выхода 0", proc.pid)
-        else:
-            # Обрезаем до последних ~4000 символов -- достаточно для
-            # traceback'а любой обычной длины, не раздувает лог-файл
-            # при зацикленных ошибках запуска.
-            tail = output[-4000:] if output else "(процесс не вывел ничего в stdout/stderr)"
-            log.error(
-                "Imagine (PID %s) завершился с кодом %s. Вывод процесса:\n%s",
-                proc.pid, code, tail,
-            )
-
-    def is_running(self):
-        return self.proc is not None and self.proc.poll() is None
-
-    def exit_code(self):
-        return self.proc.returncode if self.proc is not None else None
-
-    def stop(self):
-        if self.proc is None:
-            return
-        pid = self.proc.pid
-        log.info("Остановка Imagine (PID %s)", pid)
-        if sys.platform == "win32":
-            try:
-                subprocess.run(
-                    ["taskkill", "/F", "/T", "/PID", str(pid)],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            except Exception:
-                log.exception("Не удалось выполнить taskkill для PID %s", pid)
-        else:
-            try:
-                self.proc.terminate()
-            except Exception:
-                log.exception("Не удалось остановить процесс PID %s", pid)
-        try:
-            self.proc.wait(timeout=5)
-        except Exception:
-            pass
-        self.proc = None
+        return self._spawn_captured(cmd, cwd)
 
 
 def is_imagine_available(port, timeout=1.0):

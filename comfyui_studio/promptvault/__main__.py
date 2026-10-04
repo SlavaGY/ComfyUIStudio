@@ -5,7 +5,7 @@
 Используется, когда лаунчер запущен САМ ПО СЕБЕ (не как часть
 монолитного ComfyUIStudio, см. корневой main.py) и пользователь жмёт
 "Запустить" у PromptVault — тогда comfyui_studio.launcher.core.
-comfy_process.resolve_external_launch() запускает именно эту команду
+external_apps.resolve_external_launch() запускает именно эту команду
 отдельным процессом (см. EXTERNAL_APPS там же). До этапа 2 дорожной
 карты рефакторинга (перенос исходников под общее пространство имён
 comfyui_studio/, тогда пакет назывался `app`) команда была `python -m

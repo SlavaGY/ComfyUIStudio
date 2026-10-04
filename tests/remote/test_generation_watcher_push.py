@@ -8,9 +8,12 @@ test_generation_watcher.py -- см. docstring conftest.py.
 
 Тесты синхронные и сами вызывают asyncio.run(), как в соседнем
 test_generation_watcher.py (pytest-asyncio в проекте нет). push уходит
-через asyncio.create_task(asyncio.to_thread(...)); asyncio.run() при
-завершении дожидается потока исполнителя, поэтому к моменту проверки
-событие уже в списке.
+через asyncio.create_task(asyncio.to_thread(...)) без ожидания. Нельзя
+полагаться на то, что asyncio.run() «сам доделает» такой таск: при
+выходе он его ОТМЕНЯЕТ, и если рабочий поток ещё не успел взять задачу
+(на Windows поток стартует медленнее), отправка молча пропадает --
+тест становится плавающим. Поэтому _tick() ниже всегда запускается
+через _tick_and_drain(), которая явно дожидается всех фоновых тасков.
 """
 
 import asyncio
@@ -49,18 +52,26 @@ def _reset_runtime():
     state.runtime.imagine_port = None
 
 
+async def _tick_and_drain(watcher):
+    """Один тик + ожидание фоновых тасков (fire-and-forget push)."""
+    await watcher._tick()
+    pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+
 def _run_one_job_to_finish(watcher):
     """Тик с запущенным заданием 'abc', затем тик, где оно пропало из running."""
     watcher._comfy_client.get_queue = lambda port: _Queue(1, 0, {"abc"})
-    asyncio.run(watcher._tick())
+    asyncio.run(_tick_and_drain(watcher))
     watcher._comfy_client.get_queue = lambda port: _Queue(0, 0, set())
-    asyncio.run(watcher._tick())
+    asyncio.run(_tick_and_drain(watcher))
 
 
 def test_no_push_before_job_finishes(sent_pushes):
     watcher = GenerationWatcher(_Hub())
     watcher._comfy_client.get_queue = lambda port: _Queue(1, 1, {"abc"})
-    asyncio.run(watcher._tick())  # started + queue.update -- это не повод для push
+    asyncio.run(_tick_and_drain(watcher))  # started + queue.update -- это не повод для push
     assert sent_pushes == []
 
 

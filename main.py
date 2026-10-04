@@ -5,7 +5,7 @@ ComfyUI Studio — монолитная точка входа
 Builder Config Editor, PromptVault) были самостоятельными приложениями:
 у каждого свой QApplication, свой процесс, а лаунчер открывал два других
 через subprocess.Popen (см. launch_external_app() в
-comfyui_studio/launcher/core/comfy_process.py).
+comfyui_studio/launcher/core/external_apps.py).
 
 Этот файл объединяет все три в ОДИН процесс с ОДНИМ QApplication:
 у каждого инструмента по-прежнему своё отдельное окно (QMainWindow),

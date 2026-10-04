@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 
 from comfyui_studio.themes.theme_manager import ThemeManager
 
-from ..core.comfy_process import (
+from ..core.external_apps import (
     EXTERNAL_APPS,
     ExternalApp,
     launch_external_app,

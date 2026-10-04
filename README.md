@@ -48,7 +48,7 @@ exe/подпроцесс: кнопка «Запустить» вызывает `
 `subprocess.Popen`, подыскивая собранный `.exe` или исходники `main.py`
 рядом с собой. Этот механизм (`launch_external_app()`/
 `resolve_external_launch()` в
-`comfyui_studio/launcher/core/comfy_process.py`) **оставлен как
+`comfyui_studio/launcher/core/external_apps.py`) **оставлен как
 запасной вариант**: если вы запустите окно лаунчера отдельно, напрямую
 (в обход монолитного `main.py`), кнопки «Запустить» по-прежнему
 попробуют найти и открыть `comfyui_studio.prompt_builder`/

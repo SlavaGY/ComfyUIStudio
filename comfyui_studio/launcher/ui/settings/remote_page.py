@@ -289,7 +289,7 @@ class RemoteSettingsPage(QWidget):
         """Вызывается launcher_window.py после успешного старта, если
         включён доступ по локальной сети (см. lan_access_check) и
         удалось определить LAN-адрес этого ПК (см.
-        remote_process.get_lan_ip) -- готовая ссылка для открытия с
+        remote_net.get_lan_ip) -- готовая ссылка для открытия с
         телефона, чтобы не заставлять человека самому искать IP этого
         ПК в настройках Windows."""
         if url:
