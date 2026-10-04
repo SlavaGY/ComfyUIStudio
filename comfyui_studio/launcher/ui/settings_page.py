@@ -33,7 +33,8 @@ from ..core.external_apps import (
     launch_external_app,
     resolve_external_launch,
 )
-from ..core.config import save_config, validate_portable_root
+from ..core.config import validate_portable_root
+from ..core.config_store import ConfigStore
 from ..core.logging_setup import log
 from ..integration.tool_registry import IN_PROCESS_WINDOW_FACTORIES, ON_CLOSE_CALLBACKS
 from .settings.app_settings_dialog import AppSettingsDialog
@@ -63,8 +64,10 @@ class SettingsPage(QWidget):
     remote_revoke_requested = Signal(list)
 
     def __init__(self, cfg, theme_manager: ThemeManager, loc=None, parent=None):
+        """cfg — общий ConfigStore (или dict — тогда страница заводит свой)."""
         super().__init__(parent)
-        self.cfg = cfg
+        self.config = cfg if isinstance(cfg, ConfigStore) else ConfigStore(initial=cfg)
+        cfg = self.config.cfg
         self.theme_manager = theme_manager
         self.loc = loc
         # Держит живые ссылки на окна остальных инструментов комплекта,
@@ -109,7 +112,7 @@ class SettingsPage(QWidget):
         # открывал "Settings..." — точно так же, как раньше были всегда
         # готовы theme_combo/language_combo прямо на этом экране.
         self.settings_dialog = AppSettingsDialog(
-            cfg,
+            self.config,
             theme_manager,
             loc,
             parent=self,
@@ -405,17 +408,11 @@ class SettingsPage(QWidget):
         )
 
     def _on_launch(self):
-        # ВАЖНО: self.cfg тут -- это снимок на момент конструктора
-        # (см. __init__), актуальные же значения после любых изменений в
-        # единых настройках лежат в self.settings_dialog.cfg -- именно
-        # AppSettingsDialog._auto_save() их обновляет (ComfyUISettingsPage/
-        # AdvancedSettingsPage) и именно он остался единственным
-        # "владельцем" конфигурации после этапа 4 (SettingsPage больше не
-        # держит собственных полей формы, которые раньше читались
-        # напрямую). Взять self.cfg здесь по ошибке означало бы запускать
-        # ComfyUI с настройками на момент открытия приложения, игнорируя
-        # любые правки, сделанные в "Настройки..." в текущем сеансе.
-        cfg = self.settings_dialog.cfg
+        # Правки, сделанные меньше AUTOSAVE_DEBOUNCE_MS назад (например,
+        # путь вписан и сразу нажато «Запустить»), ещё не в хранилище —
+        # сначала сохраняем их, затем берём снимок на момент запуска.
+        self.settings_dialog.flush()
+        cfg = self.config.cfg
         root_path = cfg.get("root_path", "")
         ok, msg = validate_portable_root(root_path)
         if not ok:
@@ -429,6 +426,5 @@ class SettingsPage(QWidget):
 
         self.set_status("")
         self.log_panel.text.clear()
-        save_config(cfg)
-        self.cfg = cfg
+        self.config.save()
         self.launch_requested.emit(cfg)

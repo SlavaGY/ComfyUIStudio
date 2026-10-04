@@ -171,3 +171,11 @@ R7 это такая же секция, как остальные.
   шаг ~15,6 мс; тест, которому нужна положительная разница времени между
   двумя событиями, должен явно развести их (`qtbot.wait(50)`).
 
+## R7: конфигурация
+
+Источник правды — `launcher/core/config_store.py::ConfigStore`
+(`MainWindow.config`). `MainWindow.cfg` удалён: окно описывает текущую
+сессию ComfyUI через `launch_controller.cfg` (снимок на момент «Запустить»).
+Формат `config.json` и результат `load_config()` не менялись
+(`tests/launcher/test_config_load_save.py`). Тесты —
+`tests/launcher/test_config_store.py`.

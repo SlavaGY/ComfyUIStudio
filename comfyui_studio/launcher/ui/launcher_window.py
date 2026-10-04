@@ -15,7 +15,7 @@ from comfyui_studio.themes.theme_manager import ThemeManager
 from comfyui_studio.i18n import LocalizationManager
 
 from ..core.comfy_process import ProcessLogBridge
-from ..core.config import load_config
+from ..core.config_store import ConfigStore
 from ..core.constants import APP_NAME, PROJECT_ROOT
 from ..core.logging_setup import ICON_PATH, log, set_console_log_level
 from ..core.system_monitor import ResourceMonitor
@@ -37,11 +37,13 @@ class MainWindow(QMainWindow):
 
         self.theme_manager = theme_manager
         self.loc = loc
-        self.cfg = load_config()
+        # Единственный источник правды по конфигурации (R7): им же
+        # пользуются страница настроек, диалог и контроллеры.
+        self.config = ConfigStore()
         # применяем сохранённый уровень консольного логирования как можно
         # раньше -- см. ui/settings/advanced_page.py и
         # core/logging_setup.set_console_log_level (этап 4 дорожной карты)
-        set_console_log_level(self.cfg.get("log_level", "INFO"))
+        set_console_log_level(self.config.get("log_level", "INFO"))
         self._quitting = False
         # НОВОЕ: см. restart_studio()/closeEvent() ниже -- этап 4
         # дорожной карты, доработка по замечанию пользователя (кнопки
@@ -57,7 +59,7 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
 
-        self.settings_page = SettingsPage(self.cfg, theme_manager, loc)
+        self.settings_page = SettingsPage(self.config, theme_manager, loc)
         self.browser_page = BrowserPage(loc)
 
         self.stack.addWidget(self.settings_page)
@@ -71,7 +73,7 @@ class MainWindow(QMainWindow):
         # Remote (R4): процесс, опрос готовности и вызовы его локального
         # API живут в RemoteController (ui/remote_controller.py). Remote
         # независим от ComfyUI/Imagine (см. §0.1 дорожной карты Remote).
-        self.remote = RemoteController(self.settings_page, parent=self)
+        self.remote = RemoteController(self.settings_page, parent=self, config=self.config)
         self.settings_page.remote_enable_toggled.connect(self.remote.on_enable_toggled)
         self.settings_page.remote_pairing_requested.connect(self.remote.request_pairing)
         self.settings_page.remote_refresh_devices_requested.connect(self.remote.refresh_devices)
@@ -124,7 +126,7 @@ class MainWindow(QMainWindow):
         # запуска ComfyUI (в отличие от Imagine, который стартует только
         # вслед за готовым ComfyUI-сервером, см. LaunchController.on_server_ready();
         # у Remote нет такой зависимости, см. §0.1 дорожной карты).
-        if self.cfg.get("remote", {}).get("enabled"):
+        if self.config.get("remote", {}).get("enabled"):
             self.remote.start()
 
     # -- лог процесса ComfyUI -----------------------------------------
@@ -144,14 +146,20 @@ class MainWindow(QMainWindow):
 
     # -- запуск/остановка ------------------------------------------------
 
+    def _session_cfg(self):
+        """Конфиг ТЕКУЩЕЙ сессии ComfyUI — снимок на момент нажатия
+        «Запустить» (порт, на котором он реально поднят, флаг синхронизации
+        темы). Изменения в настройках после запуска сюда не попадают, как и
+        раньше; до первого запуска — актуальный конфиг из хранилища."""
+        return self.launch_controller.cfg or self.config.cfg
+
     def _on_launch(self, cfg):
-        self.cfg = cfg
         self.launch_controller.launch(cfg)
 
     def _show_comfyui_browser(self):
         log.info("Открываю встроенный браузер на ComfyUI")
         self.settings_page.hide_launch_progress()
-        self.browser_page.load(self.cfg["port"])
+        self.browser_page.load(self._session_cfg()["port"])
         self.stack.setCurrentWidget(self.browser_page)
 
         # Подстраховка: применяем текущую тему сразу после того, как
@@ -159,7 +167,7 @@ class MainWindow(QMainWindow):
         # записать в comfy.settings.json до старта сервера) — на случай,
         # если тема приложения поменялась между сохранением конфига и
         # фактическим стартом сервера.
-        if self.cfg.get("sync_comfy_theme"):
+        if self._session_cfg().get("sync_comfy_theme"):
             self.browser_page._page.loadFinished.connect(self._sync_comfy_theme_once)
 
     def _show_imagine_browser(self, port):
@@ -173,7 +181,7 @@ class MainWindow(QMainWindow):
     def _on_app_theme_applied(self, theme_name):
         """Живая, без перезапуска, синхронизация палитры ComfyUI при смене
         темы приложения — см. apply_color_palette() в BrowserPage."""
-        if not self.cfg.get("sync_comfy_theme"):
+        if not self._session_cfg().get("sync_comfy_theme"):
             return
         if not self.launch_controller.is_comfy_running():
             return
@@ -187,7 +195,7 @@ class MainWindow(QMainWindow):
     def _show_settings_keep_running(self):
         # "Настройки" из окна браузера — сервер продолжает работать.
         running = self.launch_controller.is_comfy_running()
-        self.settings_page.set_server_running(running, self.cfg.get("port"))
+        self.settings_page.set_server_running(running, self._session_cfg().get("port"))
         self.stack.setCurrentWidget(self.settings_page)
 
     def _stop_and_show_settings(self):

@@ -40,13 +40,16 @@ def _make_window(lw):
         if inspect.isfunction(v) and not k.startswith("__")
     }
     win = type("MainWindowHarness", (), methods)()
-    win.cfg = {"port": 8188, "interface": "comfyui", "sync_comfy_theme": False}
     win.settings_page = MagicMock()
     win.browser_page = MagicMock()
     win.stack = MagicMock()
     win.theme_manager = MagicMock()
+    win.config = MagicMock()
+    win.config.cfg = {"port": 1111, "sync_comfy_theme": True}  # «живой» конфиг — НЕ для сессии
     win.launch_controller = MagicMock()
     win.launch_controller.is_comfy_running.return_value = False
+    # снимок конфига текущей сессии ComfyUI (R7: окно читает его отсюда)
+    win.launch_controller.cfg = {"port": 8188, "interface": "comfyui", "sync_comfy_theme": False}
     return win
 
 
@@ -58,10 +61,9 @@ def win(lw):
 # -- делегирование контроллеру -------------------------------------------
 
 
-def test_on_launch_remembers_cfg_and_delegates(win):
-    cfg = dict(win.cfg, port=9000)
+def test_on_launch_delegates_to_controller(win):
+    cfg = {"port": 9000}
     win._on_launch(cfg)
-    assert win.cfg is cfg
     win.launch_controller.launch.assert_called_once_with(cfg)
 
 
@@ -105,7 +107,7 @@ def test_show_comfyui_browser_opens_embedded_browser(win):
 
 
 def test_show_comfyui_browser_resyncs_theme_after_page_load_when_enabled(win):
-    win.cfg["sync_comfy_theme"] = True
+    win.launch_controller.cfg["sync_comfy_theme"] = True
     win._show_comfyui_browser()
     win.browser_page._page.loadFinished.connect.assert_called_once_with(win._sync_comfy_theme_once)
 
@@ -123,7 +125,7 @@ def test_app_theme_applied_only_with_sync_enabled_and_comfy_running(win):
     win._on_app_theme_applied("dark")
     win.browser_page.apply_color_palette.assert_not_called()  # sync выключен
 
-    win.cfg["sync_comfy_theme"] = True
+    win.launch_controller.cfg["sync_comfy_theme"] = True
     win._on_app_theme_applied("dark")
     win.browser_page.apply_color_palette.assert_not_called()  # ComfyUI не запущен
 

@@ -50,6 +50,7 @@ from PySide6.QtWidgets import (
 from comfyui_studio.themes.theme_manager import ThemeManager
 
 from ...core.config import save_config
+from ...core.config_store import ConfigStore
 from ...core.logging_setup import log
 from .advanced_page import AdvancedSettingsPage
 from .comfyui_page import ComfyUISettingsPage
@@ -140,13 +141,20 @@ class AppSettingsDialog(QDialog):
 
     def __init__(
         self,
-        cfg: dict,
+        cfg,
         theme_manager: ThemeManager,
         loc=None,
         parent=None,
     ):
+        """cfg — ConfigStore (общий для окна, как в приложении) или
+        обычный dict (отдельный диалог/тесты: тогда создаётся собственное
+        хранилище, пишущее через save_config этого модуля)."""
         super().__init__(parent)
-        self.cfg = cfg
+        if isinstance(cfg, ConfigStore):
+            self.config = cfg
+        else:
+            self.config = ConfigStore(initial=cfg, save=lambda c: save_config(c))
+        cfg = self.config.cfg
         self.loc = loc
         self.setWindowTitle(self._tr("Настройки ComfyUI Studio"))
         # Стартовый размер подгоняется под экран при первом показе (см.
@@ -217,7 +225,7 @@ class AppSettingsDialog(QDialog):
         self.advanced_page.restart_requested.connect(self._on_restart_requested)
         self.remote_page.changed.connect(self._schedule_autosave)
         self.prompt_generator_page.changed.connect(self._schedule_autosave)
-        self.remote_page.enable_toggled.connect(self.remote_enable_toggled.emit)
+        self.remote_page.enable_toggled.connect(self._on_remote_enable_toggled)
         self.remote_page.pairing_requested.connect(self.remote_pairing_requested.emit)
         self.remote_page.refresh_devices_requested.connect(
             self.remote_refresh_devices_requested.emit
@@ -258,15 +266,37 @@ class AppSettingsDialog(QDialog):
     def _schedule_autosave(self, *_args):
         self._save_timer.start()
 
+    @property
+    def cfg(self):
+        """Текущий снимок конфигурации (источник правды — self.config)."""
+        return self.config.cfg
+
+    def flush(self):
+        """Немедленно сохраняет отложенные правки (если дебаунс ещё не
+        сработал). Вызывается перед действиями, которые читают конфиг
+        сразу: запуск ComfyUI, включение Remote."""
+        if self._save_timer.isActive():
+            self._save_timer.stop()
+            self._auto_save()
+
+    def _on_remote_enable_toggled(self, enabled):
+        # Переключатель и поля порта/хоста приходят вместе с отложенным
+        # автосохранением (400 мс): без flush() Remote стартовал бы по
+        # конфигу, в котором ещё нет только что введённого порта.
+        self.flush()
+        self.remote_enable_toggled.emit(enabled)
+
     def _auto_save(self):
-        cfg = dict(self.cfg)
-        cfg.update(self.comfyui_page.collect())
-        cfg.update(self.advanced_page.collect())
-        cfg.update(self.remote_page.collect())
-        self.cfg = cfg
+        changes = {}
+        changes.update(self.comfyui_page.collect())
+        changes.update(self.advanced_page.collect())
+        changes.update(self.remote_page.collect())
+        # force_save: config.json пишется при каждом автосохранении, как
+        # и раньше (даже если менялась только страница генератора).
+        self.config.update(changes, force_save=True)
+        cfg = self.config.cfg
         self.comfyui_page.cfg = cfg
         self.advanced_page.cfg = cfg
-        save_config(cfg)
         # Генератор промптов хранит настройки в своём общем файле, не в cfg
         self.prompt_generator_page.save()
         log.debug("Настройки автосохранены (единое дерево настроек)")
@@ -300,9 +330,7 @@ class AppSettingsDialog(QDialog):
         перед закрытием окна: без этого путь, вписанный и тут же закрытый
         диалогом, не успевал сохраниться. hideEvent, а не closeEvent --
         Esc у QDialog скрывает окно через reject() без closeEvent."""
-        if self._save_timer.isActive():
-            self._save_timer.stop()
-            self._auto_save()
+        self.flush()
         super().hideEvent(event)
 
     # -- Remote (этап 1 дорожной карты): чистая ретрансляция вызовов от
@@ -345,6 +373,8 @@ class AppSettingsDialog(QDialog):
         сигналов, надёжнее просто перечитать всё заново при следующем
         старте)."""
 
+        # Хранилище должно совпадать с тем, что теперь лежит на диске.
+        self.config.reload()
         QMessageBox.information(
             self,
             self._tr("Сброс настроек лаунчера"),

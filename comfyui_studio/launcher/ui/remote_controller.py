@@ -53,9 +53,12 @@ class RemoteController(QObject):
     # .singleShot из рабочего потока: у того нет цикла событий.
     _result_ready = Signal(object)
 
-    def __init__(self, view, parent=None, spawn=None):
+    def __init__(self, view, parent=None, spawn=None, config=None):
+        """config — общий ConfigStore; без него (отдельное использование)
+        конфиг читается с диска при каждом start()."""
         super().__init__(parent)
         self._view = view
+        self._config = config
         # Подмена потока в тестах: spawn(fn) должен выполнить fn.
         self._spawn = spawn or _spawn_thread
         self.process = None
@@ -75,11 +78,12 @@ class RemoteController(QObject):
     # -- запуск / остановка / готовность ----------------------------------
 
     def start(self):
-        # НАЙДЕНО ПРИ ЖИВОМ ТЕСТИРОВАНИИ (2026-09-06): настройки Remote
-        # автосохраняются прямо из AppSettingsDialog (_auto_save), а не
-        # через конфиг окна, поэтому окно держит устаревший снимок.
-        # Берём свежий конфиг С ДИСКА. (R7 заменит это общим ConfigStore.)
-        fresh_cfg = load_config()
+        # История (2026-09-06): настройки Remote автосохраняются из диалога
+        # и окно держало устаревший снимок, поэтому конфиг перечитывался
+        # с диска -- но диск мог отставать от формы на дебаунс (400 мс).
+        # С R7 берём актуальный снимок из общего ConfigStore (диалог перед
+        # включением Remote сам вызывает flush()).
+        fresh_cfg = self._config.cfg if self._config is not None else load_config()
         remote_cfg = fresh_cfg.get("remote", {})
         port = remote_cfg.get("port", 7861)
         host = remote_cfg.get("host", "127.0.0.1")
