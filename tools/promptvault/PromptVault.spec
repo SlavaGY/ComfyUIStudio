@@ -21,7 +21,7 @@ PROMPTVAULT_SRC = os.path.join(ROOT_DIR, 'comfyui_studio', 'promptvault')
 
 # Назначение (второй элемент каждого кортежа) ЗЕРКАЛИТ пакетный путь
 # comfyui_studio/promptvault/... неспроста -- comfyui_studio/promptvault/
-# config.py и .../themes/theme_manager.py находят свои файлы через
+# config.py находит свои файлы через
 # Path(__file__).resolve().parent / "resources" (см. ICON_PATH/
 # TRANSLATIONS_DIR/THEMES_DIR в config.py), а PyInstaller в one-folder
 # режиме подставляет __file__ замороженных модулей как путь ВНУТРИ
@@ -31,7 +31,10 @@ PROMPTVAULT_SRC = os.path.join(ROOT_DIR, 'comfyui_studio', 'promptvault')
 # ComfyUIStudio-full.spec).
 datas = [
     (os.path.join(PROMPTVAULT_SRC, 'resources'), os.path.join('comfyui_studio', 'promptvault', 'resources')),
-    (os.path.join(PROMPTVAULT_SRC, 'themes'), os.path.join('comfyui_studio', 'promptvault', 'themes')),
+    # Темы общие для всего комплекта: comfyui_studio/themes (themes/base.py
+    # ищет их в _MEIPASS/comfyui_studio/themes); своих .qss у PromptVault
+    # больше нет (этап R8).
+    (os.path.join(ROOT_DIR, 'comfyui_studio', 'themes'), os.path.join('comfyui_studio', 'themes')),
 ]
 binaries = []
 hiddenimports = []

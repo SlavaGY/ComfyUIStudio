@@ -1,25 +1,39 @@
 """
 theme_manager.py
-Управление темами — построено по образцу присланного app/themes/theme_manager.py
-(PromptVault): базовые .qss файлы лежат в themes/ и применяются через
-QApplication.setStyleSheet(), выбор запоминается через QSettings.
+Управление темами Prompt Builder.
 
-Отличие от референса: базовые .qss (взятые как есть из присланного архива)
-не покрывают часть виджетов, которых там просто не было (QTreeWidget,
-QTabWidget, QGroupBox, QSpinBox/QDoubleSpinBox, QMenuBar/QMenu, QStatusBar,
-QTableWidget) — они нужны нашему блочному редактору. Для них дополнительно
-генерируется небольшой "довесок" к стилю на основе той же палитры темы,
-поэтому цвета всюду остаются едиными.
+Общая логика (выбор темы, QSettings, слежение за общим файлом темы
+комплекта, применение к QApplication) и сами базовые .qss живут в
+comfyui_studio/themes/ (см. themes/base.py) — раньше у Prompt Builder
+была своя копия шести .qss, побайтно равная копии PromptVault.
+
+Что остаётся здесь: базовые .qss не покрывают часть виджетов, которых
+там просто не было (QTreeWidget, QTabWidget, QGroupBox,
+QSpinBox/QDoubleSpinBox, QMenuBar/QMenu, QStatusBar, QTableWidget) — они
+нужны блочному редактору. Для них генерируется небольшой «довесок» к
+стилю на основе той же палитры темы, поэтому цвета всюду остаются
+едиными.
 """
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QSettings, Signal
-from PySide6.QtWidgets import QApplication
+from comfyui_studio.themes.base import (
+    AVAILABLE_THEMES,
+    CIRCLE_COLORS,
+    DEFAULT_THEME,
+    BaseThemeManager,
+)
 
-import comfyui_studio.shared_theme as shared_theme
+__all__ = [
+    "AVAILABLE_THEMES",
+    "CIRCLE_COLORS",
+    "DEFAULT_THEME",
+    "EXTRA_PALETTE",
+    "ThemeManager",
+    "resource_base",
+]
 
 
 def resource_base() -> Path:
@@ -39,20 +53,6 @@ def resource_base() -> Path:
         return Path(sys._MEIPASS) / "comfyui_studio" / "prompt_builder"
     return Path(__file__).resolve().parent
 
-
-THEMES_DIR = resource_base() / "themes"
-
-# отображаемое имя -> имя файла в themes/
-AVAILABLE_THEMES = {
-    "Dark": "dark.qss",
-    "Light": "light.qss",
-    "Nord": "nord.qss",
-    "Catppuccin Mocha": "catppuccin.qss",
-    "Dracula": "dracula.qss",
-    "GitHub Dark": "github_dark.qss",
-}
-
-DEFAULT_THEME = "Dark"
 
 # Цвета для виджетов, которых нет в присланных .qss (см. docstring выше).
 # Значения сверены построчно с соответствующими .qss (тот же BG/панель/акцент/
@@ -95,17 +95,6 @@ EXTRA_PALETTE: dict[str, dict[str, str]] = {
         "accent": "#58a6ff", "accent_fg": "#ffffff", "select_bg": "#1f6feb", "select_fg": "#ffffff",
         "warn": "#d29922", "error": "#f85149", "danger_bg": "#3d1418", "danger_hover": "#5a1e24",
     },
-}
-
-# контрастный цвет (совпадает с основным цветом текста темы) для кружка
-# кнопки-переключателя тем: тёмный кружок на светлой теме, светлый — на тёмной
-CIRCLE_COLORS = {
-    "Dark": "#e0e0e0",
-    "Light": "#1e1e1e",
-    "Nord": "#ECEFF4",
-    "Catppuccin Mocha": "#cdd6f4",
-    "Dracula": "#f8f8f2",
-    "GitHub Dark": "#c9d1d9",
 }
 
 
@@ -270,106 +259,22 @@ QLabel#headingLabel {{
 """
 
 
-class ThemeManager(QObject):
-    """Загружает QSS-темы (файлы из themes/, как есть, плюс наш довесок для
-    виджетов, которых там не было) и применяет их ко всему приложению.
+class ThemeManager(BaseThemeManager):
+    """Менеджер тем Prompt Builder: базовые темы плюс наш довесок для
+    виджетов, которых в них не было (см. docstring модуля). Также следит
+    за общим файлом темы комплекта — если тему поменяли в ComfyUI
+    Launcher или PromptVault, пока это приложение уже открыто, она
+    применяется сразу (сигнал theme_changed_externally)."""
 
-    Последняя выбранная тема запоминается через QSettings и
-    восстанавливается при следующем запуске. Также следит за общим
-    файлом темы комплекта (shared_theme.py) — если тему поменяли в
-    ComfyUI Launcher или PromptVault, пока это приложение уже открыто,
-    она применяется сразу (сигнал theme_changed_externally).
-    """
-
-    theme_changed_externally = Signal(str)
-
-    def __init__(self):
-        super().__init__()
-        self._settings = QSettings("PromptConfigEditor", "PromptConfigEditor")
-        self._cache: dict[str, str] = {}
-        self._applied_theme = None
-
-        self._watcher = None
-        if hasattr(shared_theme, "SharedThemeWatcher"):
-            self._watcher = shared_theme.SharedThemeWatcher(self)
-            self._watcher.theme_changed.connect(self._on_shared_theme_changed)
-
-    # --------------------------------------------------
-
-    def _on_shared_theme_changed(self, theme_name):
-        if theme_name == self._applied_theme or theme_name not in AVAILABLE_THEMES:
-            return
-        self.apply_theme(theme_name)
-        self.theme_changed_externally.emit(theme_name)
-
-    # --------------------------------------------------
-
-    def available_themes(self):
-        """Список отображаемых имён тем в фиксированном порядке."""
-        return list(AVAILABLE_THEMES.keys())
-
-    # --------------------------------------------------
-
-    def current_theme(self):
-        """Имя темы: сначала общая тема комплекта (shared_theme.py) — так
-        подхватывается тема, выбранная в ComfyUI Launcher или PromptVault;
-        если её нет, откатываемся на собственные QSettings, а затем на
-        тему по умолчанию."""
-        shared = shared_theme.read_shared_theme()
-        if shared in AVAILABLE_THEMES:
-            return shared
-
-        saved = self._settings.value("theme", DEFAULT_THEME)
-        if saved not in AVAILABLE_THEMES:
-            return DEFAULT_THEME
-        return saved
-
-    # --------------------------------------------------
-
-    def circle_color(self, theme_name):
-        return CIRCLE_COLORS.get(theme_name, "#ffffff")
+    # Прежние значения — менять нельзя, иначе сохранённая тема потеряется.
+    settings_org = "PromptConfigEditor"
+    settings_app = "PromptConfigEditor"
+    log_name = "comfyui_studio.prompt_builder.themes"
 
     def extra_palette(self, theme_name: str) -> dict[str, str]:
         """Даёт доступ к сырым цветам темы — нужно виджетам, которые красят
         себя программно (не через QSS), например индивидуальные ярлыки."""
         return EXTRA_PALETTE.get(theme_name, EXTRA_PALETTE[DEFAULT_THEME])
 
-    # --------------------------------------------------
-
-    def load_stylesheet(self, theme_name):
-        """Возвращает содержимое .qss файла темы + наш довесок (с кэшированием)."""
-        if theme_name not in AVAILABLE_THEMES:
-            theme_name = DEFAULT_THEME
-
-        if theme_name in self._cache:
-            return self._cache[theme_name]
-
-        path = THEMES_DIR / AVAILABLE_THEMES[theme_name]
-        try:
-            base_stylesheet = path.read_text(encoding="utf-8")
-        except OSError:
-            base_stylesheet = ""
-
-        stylesheet = base_stylesheet + "\n" + _supplemental_qss(self.extra_palette(theme_name))
-        self._cache[theme_name] = stylesheet
-        return stylesheet
-
-    # --------------------------------------------------
-
-    def apply_theme(self, theme_name, app=None):
-        """Применяет тему ко всему приложению и запоминает выбор."""
-        if app is None:
-            app = QApplication.instance()
-        if app is None:
-            return
-
-        app.setStyleSheet(self.load_stylesheet(theme_name))
-        self._settings.setValue("theme", theme_name)
-
-        self._applied_theme = theme_name
-        if self._watcher is not None:
-            self._watcher.mark_applied(theme_name)
-
-        # Общая тема комплекта — чтобы ComfyUI Launcher и PromptVault,
-        # запущенные после этого (или уже открытые), применили ту же тему.
-        shared_theme.write_shared_theme(theme_name)
+    def supplemental_qss(self, theme_name: str) -> str:
+        return _supplemental_qss(self.extra_palette(theme_name))

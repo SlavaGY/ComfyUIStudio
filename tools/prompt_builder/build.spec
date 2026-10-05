@@ -42,13 +42,16 @@ a = Analysis(
     datas=[
         # Назначение (второй элемент каждого кортежа) ЗЕРКАЛИТ пакетный
         # путь comfyui_studio/prompt_builder/... неспроста --
-        # theme_manager.py (resource_base()) ищет свои темы/иконку
+        # theme_manager.py (resource_base()) ищет иконку и assets
         # через Path(sys._MEIPASS) / "comfyui_studio" / "prompt_builder"
         # при запуске из-под PyInstaller — см. его комментарии; если
         # сплющить назначение в корень, resource_base() перестанет
-        # находить themes/assets рядом с собой. Та же раскладка datas
+        # находить assets рядом с собой. Та же раскладка datas
         # используется и в корневом ComfyUIStudio-full.spec.
-        (os.path.join(PROMPT_BUILDER_SRC, 'themes'), os.path.join('comfyui_studio', 'prompt_builder', 'themes')),
+        # Темы теперь общие для всего комплекта и лежат в comfyui_studio/themes
+        # (themes/base.py ищет их в _MEIPASS/comfyui_studio/themes) — своей
+        # папки themes у Prompt Builder больше нет (этап R8).
+        (os.path.join(ROOT_DIR, 'comfyui_studio', 'themes'), os.path.join('comfyui_studio', 'themes')),
         (os.path.join(PROMPT_BUILDER_SRC, 'assets'), os.path.join('comfyui_studio', 'prompt_builder', 'assets')),
     ],
     hiddenimports=[],

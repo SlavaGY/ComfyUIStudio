@@ -23,11 +23,11 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [
     ('assets', 'assets'),
+    # Общая папка тем: её используют все три приложения (themes/base.py);
+    # отдельных themes у Prompt Builder и PromptVault больше нет (этап R8).
     ('comfyui_studio/themes', 'comfyui_studio/themes'),
     ('comfyui_studio/prompt_builder/assets', 'comfyui_studio/prompt_builder/assets'),
-    ('comfyui_studio/prompt_builder/themes', 'comfyui_studio/prompt_builder/themes'),
     ('comfyui_studio/promptvault/resources', 'comfyui_studio/promptvault/resources'),
-    ('comfyui_studio/promptvault/themes', 'comfyui_studio/promptvault/themes'),
     # Imagine (comfyui_studio/imagine/ -- вариант запуска ComfyUI, см.
     # launcher/core/imagine_process.py) -- фронтенд без сборки (чистые
     # .html/.css/.js, см. backend/main.py _STATIC_DIR) и бандловый

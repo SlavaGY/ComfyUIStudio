@@ -50,9 +50,9 @@ import threading
 from dataclasses import dataclass
 from typing import Optional
 
-SHARED_DIR = os.path.join(
-    os.environ.get("APPDATA", os.path.expanduser("~")), "ComfyUIStudio"
-)
+from comfyui_studio import app_paths
+
+SHARED_DIR = app_paths.studio_data_dir()
 SSH_CONFIG_STORE_PATH = os.path.join(SHARED_DIR, "remote_ssh_config.json")
 
 # Тот же приём, что и в device_store.py -- обычный threading.Lock, без

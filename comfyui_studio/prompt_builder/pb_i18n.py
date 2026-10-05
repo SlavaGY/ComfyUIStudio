@@ -13,9 +13,7 @@ Editor — по образцу i18n.py в лаунчере (ComfyUI Studio), н�
 "Конструктор промпта" — дерево блоков, формы группы/блока/варианта,
 пресеты качества/источника, негативные пресеты, диалоги подтверждения).
 """
-from PySide6.QtCore import QObject, QSettings, Signal
-
-import comfyui_studio.shared_language as shared_language
+from comfyui_studio.i18n_base import DictLocalizationManager
 
 AVAILABLE_LANGUAGES = {
     "Русский": "ru",
@@ -211,50 +209,16 @@ TRANSLATIONS = {
 }
 
 
-class LocalizationManager(QObject):
+class LocalizationManager(DictLocalizationManager):
     """Применяет язык интерфейса и держит его в синхроне с остальными
     приложениями комплекта (shared_language.py). Своего переключателя
-    нет — язык выбирается в лаунчере, см. docstring модуля."""
+    нет — язык выбирается в лаунчере, см. docstring модуля. Вся логика —
+    в comfyui_studio/i18n_base.py; здесь только настройки Prompt Builder
+    и его словарь."""
 
-    language_changed_externally = Signal(str)
-
-    def __init__(self):
-        super().__init__()
-        self._settings = QSettings("PromptConfigEditor", "PromptConfigEditor")
-        self._applied_language = None
-
-        self._watcher = None
-        if hasattr(shared_language, "SharedLanguageWatcher"):
-            self._watcher = shared_language.SharedLanguageWatcher(self)
-            self._watcher.language_changed.connect(self._on_shared_language_changed)
-
-    def _on_shared_language_changed(self, language_code):
-        valid_codes = set(AVAILABLE_LANGUAGES.values())
-        if language_code == self._applied_language or language_code not in valid_codes:
-            return
-        self.apply_language(language_code)
-        self.language_changed_externally.emit(language_code)
-
-    def current_language(self):
-        shared = shared_language.read_shared_language()
-        if shared in AVAILABLE_LANGUAGES.values():
-            return shared
-        saved = self._settings.value("language", DEFAULT_LANGUAGE)
-        if saved not in AVAILABLE_LANGUAGES.values():
-            return DEFAULT_LANGUAGE
-        return saved
-
-    def apply_language(self, language_code):
-        if language_code not in AVAILABLE_LANGUAGES.values():
-            language_code = DEFAULT_LANGUAGE
-
-        self._settings.setValue("language", language_code)
-        self._applied_language = language_code
-        if self._watcher is not None:
-            self._watcher.mark_applied(language_code)
-
-        shared_language.write_shared_language(language_code)
-
-    def tr(self, text):
-        lang = self.current_language()
-        return TRANSLATIONS.get(lang, {}).get(text, text)
+    # Прежние значения — менять нельзя, иначе выбранный язык потеряется.
+    settings_org = "PromptConfigEditor"
+    settings_app = "PromptConfigEditor"
+    languages = AVAILABLE_LANGUAGES
+    default_language = DEFAULT_LANGUAGE
+    translations = TRANSLATIONS

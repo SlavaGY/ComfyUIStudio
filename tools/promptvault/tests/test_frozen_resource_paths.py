@@ -3,7 +3,8 @@
 после сборки — см. подробный комментарий у ICON_PATH в comfyui_studio/promptvault/config.py).
 
 Модули comfyui_studio/promptvault/config.py и
-comfyui_studio/promptvault/themes/theme_manager.py вычисляют эти пути
+comfyui_studio/themes/base.py (темы общие для всего комплекта с этапа R8,
+своей папки тем у PromptVault больше нет) вычисляют эти пути
 на уровне модуля (при импорте), поэтому здесь используется
 importlib.reload с заранее подставленными sys.frozen/sys._MEIPASS —
 единственный способ проверить обе ветки (обычный запуск и "как будто
@@ -35,11 +36,12 @@ class TestNonFrozenPaths:
 
     def test_themes_dir_relative_to_themes_package(self):
 
-        import comfyui_studio.promptvault.themes.theme_manager as theme_manager
+        import comfyui_studio.themes.base as themes_base
 
-        _reload(theme_manager)
+        _reload(themes_base)
 
-        assert theme_manager.THEMES_DIR.name == "themes"
+        assert themes_base.THEMES_DIR.name == "themes"
+        assert (themes_base.THEMES_DIR / "dark.qss").is_file()
 
 
 class TestFrozenPaths:
@@ -84,12 +86,12 @@ class TestFrozenPaths:
         monkeypatch.setattr(sys, "frozen", True, raising=False)
         monkeypatch.setattr(sys, "_MEIPASS", str(fake_meipass), raising=False)
 
-        import comfyui_studio.promptvault.themes.theme_manager as theme_manager
+        import comfyui_studio.themes.base as themes_base
 
         try:
-            _reload(theme_manager)
+            _reload(themes_base)
 
-            assert theme_manager.THEMES_DIR == fake_meipass / "comfyui_studio" / "promptvault" / "themes"
+            assert themes_base.THEMES_DIR == fake_meipass / "comfyui_studio" / "themes"
         finally:
             monkeypatch.undo()
-            _reload(theme_manager)
+            _reload(themes_base)

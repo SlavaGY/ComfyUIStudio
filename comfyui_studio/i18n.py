@@ -23,9 +23,7 @@ PromptVault сами язык не выбирают, только применя
 сообщения в лог-панели пока остаются на русском — их перевод стоит
 меньше, чем перевод основных элементов управления, и отложен на потом.
 """
-from PySide6.QtCore import QObject, QSettings, Signal
-
-from . import shared_language
+from .i18n_base import DictLocalizationManager
 
 AVAILABLE_LANGUAGES = {
     "Русский": "ru",
@@ -595,58 +593,15 @@ TRANSLATIONS = {
 }
 
 
-class LocalizationManager(QObject):
-    """Переключает язык интерфейса лаунчера и держит его в синхроне с
-    остальными приложениями комплекта (shared_language.py), аналогично
-    ThemeManager для тем (themes/theme_manager.py)."""
+class LocalizationManager(DictLocalizationManager):
+    """Менеджер языка лаунчера: держит язык в синхроне с остальными
+    приложениями комплекта (shared_language.py), аналогично ThemeManager
+    для тем (themes/theme_manager.py). Вся логика — в i18n_base.py; здесь
+    только настройки лаунчера и его словарь ru -> en."""
 
-    language_changed_externally = Signal(str)
-
-    def __init__(self):
-        super().__init__()
-        self._settings = QSettings("ComfyUILauncher", "ComfyUILauncher")
-        self._applied_language = None
-
-        self._watcher = None
-        if hasattr(shared_language, "SharedLanguageWatcher"):
-            self._watcher = shared_language.SharedLanguageWatcher(self)
-            self._watcher.language_changed.connect(self._on_shared_language_changed)
-
-    def _on_shared_language_changed(self, language_code):
-        valid_codes = set(AVAILABLE_LANGUAGES.values())
-        if language_code == self._applied_language or language_code not in valid_codes:
-            return
-        self.apply_language(language_code)
-        self.language_changed_externally.emit(language_code)
-
-    def available_languages(self):
-        return list(AVAILABLE_LANGUAGES.keys())
-
-    def current_language(self):
-        """Код языка: сначала общий язык комплекта (shared_language.py),
-        иначе собственные QSettings, иначе язык по умолчанию."""
-        shared = shared_language.read_shared_language()
-        if shared in AVAILABLE_LANGUAGES.values():
-            return shared
-        saved = self._settings.value("language", DEFAULT_LANGUAGE)
-        if saved not in AVAILABLE_LANGUAGES.values():
-            return DEFAULT_LANGUAGE
-        return saved
-
-    def apply_language(self, language_code):
-        if language_code not in AVAILABLE_LANGUAGES.values():
-            language_code = DEFAULT_LANGUAGE
-
-        self._settings.setValue("language", language_code)
-        self._applied_language = language_code
-        if self._watcher is not None:
-            self._watcher.mark_applied(language_code)
-
-        shared_language.write_shared_language(language_code)
-
-    def tr(self, text):
-        """Возвращает перевод text для текущего языка, либо сам text,
-        если языка нет в словаре или перевода для этой строки ещё нет
-        (сознательно неполный охват — см. docstring модуля)."""
-        lang = self.current_language()
-        return TRANSLATIONS.get(lang, {}).get(text, text)
+    # Прежние значения — менять нельзя, иначе выбранный язык потеряется.
+    settings_org = "ComfyUILauncher"
+    settings_app = "ComfyUILauncher"
+    languages = AVAILABLE_LANGUAGES
+    default_language = DEFAULT_LANGUAGE
+    translations = TRANSLATIONS

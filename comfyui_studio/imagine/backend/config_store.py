@@ -67,9 +67,10 @@ generation.max_loras -- см. app.js: эффективный лимит для
 """
 
 import json
-import os
 import threading
 from pathlib import Path
+
+from comfyui_studio import app_paths
 
 # ИЗМЕНЕНО при встраивании в ComfyUIStudio: раньше DATA_DIR лежала прямо
 # рядом с исходниками (data/ на уровень выше backend/), что подходило,
@@ -82,16 +83,7 @@ from pathlib import Path
 # shared_language.py и launcher/core/constants.py (APP_DIR) —
 # %APPDATA%\ComfyUIStudio\imagine\. IMAGINE_DATA_DIR остаётся отдушиной
 # для тестов/отладки вне Windows (где APPDATA не задан).
-DATA_DIR = Path(
-    os.environ.get(
-        "IMAGINE_DATA_DIR",
-        os.path.join(
-            os.environ.get("APPDATA", os.path.expanduser("~")),
-            "ComfyUIStudio",
-            "imagine",
-        ),
-    )
-)
+DATA_DIR = Path(app_paths.imagine_data_dir())
 CONFIG_PATH = DATA_DIR / "config.json"
 UPLOADS_DIR = DATA_DIR / "uploads"
 

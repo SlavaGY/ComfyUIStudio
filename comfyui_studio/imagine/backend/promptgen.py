@@ -446,6 +446,8 @@ def _compute_cache_dir() -> Optional[str]:
     if custom:
         return custom
     if os.name == "nt":
+        # %APPDATA%\NVIDIA\ComputeCache — папка ДРАЙВЕРА NVIDIA, а не данные
+        # приложения, поэтому намеренно не через app_paths (R2).
         appdata = os.environ.get("APPDATA")
         return os.path.join(appdata, "NVIDIA", "ComputeCache") if appdata else None
     return os.path.join(os.path.expanduser("~"), ".nv", "ComputeCache")

@@ -23,10 +23,10 @@ app/ui/ на тот момент отсутствовали). Аудит сде�
 
 from __future__ import annotations
 
-from PySide6.QtCore import QCoreApplication, QObject, QSettings, QTranslator, Signal
+from PySide6.QtCore import QCoreApplication, QTranslator
 
+from comfyui_studio.i18n_base import BaseLocalizationManager
 from comfyui_studio.promptvault.config import TRANSLATIONS_DIR
-from .. import shared_language
 
 # отображаемое имя в UI -> код языка
 AVAILABLE_LANGUAGES: dict[str, str] = {
@@ -37,53 +37,29 @@ AVAILABLE_LANGUAGES: dict[str, str] = {
 DEFAULT_LANGUAGE = "en"
 
 
-class LocalizationManager(QObject):
+class LocalizationManager(BaseLocalizationManager):
     """Переключает язык интерфейса через QTranslator, аналогично
-    ThemeManager для тем (см. app/themes/theme_manager.py).
+    ThemeManager для тем (см. comfyui_studio/promptvault/themes/).
 
-    Текущий выбор запоминается в QSettings и восстанавливается при
-    следующем запуске. Также следит за общим языком комплекта
-    (shared_language.py) — если язык поменяли в ComfyUI Launcher или
-    PromptConfigEditor, пока это приложение уже открыто, он применяется
-    сразу (сигнал language_changed_externally), а не только при
-    следующем запуске.
+    Общая часть — текущий выбор в QSettings, слежение за общим языком
+    комплекта (shared_language.py), сигнал language_changed_externally —
+    живёт в comfyui_studio/i18n_base.py; здесь только сама установка
+    перевода из .qm.
     """
 
-    language_changed_externally = Signal(str)
+    # Прежние значения — менять нельзя, иначе выбранный язык потеряется.
+    settings_org = "PromptVault"
+    settings_app = "PromptVault"
+    languages = AVAILABLE_LANGUAGES
+    default_language = DEFAULT_LANGUAGE
 
     def __init__(self) -> None:
 
         super().__init__()
-        self._settings = QSettings("PromptVault", "PromptVault")
         self._translator: QTranslator | None = None
-        self._applied_language: str | None = None
 
-        self._watcher = None
-        if hasattr(shared_language, "SharedLanguageWatcher"):
-            self._watcher = shared_language.SharedLanguageWatcher(self)
-            self._watcher.language_changed.connect(self._on_shared_language_changed)
-
-    def _on_shared_language_changed(self, language_code: str) -> None:
-        valid_codes = set(AVAILABLE_LANGUAGES.values())
-        if language_code == self._applied_language or language_code not in valid_codes:
-            return
-        self.apply_language(language_code)
-        self.language_changed_externally.emit(language_code)
-
-    def current_language(self) -> str:
-        """Код языка: сначала общий язык комплекта (shared_language.py)
-        — так подхватывается язык, выбранный в ComfyUI Launcher или
-        PromptConfigEditor; если его нет, откатываемся на собственные
-        QSettings, а затем на язык по умолчанию."""
-
-        shared = shared_language.read_shared_language()
-        if shared in AVAILABLE_LANGUAGES.values():
-            return shared
-
-        return str(self._settings.value("language", DEFAULT_LANGUAGE))
-
-    def apply_language(self, language_code: str) -> None:
-        """Устанавливает язык интерфейса и запоминает выбор.
+    def _install_language(self, language_code: str) -> None:
+        """Ставит QTranslator для языка (и снимает прежний).
 
         Для DEFAULT_LANGUAGE ("en", исходный язык строк в коде)
         переводчик не устанавливается вообще — self.tr() возвращает
@@ -118,18 +94,3 @@ class LocalizationManager(QObject):
             if translator.load(str(qm_path)):
                 self._translator = translator
                 app.installTranslator(self._translator)
-
-        self._settings.setValue("language", language_code)
-
-        self._applied_language = language_code
-        if self._watcher is not None:
-            self._watcher.mark_applied(language_code)
-
-        # Общий язык комплекта — чтобы ComfyUI Launcher и
-        # PromptConfigEditor, запущенные после этого (или уже открытые),
-        # применили тот же язык.
-        shared_language.write_shared_language(language_code)
-
-    def restore_saved_language(self) -> None:
-
-        self.apply_language(self.current_language())

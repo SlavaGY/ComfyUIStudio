@@ -33,11 +33,11 @@
 
 datas = [
     ('assets', 'assets'),
+    # Общая папка тем: её используют все три приложения (themes/base.py);
+    # отдельных themes у Prompt Builder и PromptVault больше нет (этап R8).
     ('comfyui_studio/themes', 'comfyui_studio/themes'),
     ('comfyui_studio/prompt_builder/assets', 'comfyui_studio/prompt_builder/assets'),
-    ('comfyui_studio/prompt_builder/themes', 'comfyui_studio/prompt_builder/themes'),
     ('comfyui_studio/promptvault/resources', 'comfyui_studio/promptvault/resources'),
-    ('comfyui_studio/promptvault/themes', 'comfyui_studio/promptvault/themes'),
     # Imagine -- см. тот же блок и комментарий в ComfyUIStudio-full.spec.
     ('comfyui_studio/imagine/static', 'comfyui_studio/imagine/static'),
     ('comfyui_studio/imagine/assets', 'comfyui_studio/imagine/assets'),

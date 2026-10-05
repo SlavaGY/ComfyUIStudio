@@ -130,7 +130,7 @@ pyinstaller ^
     --paths "%ROOT_DIR%" ^
     %ICON_ARG% ^
     --add-data "%ROOT_DIR%\comfyui_studio\promptvault\resources;comfyui_studio\promptvault\resources" ^
-    --add-data "%ROOT_DIR%\comfyui_studio\promptvault\themes;comfyui_studio\promptvault\themes" ^
+    --add-data "%ROOT_DIR%\comfyui_studio\themes;comfyui_studio\themes" ^
     "%ROOT_DIR%\comfyui_studio\promptvault\main.py"
 
 if errorlevel 1 (

@@ -1,0 +1,61 @@
+/* ==== Дополнено для ComfyUI Launcher: QGroupBox/QProgressBar/QSpinBox/QMenu ==== */
+QGroupBox {
+    border: 1px solid #44475a;
+    border-radius: 6px;
+    margin-top: 12px;
+    padding-top: 10px;
+    font-weight: 600;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+    color: #bd93f9;
+}
+
+QProgressBar {
+    background-color: #343746;
+    border: 1px solid #44475a;
+    border-radius: 6px;
+    text-align: center;
+    color: #f8f8f2;
+}
+
+QProgressBar::chunk {
+    background-color: #bd93f9;
+    border-radius: 6px;
+}
+
+QSpinBox {
+    background-color: #343746;
+    color: #f8f8f2;
+    border: 1px solid #44475a;
+    border-radius: 5px;
+    padding: 3px 6px;
+}
+
+QSpinBox:hover {
+    border: 1px solid #bd93f9;
+}
+
+QMenu {
+    background-color: #343746;
+    color: #f8f8f2;
+    border: 1px solid #44475a;
+}
+
+QMenu::item {
+    padding: 5px 20px;
+}
+
+QMenu::item:selected {
+    background-color: #bd93f9;
+    color: #282a36;
+}
+
+QMenu::separator {
+    height: 1px;
+    background: #44475a;
+    margin: 4px 6px;
+}
