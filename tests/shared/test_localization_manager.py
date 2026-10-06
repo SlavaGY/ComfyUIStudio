@@ -235,7 +235,7 @@ class TestDictionaryManagers:
 
 class TestPromptVaultTranslator:
     """PromptVault ставит перевод через QTranslator и .qm. Основные
-    сценарии покрывает tools/promptvault/tests/test_i18n.py; здесь —
+    сценарии покрывает tests/promptvault/test_i18n.py; здесь —
     только то, что относится к общей базе."""
 
     def test_translator_follows_applied_language(self, qapp):

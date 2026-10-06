@@ -69,911 +69,188 @@ comfyui_studio/promptgen_history.py.
   * на Windows процесс дополнительно помещается в Job Object с флагом
     KILL_ON_JOB_CLOSE -- ОС убьёт llama-server, даже если Imagine упал
     аварийно (см. _attach_kill_on_close_job()).
+
+Структура модулей (этап R10 плана рефакторинга)
+-----------------------------------------------
+Этот файл остаётся публичным входом: PromptGenerator (оркестрация одной
+задачи), singleton `generator` и реэкспорт всего, что раньше жило здесь
+(тесты и main.py обращаются к `promptgen.<имя>`). Остальное разнесено:
+
+  * promptgen_base.py    -- константы, PromptGenError, _Cancelled, мелкие помощники;
+  * promptgen_deps.py    -- необязательные shared_promptgen / promptgen_history;
+  * promptgen_diag.py    -- логирование, VRAM/RAM, разбор вывода llama-server, _LoadProbe;
+  * promptgen_job.py     -- Job, clean_output, подсчёт токенов, запись для истории;
+  * promptgen_process.py -- запуск/остановка llama-server, Job Object, реестр процессов;
+  * promptgen_stream.py  -- POST /v1/chat/completions со стримингом SSE.
+
+Что нужно подменять в тестах через monkeypatch, живёт ЗДЕСЬ (gpu_memory
+вызывается из PromptGenerator, _FIRST_REPORT_S/_REPORT_EVERY_S -- из
+_wait_ready, generator -- из main.py): подмена `pg.<имя>` действует только на
+код, который ищет имя в этом модуле.
 """
 
 from __future__ import annotations
 
 import atexit
-import collections
-import datetime
-import http.client
-import json
 import logging
-import logging.handlers
-import os
-import re
-import shlex
-import socket
 import subprocess
-import tempfile
 import threading
 import time
 import urllib.error
-import urllib.request
-import uuid
 from typing import Callable, Optional
 
-try:
-    # Доступно только внутри ComfyUIStudio. Если Imagine запущен как
-    # самостоятельный инструмент (без остального комплекта), генератор
-    # просто сообщает available=False, и кнопка в интерфейсе не
-    # показывается -- как и с shared_theme/shared_language в main.py.
-    from comfyui_studio import shared_promptgen
-except ImportError:  # pragma: no cover - Imagine запущен отдельно от Studio
-    shared_promptgen = None
-
-try:
-    from comfyui_studio import promptgen_history
-except ImportError:  # pragma: no cover - то же самое: история есть только внутри Studio
-    promptgen_history = None
-
-log = logging.getLogger("imagine.promptgen")
-
-MAX_TOKENS = 8192
-# Загрузка большой модели с медленного диска может занять минуты.
-LOAD_TIMEOUT_S = 600
-# Таймаут одной операции чтения сокета при стриминге ответа. Между
-# токенами пауза может быть долгой только пока обрабатывается длинный
-# запрос с картинкой -- запас с избытком.
-STREAM_TIMEOUT_S = 1800
-# data:-URL картинки: 25 МБ бинарных данных ~ 34 МБ в base64. Фронтенд
-# уменьшает картинку заранее, так что это лишь защита от заведомо
-# неадекватных запросов.
-MAX_IMAGE_DATA_URL_LEN = 34 * 1024 * 1024
-
-# Запросы к llama-server идут строго на localhost -- в обход системного
-# прокси. urllib по умолчанию берёт прокси из переменных окружения и (на
-# Windows) из реестра, а правило «<local>» в реестре НЕ считает локальным
-# адрес вида 127.0.0.1 -- с включённым системным прокси (Clash, v2ray и
-# т. п.) health-check и запрос ушли бы в прокси и не дошли бы до сервера.
-_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-
-_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
-_THINK_OPEN_RE = re.compile(r"<think>", re.IGNORECASE)
-
-# 0xC0000135 (STATUS_DLL_NOT_FOUND) -- Windows не нашла нужную DLL.
-_STATUS_DLL_NOT_FOUND = 0xC0000135
-
-# Строки вывода llama-server, которые стоит скопировать в promptgen.log
-# (полный вывод -- в отдельном файле): сколько слоёв на GPU, на чём
-# работает кодировщик изображений, размеры буферов (в т. ч. KV-кэша).
-_KEY_LINE_RE = re.compile(
-    r"offloaded|CLIP using|buffer size|n_ctx\b|n_gpu_layers|fit|flash.attn|warmup|"
-    r"projected|mmproj|mtmd|projector|clip|image_(min|max)_tokens|error|failed|out of memory|"
-    r"CUDA|compute capability|device|GPU|layers|MiB",
-    re.IGNORECASE,
+from comfyui_studio.imagine.backend.promptgen_base import (
+    MAX_TOKENS,
+    LOAD_TIMEOUT_S,
+    STREAM_TIMEOUT_S,
+    MAX_IMAGE_DATA_URL_LEN,
+    _MIB,
+    PromptGenError,
+    _Cancelled,
+    _clean_image_name,
+    _file_mb,
+    _error_text,
 )
-# Метка времени в выводе llama-server: [минуты.секунды.миллисекунды.микросекунды]
-# от старта процесса, например «5.56.717.660» = 5 мин 56.7 с.
-_TS_RE = re.compile(r"^\s*(\d+)\.(\d{2})\.(\d{3})\.(\d{3})\s")
+from comfyui_studio.imagine.backend.promptgen_deps import (
+    shared_promptgen,
+    promptgen_history,
+)
+from comfyui_studio.imagine.backend.promptgen_diag import (
+    log,
+    _ensure_file_logging,
+    _jlog,
+    _with_log_hint,
+    _psutil,
+    gpu_memory,
+    _max_free_mb,
+    _fmt_gpus,
+    _system_snapshot,
+    estimate_vram_mb,
+    _KEY_LINE_RE,
+    _TS_RE,
+    _OFFLOAD_RE,
+    _CLIP_BACKEND_RE,
+    _line_seconds,
+    analyze_load_timeline,
+    _compute_cache_dir,
+    _dir_size_mb,
+    _LoadProbe,
+    _read_log_tail,
+    _read_log_text,
+    inspect_llama_log,
+    log_job_stats,
+)
+from comfyui_studio.imagine.backend.promptgen_job import (
+    _THINK_BLOCK_RE,
+    _THINK_OPEN_RE,
+    Job,
+    clean_output,
+    token_counts,
+    history_record,
+)
+from comfyui_studio.imagine.backend.promptgen_process import (
+    _attach_kill_on_close_job,
+    _STATUS_DLL_NOT_FOUND,
+    _free_port,
+    _split_extra_args,
+    build_command,
+    build_env,
+    _llama_log_path,
+    _spawn,
+    _kill_tree,
+    _stop_process,
+    _exit_message,
+    _registry_path,
+    _registry_read,
+    _registry_write,
+    _register_process,
+    _unregister_process,
+    sweep_stale,
+)
+from comfyui_studio.imagine.backend.promptgen_stream import (
+    _opener,
+    stream_completion,
+    lost_connection_message,
+)
 
-# Как часто писать в лог ход загрузки модели (с замерами процесса).
+# Реэкспорт: всё, что раньше определялось в этом файле, доступно как
+# promptgen.<имя>. Состояние логирования (_file_handler*, _console_handler)
+# и _job_handle живёт теперь в promptgen_diag / promptgen_process и сюда
+# намеренно НЕ реэкспортируется: имя-копия расходилась бы с настоящим
+# значением после первой же перепривязки.
+__all__ = [
+    "Job",
+    "LOAD_TIMEOUT_S",
+    "MAX_IMAGE_DATA_URL_LEN",
+    "MAX_TOKENS",
+    "PromptGenError",
+    "PromptGenerator",
+    "STREAM_TIMEOUT_S",
+    "_CLIP_BACKEND_RE",
+    "_Cancelled",
+    "_FIRST_REPORT_S",
+    "_KEY_LINE_RE",
+    "_LoadProbe",
+    "_MIB",
+    "_OFFLOAD_RE",
+    "_REPORT_EVERY_S",
+    "_STATUS_DLL_NOT_FOUND",
+    "_THINK_BLOCK_RE",
+    "_THINK_OPEN_RE",
+    "_TS_RE",
+    "_attach_kill_on_close_job",
+    "_clean_image_name",
+    "_compute_cache_dir",
+    "_dir_size_mb",
+    "_ensure_file_logging",
+    "_error_text",
+    "_exit_message",
+    "_file_mb",
+    "_fmt_gpus",
+    "_free_port",
+    "_jlog",
+    "_kill_tree",
+    "_line_seconds",
+    "_llama_log_path",
+    "_max_free_mb",
+    "_opener",
+    "_psutil",
+    "_read_log_tail",
+    "_read_log_text",
+    "_register_process",
+    "_registry_path",
+    "_registry_read",
+    "_registry_write",
+    "_spawn",
+    "_split_extra_args",
+    "_stop_process",
+    "_system_snapshot",
+    "_unregister_process",
+    "_with_log_hint",
+    "analyze_load_timeline",
+    "build_command",
+    "build_env",
+    "clean_output",
+    "estimate_vram_mb",
+    "generator",
+    "gpu_memory",
+    "history_record",
+    "inspect_llama_log",
+    "log",
+    "log_job_stats",
+    "lost_connection_message",
+    "promptgen_history",
+    "shared_promptgen",
+    "stream_completion",
+    "sweep_stale",
+    "token_counts",
+]
+
+# Как часто писать в лог ход загрузки модели (с замерами процесса). Лежит
+# здесь, а не в promptgen_diag: тесты подменяют эти значения через pg.<имя>,
+# а читает их _wait_ready этого модуля.
 _FIRST_REPORT_S = 5.0
 _REPORT_EVERY_S = 15.0
-_OFFLOAD_RE = re.compile(r"offloaded\s+(\d+)\s*/\s*(\d+)\s+layers\s+to\s+GPU", re.IGNORECASE)
-_CLIP_BACKEND_RE = re.compile(r"CLIP using (\S+) backend", re.IGNORECASE)
-
-_MIB = 1024 * 1024
-
-
-class PromptGenError(Exception):
-    """Ожидаемая ошибка с готовым для пользователя текстом и HTTP-кодом
-    (используется эндпоинтами в main.py)."""
-
-    def __init__(self, message: str, status_code: int = 500):
-        super().__init__(message)
-        self.status_code = status_code
-
-
-class _Cancelled(Exception):
-    pass
-
-
-# ---------------------------------------------------------------------------
-# Логирование
-# ---------------------------------------------------------------------------
-
-_file_handler: Optional[logging.Handler] = None
-_file_handler_path: Optional[str] = None
-_console_handler: Optional[logging.Handler] = None
-
-
-def _ensure_file_logging() -> None:
-    """Подключает к логгеру генератора файл promptgen.log (ротация 1 МБ × 3)
-    и консоль (только INFO+). Идемпотентно; если путь лога сменился (тесты) --
-    переподключает. Файл создаётся лениво, при первой записи.
-
-    propagate=False: иначе DEBUG-записи нашего логгера дошли бы до
-    консольного хендлера корневого логгера (basicConfig в main.py)."""
-    global _file_handler, _file_handler_path, _console_handler
-    if shared_promptgen is None:
-        return
-    log.setLevel(logging.DEBUG)
-    log.propagate = False
-    if _console_handler is None:
-        _console_handler = logging.StreamHandler()
-        _console_handler.setLevel(logging.INFO)
-        _console_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-        log.addHandler(_console_handler)
-    path = shared_promptgen.log_file_path()
-    if _file_handler_path == path:
-        return
-    if _file_handler is not None:
-        log.removeHandler(_file_handler)
-        _file_handler.close()
-        _file_handler = None
-    _file_handler_path = path
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        handler = logging.handlers.RotatingFileHandler(
-            path, maxBytes=1_000_000, backupCount=3, encoding="utf-8", delay=True
-        )
-        handler.setLevel(logging.DEBUG)
-        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s"))
-        log.addHandler(handler)
-        _file_handler = handler
-    except OSError:
-        log.warning("Не удалось открыть файл лога %s", path, exc_info=True)
-
-
-def _jlog(job: "Job", level: int, msg: str, *args, **kwargs) -> None:
-    log.log(level, "[%s] " + msg, job.id, *args, **kwargs)
-
-
-# ---------------------------------------------------------------------------
-# Диагностика: VRAM / RAM / процессы
-# ---------------------------------------------------------------------------
-
-def _psutil():
-    try:
-        import psutil
-        return psutil
-    except ImportError:
-        return None
-
-
-def gpu_memory() -> Optional[list[dict]]:
-    """Список видеокарт с объёмом памяти (МиБ) через pynvml, либо None,
-    если pynvml/драйвер недоступны."""
-    try:
-        import pynvml
-    except ImportError:
-        return None
-    try:
-        pynvml.nvmlInit()
-    except Exception:
-        return None
-    try:
-        gpus = []
-        for i in range(pynvml.nvmlDeviceGetCount()):
-            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-            mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            name = pynvml.nvmlDeviceGetName(handle)
-            if isinstance(name, bytes):
-                name = name.decode("utf-8", "replace")
-            gpus.append({
-                "index": i,
-                "name": name,
-                "total_mb": int(mem.total // _MIB),
-                "used_mb": int(mem.used // _MIB),
-                "free_mb": int(mem.free // _MIB),
-            })
-        return gpus
-    except Exception:
-        return None
-    finally:
-        try:
-            pynvml.nvmlShutdown()
-        except Exception:
-            pass
-
-
-def _max_free_mb(gpus: Optional[list[dict]]) -> Optional[int]:
-    return max(g["free_mb"] for g in gpus) if gpus else None
-
-
-def _fmt_gpus(gpus: Optional[list[dict]]) -> str:
-    if gpus is None:
-        return "GPU: недоступно (нет pynvml/драйвера NVIDIA)"
-    if not gpus:
-        return "GPU: не найдено"
-    return "GPU: " + "; ".join(
-        f"#{g['index']} {g['name']}: занято {g['used_mb']}/{g['total_mb']} МиБ, свободно {g['free_mb']}"
-        for g in gpus
-    )
-
-
-def _system_snapshot(gpus: Optional[list[dict]] = None) -> str:
-    """Одна строка для лога: VRAM, RAM и все процессы с «llama» в имени (в
-    т. ч. чужие -- например, LM Studio держит свою модель в той же
-    видеопамяти)."""
-    parts = [_fmt_gpus(gpus if gpus is not None else gpu_memory())]
-    psutil = _psutil()
-    if psutil is not None:
-        try:
-            vm = psutil.virtual_memory()
-            parts.append(f"RAM: свободно {vm.available // _MIB}/{vm.total // _MIB} МиБ")
-        except Exception:
-            pass
-        try:
-            found = []
-            for proc in psutil.process_iter(["pid", "name", "memory_info"]):
-                name = proc.info.get("name") or ""
-                if "llama" in name.lower():
-                    rss = proc.info["memory_info"].rss // _MIB if proc.info.get("memory_info") else 0
-                    found.append(f"{proc.info['pid']}:{name} {rss} МиБ")
-            parts.append("процессы llama: " + (", ".join(found) if found else "нет"))
-        except Exception:
-            pass
-    return " | ".join(parts)
-
-
-def estimate_vram_mb(cfg: dict) -> int:
-    """Грубая оценка видеопамяти под запуск: размеры файлов модели и mmproj
-    (+5 %), запас на служебные буферы и ~0.06 МиБ на токен контекста (KV-кэш
-    типичной 7–8B модели; у больших/иных моделей отличается). Нужна только
-    для решения «выгружать ли ComfyUI» -- ошибка в 20–30 % не критична."""
-    total = 0
-    for key in ("model_path", "mmproj_path"):
-        path = (cfg.get(key) or "").strip()
-        if path:
-            try:
-                total += os.path.getsize(path)
-            except OSError:
-                pass
-    ctx = cfg.get("ctx_size") or 8192
-    return int(total / _MIB * 1.05 + 512 + ctx * 0.06)
-
-
-# ---------------------------------------------------------------------------
-# Windows: Job Object с KILL_ON_JOB_CLOSE
-# ---------------------------------------------------------------------------
-
-_job_handle = None
-
-
-def _attach_kill_on_close_job(proc: subprocess.Popen) -> None:
-    """Best-effort: ассоциирует процесс с Job Object'ом, который убивает всех
-    своих участников, когда закрывается последний дескриптор -- то есть
-    когда умирает сам Imagine (даже аварийно). Любая ошибка здесь только
-    логируется: это подстраховка, а не необходимое условие работы."""
-    global _job_handle
-    if os.name != "nt":
-        return
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
-        kernel32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
-        kernel32.SetInformationJobObject.restype = wintypes.BOOL
-        kernel32.SetInformationJobObject.argtypes = [
-            wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD,
-        ]
-        kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
-        kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
-
-        class IO_COUNTERS(ctypes.Structure):
-            _fields_ = [
-                ("ReadOperationCount", ctypes.c_ulonglong),
-                ("WriteOperationCount", ctypes.c_ulonglong),
-                ("OtherOperationCount", ctypes.c_ulonglong),
-                ("ReadTransferCount", ctypes.c_ulonglong),
-                ("WriteTransferCount", ctypes.c_ulonglong),
-                ("OtherTransferCount", ctypes.c_ulonglong),
-            ]
-
-        class BASIC_LIMIT(ctypes.Structure):
-            _fields_ = [
-                ("PerProcessUserTimeLimit", ctypes.c_int64),
-                ("PerJobUserTimeLimit", ctypes.c_int64),
-                ("LimitFlags", wintypes.DWORD),
-                ("MinimumWorkingSetSize", ctypes.c_size_t),
-                ("MaximumWorkingSetSize", ctypes.c_size_t),
-                ("ActiveProcessLimit", wintypes.DWORD),
-                ("Affinity", ctypes.c_size_t),
-                ("PriorityClass", wintypes.DWORD),
-                ("SchedulingClass", wintypes.DWORD),
-            ]
-
-        class EXTENDED_LIMIT(ctypes.Structure):
-            _fields_ = [
-                ("BasicLimitInformation", BASIC_LIMIT),
-                ("IoInfo", IO_COUNTERS),
-                ("ProcessMemoryLimit", ctypes.c_size_t),
-                ("JobMemoryLimit", ctypes.c_size_t),
-                ("PeakProcessMemoryUsed", ctypes.c_size_t),
-                ("PeakJobMemoryUsed", ctypes.c_size_t),
-            ]
-
-        JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
-
-        if _job_handle is None:
-            handle = kernel32.CreateJobObjectW(None, None)
-            if not handle:
-                raise ctypes.WinError(ctypes.get_last_error())
-            info = EXTENDED_LIMIT()
-            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-            if not kernel32.SetInformationJobObject(
-                handle, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
-                ctypes.byref(info), ctypes.sizeof(info),
-            ):
-                raise ctypes.WinError(ctypes.get_last_error())
-            _job_handle = handle
-
-        if not kernel32.AssignProcessToJobObject(_job_handle, int(proc._handle)):
-            raise ctypes.WinError(ctypes.get_last_error())
-    except Exception:
-        log.warning("Не удалось привязать llama-server к Job Object", exc_info=True)
-
-
-
-# ---------------------------------------------------------------------------
-# Диагностика загрузки модели
-# ---------------------------------------------------------------------------
-
-def _line_seconds(line: str) -> Optional[float]:
-    match = _TS_RE.match(line)
-    if not match:
-        return None
-    minutes, seconds, millis, micros = (int(g) for g in match.groups())
-    return minutes * 60 + seconds + millis / 1000 + micros / 1e6
-
-
-def analyze_load_timeline(text: str, min_gap_s: float = 1.0, top: int = 8) -> list[str]:
-    """Самые долгие паузы между строками вывода llama-server (по его же
-    меткам времени): показывает, на каком этапе загрузки ушло время --
-    что было напечатано перед паузой и что после."""
-    prev_ts: Optional[float] = None
-    prev_line = ""
-    gaps: list[tuple[float, str, str]] = []
-    for line in text.splitlines():
-        ts = _line_seconds(line)
-        if ts is None:
-            continue
-        if prev_ts is not None and ts - prev_ts >= min_gap_s:
-            gaps.append((ts - prev_ts, prev_line.strip(), line.strip()))
-        prev_ts, prev_line = ts, line
-    gaps.sort(key=lambda g: -g[0])
-    return [f"пауза {gap:.1f} с между «{a[:110]}» и «{b[:110]}»" for gap, a, b in gaps[:top]]
-
-
-def _compute_cache_dir() -> Optional[str]:
-    """Папка кэша скомпилированных CUDA-ядер драйвера NVIDIA (JIT из PTX)."""
-    custom = os.environ.get("CUDA_CACHE_PATH")
-    if custom:
-        return custom
-    if os.name == "nt":
-        # %APPDATA%\NVIDIA\ComputeCache — папка ДРАЙВЕРА NVIDIA, а не данные
-        # приложения, поэтому намеренно не через app_paths (R2).
-        appdata = os.environ.get("APPDATA")
-        return os.path.join(appdata, "NVIDIA", "ComputeCache") if appdata else None
-    return os.path.join(os.path.expanduser("~"), ".nv", "ComputeCache")
-
-
-def _dir_size_mb(path: Optional[str]) -> Optional[float]:
-    if not path or not os.path.isdir(path):
-        return None
-    total = 0
-    try:
-        for root, _dirs, files in os.walk(path):
-            for name in files:
-                try:
-                    total += os.path.getsize(os.path.join(root, name))
-                except OSError:
-                    pass
-    except OSError:
-        return None
-    return total / _MIB
-
-
-class _LoadProbe:
-    """Замеры процесса llama-server во время загрузки модели: по ним видно,
-    ЧЕМ он занят -- считает на CPU (JIT-компиляция, обработка на CPU), читает
-    диск (или ждёт его из-за нехватки RAM/подкачки) или простаивает."""
-
-    def __init__(self, pid: int):
-        self._psutil = _psutil()
-        self._ps = None
-        self._disk = None
-        self._t = time.monotonic()
-        if self._psutil is None:
-            return
-        try:
-            self._ps = self._psutil.Process(pid)
-            self._ps.cpu_percent(None)   # первый вызов только запускает отсчёт
-            self._psutil.cpu_percent(None)
-        except Exception:
-            self._ps = None
-        self._disk = self._disk_read()
-
-    def _disk_read(self) -> Optional[int]:
-        try:
-            return self._psutil.disk_io_counters().read_bytes
-        except Exception:
-            return None
-
-    def describe(self) -> str:
-        if self._psutil is None or self._ps is None:
-            return "замеры процесса недоступны (нет psutil)"
-        psutil, ps = self._psutil, self._ps
-        parts = []
-        try:
-            parts.append(f"CPU процесса {ps.cpu_percent(None):.0f}% (100% = одно ядро, всего ядер {psutil.cpu_count()})")
-        except Exception:
-            pass
-        try:
-            parts.append(f"CPU системы {psutil.cpu_percent(None):.0f}%")
-        except Exception:
-            pass
-        try:
-            parts.append(f"RSS {ps.memory_info().rss // _MIB} МиБ")
-        except Exception:
-            pass
-        try:
-            now, disk = time.monotonic(), self._disk_read()
-            if disk is not None and self._disk is not None:
-                parts.append(f"диск (вся система) прочитано за {now - self._t:.0f} с: {(disk - self._disk) // _MIB} МиБ")
-            self._disk, self._t = disk, now
-        except Exception:
-            pass
-        try:
-            parts.append(f"RAM свободно {psutil.virtual_memory().available // _MIB} МиБ")
-        except Exception:
-            pass
-        gpus = gpu_memory()
-        if gpus:
-            parts.append(f"VRAM занято {gpus[0]['used_mb']} МиБ")
-        return ", ".join(parts)
-
-
-# ---------------------------------------------------------------------------
-# Процесс llama-server
-# ---------------------------------------------------------------------------
-
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def _split_extra_args(text: str) -> list[str]:
-    text = (text or "").strip()
-    if not text:
-        return []
-    try:
-        parts = shlex.split(text, posix=(os.name != "nt"))
-    except ValueError as exc:
-        raise PromptGenError(
-            f"Не удалось разобрать «Доп. аргументы» llama-server: {exc}", 400
-        ) from exc
-    # при posix=False shlex оставляет кавычки внутри токенов
-    cleaned = []
-    for part in parts:
-        if len(part) >= 2 and part[0] == part[-1] and part[0] in "\"'":
-            part = part[1:-1]
-        cleaned.append(part)
-    return cleaned
-
-
-def build_command(cfg: dict, port: int) -> list[str]:
-    exe = shared_promptgen.find_server_exe(cfg["llama_dir"].strip())
-    if exe is None:  # validate() уже проверил, но состояние диска могло измениться
-        raise PromptGenError("llama-server не найден в папке llama.cpp.", 400)
-    ctx = cfg.get("ctx_size") or 0
-    cmd = [
-        exe,
-        "-m", cfg["model_path"].strip(),
-        "--host", "127.0.0.1",
-        "--port", str(port),
-        # одна «ячейка» обработки: не выделять память под несколько
-        # параллельных запросов, нужный ровно один
-        "-np", "1",
-        # шаблон чата из самой модели + chat_template_kwargs в запросе
-        "--jinja",
-    ]
-    if ctx > 0:
-        cmd += ["-c", str(ctx)]
-    mmproj = cfg.get("mmproj_path", "").strip()
-    if mmproj:
-        cmd += ["--mmproj", mmproj]
-    gpu_layers = cfg.get("gpu_layers", "").strip()
-    if gpu_layers:
-        cmd += ["-ngl", gpu_layers]
-    cmd += _split_extra_args(cfg.get("extra_args", ""))
-    return cmd
-
-
-def build_env(cfg: dict) -> dict:
-    env = os.environ.copy()
-    dirs = shared_promptgen.dll_dirs(cfg)
-    if dirs:
-        env["PATH"] = os.pathsep.join(dirs + [env.get("PATH", "")])
-    return env
-
-
-def _llama_log_path(job_id: str) -> str:
-    """Файл для вывода llama-server этого запуска; старые файлы удаляются
-    (остаются последние LLAMA_LOGS_KEEP)."""
-    directory = shared_promptgen.llama_log_dir()
-    try:
-        os.makedirs(directory, exist_ok=True)
-    except OSError:
-        directory = tempfile.gettempdir()
-    name = f"{datetime.datetime.now():%Y%m%d-%H%M%S}-{job_id}.log"
-    path = os.path.join(directory, name)
-    try:
-        old = sorted(
-            (os.path.join(directory, f) for f in os.listdir(directory) if f.endswith(".log")),
-            key=os.path.getmtime,
-        )
-        for stale in old[: max(0, len(old) - shared_promptgen.LLAMA_LOGS_KEEP + 1)]:
-            try:
-                os.remove(stale)
-            except OSError:
-                pass
-    except OSError:
-        pass
-    return path
-
-
-def _read_log_tail(path: str, lines: int = 15, max_bytes: int = 32768) -> str:
-    try:
-        with open(path, "rb") as f:
-            f.seek(0, os.SEEK_END)
-            size = f.tell()
-            f.seek(max(0, size - max_bytes))
-            data = f.read()
-    except OSError:
-        return ""
-    text = data.decode("utf-8", "replace")
-    return "\n".join(text.splitlines()[-lines:]).strip()
-
-
-def _read_log_text(path: str, max_bytes: int = 400_000) -> str:
-    try:
-        with open(path, "rb") as f:
-            data = f.read(max_bytes)
-    except OSError:
-        return ""
-    return data.decode("utf-8", "replace")
-
-
-def _spawn(cmd: list[str], cwd: str, env: dict, log_path: str):
-    """Запускает llama-server, перенаправляя ВЕСЬ его вывод в файл (а не в
-    pipe): нет потока-читателя, который мог бы зависнуть на закрытии pipe,
-    если у процесса остался живой потомок, и вывод сохраняется целиком для
-    разбора. Возвращает (Popen, открытый файл лога)."""
-    log_fh = open(log_path, "ab")
-    log_fh.write(
-        f"# {datetime.datetime.now().isoformat(timespec='seconds')}\n# cmd: {cmd}\n\n".encode("utf-8")
-    )
-    log_fh.flush()
-    kwargs = dict(
-        cwd=cwd,
-        env=env,
-        stdin=subprocess.DEVNULL,
-        stdout=log_fh,
-        stderr=subprocess.STDOUT,
-    )
-    if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-    try:
-        proc = subprocess.Popen(cmd, **kwargs)
-    except OSError as exc:
-        log_fh.close()
-        raise PromptGenError(f"Не удалось запустить llama-server: {exc}", 500) from exc
-    _attach_kill_on_close_job(proc)
-    return proc, log_fh
-
-
-def _kill_tree(proc: Optional[subprocess.Popen]) -> str:
-    """Убивает процесс и ВСЕХ его потомков; ждёт завершения (с таймаутом) и
-    возвращает краткий отчёт для лога. Безопасно вызывать повторно и из
-    нескольких потоков (cancel() и завершающий код задачи)."""
-    if proc is None:
-        return "нет процесса"
-    pid = proc.pid
-    psutil = _psutil()
-    report = ""
-    if psutil is not None:
-        try:
-            try:
-                parent = psutil.Process(pid)
-                victims = parent.children(recursive=True) + [parent]
-            except psutil.NoSuchProcess:
-                victims = []
-            for victim in victims:
-                try:
-                    victim.terminate()
-                except psutil.NoSuchProcess:
-                    pass
-            _gone, alive = psutil.wait_procs(victims, timeout=5)
-            for victim in alive:
-                try:
-                    victim.kill()
-                except psutil.NoSuchProcess:
-                    pass
-            if alive:
-                _gone2, alive = psutil.wait_procs(alive, timeout=5)
-            report = f"убито процессов: {len(victims)}"
-            if alive:
-                report += f", НЕ УДАЛОСЬ убить: {[p.pid for p in alive]}"
-        except Exception as exc:
-            report = f"ошибка psutil: {exc}"
-    else:
-        if os.name == "nt":
-            try:
-                subprocess.run(
-                    ["taskkill", "/F", "/T", "/PID", str(pid)],
-                    capture_output=True, timeout=15, creationflags=subprocess.CREATE_NO_WINDOW,
-                )
-            except Exception as exc:
-                report = f"ошибка taskkill: {exc}"
-        elif proc.poll() is None:
-            proc.terminate()
-        report = report or "без psutil"
-    try:
-        proc.wait(timeout=5)  # забираем код выхода, не оставляя зомби
-        if proc.poll() is None:
-            proc.kill()
-    except subprocess.TimeoutExpired:
-        proc.kill()
-    except Exception:
-        pass
-    return report
-
-
-def _stop_process(proc: Optional[subprocess.Popen], log_fh=None) -> Optional[str]:
-    """Останавливает llama-server и закрывает файл его лога. Возвращает
-    отчёт для лога (None, если останавливать было нечего)."""
-    if proc is None:
-        return None
-    t0 = time.monotonic()
-    try:
-        report = _kill_tree(proc)
-    except Exception as exc:
-        log.exception("Не удалось остановить llama-server")
-        report = f"ошибка: {exc}"
-    finally:
-        if log_fh is not None:
-            try:
-                log_fh.close()
-            except Exception:
-                pass
-    return f"pid {proc.pid}: {report}, {time.monotonic() - t0:.1f} с"
-
-
-def _exit_message(proc: subprocess.Popen, log_path: str, phase: str = "при запуске") -> str:
-    code = proc.returncode
-    lines = _read_log_tail(log_path, 15)
-    msg = f"llama-server завершился {phase} (код {code})."
-    if code is not None and (code & 0xFFFFFFFF) == _STATUS_DLL_NOT_FOUND:
-        msg += (
-            " Windows не нашла нужную DLL (0xC0000135): для llama-server из "
-            "LM Studio нужна папка vendor с CUDA-библиотеками — укажите её в "
-            "«Доп. папка с DLL» в настройках Studio, либо используйте обычный "
-            "релиз llama.cpp."
-        )
-    if lines:
-        msg += "\n" + lines
-    return msg
-
-
-# ---------------------------------------------------------------------------
-# Реестр запущенных процессов (уборка «осиротевших» после аварии Imagine)
-# ---------------------------------------------------------------------------
-
-def _registry_path() -> str:
-    return os.path.join(shared_promptgen.SHARED_DIR, "promptgen_running.json")
-
-
-def _registry_read() -> list[dict]:
-    try:
-        with open(_registry_path(), "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return [e for e in data if isinstance(e, dict) and "pid" in e] if isinstance(data, list) else []
-    except Exception:
-        return []
-
-
-def _registry_write(entries: list[dict]) -> None:
-    try:
-        os.makedirs(shared_promptgen.SHARED_DIR, exist_ok=True)
-        with open(_registry_path(), "w", encoding="utf-8") as f:
-            json.dump(entries, f)
-    except OSError:
-        pass
-
-
-def _register_process(proc: subprocess.Popen, job_id: str) -> None:
-    psutil = _psutil()
-    if psutil is None:
-        return
-    try:
-        created = psutil.Process(proc.pid).create_time()
-    except Exception:
-        return
-    entries = [e for e in _registry_read() if e.get("pid") != proc.pid]
-    entries.append({"pid": proc.pid, "create_time": created, "job": job_id})
-    _registry_write(entries)
-
-
-def _unregister_process(pid: int) -> None:
-    entries = _registry_read()
-    remaining = [e for e in entries if e.get("pid") != pid]
-    if len(remaining) != len(entries):
-        _registry_write(remaining)
-
-
-def sweep_stale() -> int:
-    """Добивает llama-server'ы, оставшиеся от прошлых запусков Imagine
-    (аварийное завершение, где не сработали ни хуки, ни Job Object).
-    Убивает ТОЛЬКО процессы из нашего реестра, у которых совпали pid, время
-    создания и «llama» в имени -- переиспользованный ОС pid чужого процесса
-    не тронет. Возвращает число убитых."""
-    psutil = _psutil()
-    if psutil is None or shared_promptgen is None:
-        return 0
-    entries = _registry_read()
-    if not entries:
-        return 0
-    killed = 0
-    for entry in entries:
-        try:
-            proc = psutil.Process(int(entry["pid"]))
-            same = abs(proc.create_time() - float(entry.get("create_time", 0))) < 2.0
-            if same and "llama" in proc.name().lower():
-                victims = proc.children(recursive=True) + [proc]
-                for victim in victims:
-                    try:
-                        victim.kill()
-                    except psutil.NoSuchProcess:
-                        pass
-                psutil.wait_procs(victims, timeout=5)
-                killed += 1
-                log.warning(
-                    "Убит «осиротевший» llama-server pid=%s (задача %s) — остался с прошлого запуска",
-                    entry["pid"], entry.get("job"),
-                )
-        except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError, KeyError):
-            pass
-        except Exception:
-            log.exception("Ошибка при уборке процесса из реестра: %s", entry)
-    _registry_write([])
-    return killed
-
-
-# ---------------------------------------------------------------------------
-# Задача
-# ---------------------------------------------------------------------------
-
-class Job:
-    ACTIVE_STATES = ("loading", "generating")
-
-    def __init__(self):
-        self.id = uuid.uuid4().hex[:12]
-        self.state = "loading"       # loading | generating | done | error | cancelled
-        self.error: Optional[str] = None
-        self.tokens = 0
-        self.thinking = False
-        self.truncated = False
-        self.warnings: list[dict] = []
-        self.timings: Optional[dict] = None   # блок timings из последнего SSE-чанка llama-server
-        self.marks: dict[str, float] = {"created": time.monotonic()}
-        self.created_wall = time.time()          # для истории: время начала в unix-секундах
-        self.finished_wall: Optional[float] = None
-        self.usage: Optional[dict] = None        # блок usage из последнего SSE-чанка (stream_options.include_usage)
-        # что именно было запрошено (заполняется в _run, пишется в историю)
-        self.prefix = ""
-        self.user_text = ""
-        self.full_prompt = ""
-        self.has_image = False
-        self.image_name = ""
-        self.finished: Optional[float] = None
-        self.cancel_event = threading.Event()
-        self.proc: Optional[subprocess.Popen] = None
-        self.thread: Optional[threading.Thread] = None
-        self._raw = ""
-        self._final: Optional[str] = None
-        self._lock = threading.Lock()
-
-    @property
-    def created(self) -> float:
-        return self.marks["created"]
-
-    @property
-    def active(self) -> bool:
-        return self.state in self.ACTIVE_STATES
-
-    # -- изменение состояния ------------------------------------------------
-
-    def mark(self, name: str) -> None:
-        self.marks.setdefault(name, time.monotonic())
-
-    def set_state(self, state: str) -> None:
-        with self._lock:
-            if self.active:
-                self.state = state
-
-    def add_warning(self, warning: dict) -> None:
-        with self._lock:
-            self.warnings.append(warning)
-
-    def add_content(self, piece: str) -> None:
-        with self._lock:
-            self._raw += piece
-            self.tokens += 1
-            # «думает», пока последний открывающий тег не закрыт
-            low = self._raw.lower()
-            self.thinking = low.rfind("<think>") > low.rfind("</think>")
-
-    def note_reasoning(self) -> None:
-        with self._lock:
-            self.tokens += 1
-            self.thinking = True
-
-    def finish_ok(self, text: str) -> None:
-        with self._lock:
-            self._final = text
-            self.state = "done"
-            self.thinking = False
-            self.finished = time.monotonic()
-            self.finished_wall = time.time()
-
-    def finish_error(self, message: str) -> None:
-        with self._lock:
-            self.error = message
-            self.state = "error"
-            self.finished = time.monotonic()
-            self.finished_wall = time.time()
-
-    def finish_cancelled(self) -> None:
-        with self._lock:
-            self.state = "cancelled"
-            self.finished = time.monotonic()
-            self.finished_wall = time.time()
-
-    # -- чтение -------------------------------------------------------------
-
-    def raw_text(self) -> str:
-        with self._lock:
-            return self._raw
-
-    def snapshot(self) -> dict:
-        with self._lock:
-            text = self._final if self._final is not None else clean_output(self._raw)
-            end = self.finished if self.finished is not None else time.monotonic()
-            return {
-                "job_id": self.id,
-                "state": self.state,
-                "text": text,
-                "tokens": self.tokens,
-                "thinking": self.thinking,
-                "truncated": self.truncated,
-                "warnings": list(self.warnings),
-                "error": self.error,
-                "elapsed": round(end - self.created, 1),
-            }
-
-
-def clean_output(raw: str) -> str:
-    """Убирает «рассуждения» из ответа: закрытые <think>…</think> блоки, а
-    также незакрытый <think>… (обрыв по лимиту токенов) -- всё после
-    открывающего тега считается рассуждением, а не ответом."""
-    text = _THINK_BLOCK_RE.sub("", raw)
-    match = _THINK_OPEN_RE.search(text)
-    if match:
-        text = text[: match.start()]
-    return text.strip()
-
-
-def _with_log_hint(message: str) -> str:
-    if shared_promptgen is None:
-        return message
-    return f"{message}\n\nПодробности — в логе: {shared_promptgen.log_file_path()}"
 
 
 # ---------------------------------------------------------------------------
@@ -1239,8 +516,8 @@ class PromptGenerator:
                     # чтобы в логе было видно реальное состояние VRAM
                     time.sleep(0.5)
                     _jlog(job, logging.INFO, "после остановки: %s", _system_snapshot())
-                except Exception:
-                    pass
+                except Exception:  # граница: диагностика после остановки не должна влиять на итог задачи
+                    log.debug("[%s] не удалось записать состояние после остановки", job.id, exc_info=True)
 
     # -- этапы ---------------------------------------------------------------
 
@@ -1345,71 +622,14 @@ class PromptGenerator:
             time.sleep(0.5)
 
     def _inspect_llama_log(self, job: Job, cfg: dict, log_path: str) -> None:
-        """Достаёт из вывода llama-server то, что объясняет медленную работу:
-        сколько слоёв реально на GPU и на чём работает кодировщик изображений."""
-        text = _read_log_text(log_path)
-        all_lines = text.splitlines()
-        lines = [ln.strip()[:220] for ln in all_lines if _KEY_LINE_RE.search(ln) and not ln.startswith("# cmd")]
-        _jlog(job, logging.INFO, "вывод llama-server при загрузке: %d строк", len(all_lines))
-        if lines:
-            _jlog(job, logging.INFO, "ключевые строки llama-server:\n  %s", "\n  ".join(lines[:40]))
-        gaps = analyze_load_timeline(text)
-        if gaps:
-            _jlog(job, logging.INFO, "самые долгие паузы в выводе llama-server при загрузке:\n  %s", "\n  ".join(gaps))
-
-        offloads = _OFFLOAD_RE.findall(text)
-        if offloads:
-            loaded, total = int(offloads[-1][0]), int(offloads[-1][1])
-            if loaded < total:
-                _jlog(
-                    job, logging.WARNING,
-                    "модель на GPU лишь частично: %d из %d слоёв — остальное считается на CPU "
-                    "(не хватило видеопамяти) → генерация будет медленной", loaded, total,
-                )
-                job.add_warning({"code": "gpu_partial", "loaded": loaded, "total": total})
-            else:
-                _jlog(job, logging.INFO, "слои на GPU: %d из %d", loaded, total)
-        else:
-            _jlog(
-                job, logging.INFO,
-                "в выводе llama-server не найдена строка про слои на GPU (формат вывода этой сборки может "
-                "отличаться) — смотрите файл лога llama-server",
-            )
-
-        if cfg.get("mmproj_path", "").strip():
-            backends = _CLIP_BACKEND_RE.findall(text)
-            if backends:
-                backend = backends[-1]
-                _jlog(job, logging.INFO, "кодировщик изображений (mmproj): %s", backend)
-                if "cpu" in backend.lower():
-                    _jlog(job, logging.WARNING, "кодировщик изображений работает на CPU → картинки будут обрабатываться медленно")
-                    job.add_warning({"code": "clip_cpu"})
+        """Достаёт из вывода llama-server то, что объясняет медленную работу
+        (логика -- в promptgen_diag.inspect_llama_log)."""
+        inspect_llama_log(job, cfg, log_path)
 
     @staticmethod
     def _token_counts(job: Job) -> tuple[Optional[int], Optional[int], Optional[int], str]:
-        """(запрос, ответ, всего, источник). Приоритет: usage от llama-server
-        -> блок timings (prompt_n + cache_n / predicted_n) -> число принятых
-        SSE-чанков (≈ токенов ответа; запрос неизвестен)."""
-        def num(value):
-            return int(value) if isinstance(value, (int, float)) else None
-
-        u = job.usage
-        if u and num(u.get("completion_tokens")) is not None:
-            prompt, completion = num(u.get("prompt_tokens")), num(u.get("completion_tokens"))
-            total = num(u.get("total_tokens"))
-            if total is None and prompt is not None:
-                total = prompt + completion
-            return prompt, completion, total, "usage"
-        t = job.timings
-        if t and num(t.get("predicted_n")) is not None:
-            prompt_n = num(t.get("prompt_n"))
-            prompt = None if prompt_n is None else prompt_n + (num(t.get("cache_n")) or 0)
-            completion = num(t.get("predicted_n"))
-            total = None if prompt is None else prompt + completion
-            return prompt, completion, total, "timings"
-        if job.tokens:
-            return None, job.tokens, None, "chunks"
-        return None, None, None, ""
+        """(запрос, ответ, всего, источник); логика -- в promptgen_job.token_counts."""
+        return token_counts(job)
 
     def _save_history(self, job: Job, cfg: dict) -> None:
         """Одна запись в базу истории (см. promptgen_history.py). Любая
@@ -1417,207 +637,21 @@ class PromptGenerator:
         if promptgen_history is None or not cfg.get("log_requests", True):
             return
         try:
-            m = job.marks
-            end = job.finished if job.finished is not None else time.monotonic()
-
-            def span(a, b):
-                return round(m[b] - m[a], 3) if a in m and b in m else None
-
-            load_s = span("spawned", "ready")
-            ttft_s = span("ready", "first_token")
-            gen_s = span("first_token", "generated")
-            prompt_tokens, completion_tokens, total_tokens, source = self._token_counts(job)
-            rate = None
-            t = job.timings
-            if t and t.get("predicted_per_second"):
-                rate = round(float(t["predicted_per_second"]), 2)  # скорость из самого llama-server
-            elif gen_s and completion_tokens:
-                rate = round(completion_tokens / gen_s, 2)
-
-            with job._lock:
-                final = job._final
-                raw = job._raw
-                state, error = job.state, job.error
-            output = final if final is not None else clean_output(raw)
-            promptgen_history.add_record({
-                "job_id": job.id,
-                "started_at": job.created_wall,
-                "finished_at": job.finished_wall or time.time(),
-                "state": state,
-                "error": error or "",
-                "prefix": job.prefix,
-                "user_text": job.user_text,
-                "full_prompt": job.full_prompt,
-                "has_image": job.has_image,
-                "image_name": job.image_name,
-                "output_text": output,
-                "raw_output": raw if raw and raw.strip() != output else "",
-                "truncated": job.truncated,
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-                "tokens_source": source,
-                "total_s": round(end - job.created, 3),
-                "load_s": load_s,
-                "ttft_s": ttft_s,
-                "gen_s": gen_s,
-                "tok_per_s": rate,
-                "model_name": os.path.basename(cfg.get("model_path") or ""),
-                "mmproj_name": os.path.basename(cfg.get("mmproj_path") or ""),
-                "ctx_size": cfg.get("ctx_size"),
-            })
+            promptgen_history.add_record(history_record(job, cfg))
         except Exception:
             _jlog(job, logging.WARNING, "не удалось записать запрос в историю", exc_info=True)
 
     def _log_stats(self, job: Job, result_len: int) -> None:
-        m = job.marks
-        load = m["ready"] - m["spawned"]
-        ttft = (m["first_token"] - m["ready"]) if "first_token" in m else None
-        gen = (m["generated"] - m["first_token"]) if "first_token" in m else None
-        parts = [f"загрузка {load:.1f} с"]
-        if ttft is not None:
-            parts.append(f"до первого токена {ttft:.1f} с (обработка запроса и картинки)")
-        if gen is not None:
-            rate = f", {job.tokens / gen:.1f} ток/с" if gen > 0 else ""
-            parts.append(f"генерация {gen:.1f} с ({job.tokens} ток.{rate})")
-        _jlog(job, logging.INFO, "тайминги: %s; ответ %d симв.", "; ".join(parts), result_len)
-        t = job.timings
-        if t:
-            _jlog(
-                job, logging.INFO,
-                "llama-server timings: запрос %s ток. за %.0f мс (%.1f ток/с, из кэша %s); "
-                "ответ %s ток. за %.0f мс (%.1f ток/с)",
-                t.get("prompt_n"), t.get("prompt_ms") or 0, t.get("prompt_per_second") or 0, t.get("cache_n", 0),
-                t.get("predicted_n"), t.get("predicted_ms") or 0, t.get("predicted_per_second") or 0,
-            )
-        if job.truncated:
-            _jlog(job, logging.WARNING, "ответ обрезан лимитом max_tokens=%d", MAX_TOKENS)
+        log_job_stats(job, result_len)
 
     def _stream_completion(
         self, job: Job, port: int, prompt: str, image: Optional[str], proc, log_path: str
     ) -> None:
-        if image:
-            content = [
-                {"type": "image_url", "image_url": {"url": image}},
-                {"type": "text", "text": prompt},
-            ]
-        else:
-            content = prompt
-        body = {
-            "model": "local",
-            "messages": [{"role": "user", "content": content}],
-            "max_tokens": MAX_TOKENS,
-            "stream": True,
-            # финальный чанк с точным числом токенов (usage) -- для истории
-            "stream_options": {"include_usage": True},
-            # Qwen3 и похожие: не «думать» перед ответом. Модели без
-            # такого параметра шаблона его игнорируют.
-            "chat_template_kwargs": {"enable_thinking": False},
-        }
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{port}/v1/chat/completions",
-            data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
-            method="POST",
-        )
-        complete = False  # получен ли штатный конец потока ([DONE] / finish_reason)
-        try:
-            with _opener.open(req, timeout=STREAM_TIMEOUT_S) as resp:
-                for raw_line in resp:
-                    if job.cancel_event.is_set():
-                        raise _Cancelled()
-                    line = raw_line.decode("utf-8", "replace").strip()
-                    if not line.startswith("data:"):
-                        continue
-                    payload = line[5:].strip()
-                    if payload == "[DONE]":
-                        complete = True
-                        break
-                    try:
-                        obj = json.loads(payload)
-                    except ValueError:
-                        continue
-                    if isinstance(obj, dict) and obj.get("error"):
-                        raise PromptGenError(f"llama-server: {_error_text(obj['error'])}", 502)
-                    if isinstance(obj.get("timings"), dict):
-                        job.timings = obj["timings"]
-                    if isinstance(obj.get("usage"), dict):
-                        job.usage = obj["usage"]
-                    choices = obj.get("choices") or []
-                    if not choices:
-                        continue
-                    choice = choices[0]
-                    delta = choice.get("delta") or {}
-                    if delta.get("content"):
-                        job.mark("first_token")
-                        job.add_content(delta["content"])
-                    elif delta.get("reasoning_content"):
-                        job.mark("first_token")
-                        job.note_reasoning()
-                    if choice.get("finish_reason"):
-                        complete = True
-                        if choice["finish_reason"] == "length":
-                            job.truncated = True
-        except urllib.error.HTTPError as exc:
-            detail = ""
-            try:
-                detail = _error_text(json.loads(exc.read().decode("utf-8", "replace")).get("error"))
-            except Exception:
-                pass
-            raise PromptGenError(
-                f"llama-server вернул ошибку {exc.code}" + (f": {detail}" if detail else "") + ".",
-                502,
-            ) from exc
-        except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as exc:
-            if job.cancel_event.is_set():
-                raise _Cancelled() from exc
-            raise PromptGenError(
-                self._lost_connection_message(proc, log_path, f"{exc}"), 502
-            ) from exc
-
-        # Поток мог закончиться "тихо": отмена (cancel/shutdown убили
-        # процесс) либо llama-server упал на середине (например, нехватка
-        # VRAM) -- в обоих случаях обрубок текста НЕ должен выдаваться за
-        # готовый результат.
-        if job.cancel_event.is_set():
-            raise _Cancelled()
-        if not complete:
-            raise PromptGenError(self._lost_connection_message(proc, log_path, "поток ответа оборвался"), 502)
+        stream_completion(job, port, prompt, image, proc, log_path)
 
     @staticmethod
     def _lost_connection_message(proc, log_path: str, reason: str) -> str:
-        # даём процессу мгновение завершиться, чтобы увидеть код выхода и
-        # последние строки его вывода (там обычно и написана причина)
-        for _ in range(10):
-            if proc.poll() is not None:
-                break
-            time.sleep(0.1)
-        if proc.poll() is not None:
-            time.sleep(0.2)  # дочитать вывод
-            return _exit_message(proc, log_path, "во время генерации")
-        return f"Соединение с llama-server потеряно: {reason}"
-
-
-def _clean_image_name(name: Optional[str]) -> str:
-    """Имя файла картинки из браузера: только последний компонент пути
-    (на всякий случай -- браузеры и так отдают без пути), без
-    управляющих символов, не длиннее 255."""
-    name = (name or "").replace("\\", "/").rsplit("/", 1)[-1]
-    name = "".join(ch for ch in name if ch.isprintable()).strip()
-    return name[:255]
-
-
-def _file_mb(path: str) -> int:
-    try:
-        return os.path.getsize(path) // _MIB
-    except (OSError, TypeError):
-        return 0
-
-
-def _error_text(err) -> str:
-    if isinstance(err, dict):
-        return str(err.get("message") or err)
-    return str(err)
+        return lost_connection_message(proc, log_path, reason)
 
 
 generator = PromptGenerator()

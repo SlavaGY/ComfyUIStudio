@@ -38,7 +38,7 @@
 задавать ДО импорта этих модулей (то есть до запуска приложения).
 
 Сюда НЕ относится кэш CUDA-ядер драйвера NVIDIA
-(``%APPDATA%\\NVIDIA\\ComputeCache``, imagine/backend/promptgen.py) — это
+(``%APPDATA%\\NVIDIA\\ComputeCache``, imagine/backend/promptgen_diag.py) — это
 чужая папка, а не данные приложения.
 """
 from __future__ import annotations

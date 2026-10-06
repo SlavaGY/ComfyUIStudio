@@ -110,13 +110,13 @@ ComfyUIStudio. Команды ниже запускаются из КОРНЯ р
 
 ```bash
 pip install -e ".[dev]"                    # из корня репозитория
-pytest                                      # testpaths уже указывает на tools/promptvault/tests
+pytest                                      # testpaths = tests/; тесты PromptVault — tests/promptvault/
 pytest --cov=comfyui_studio.promptvault    # с покрытием
 ```
 
 Новую логику в `comfyui_studio/promptvault/core/` (особенно всё, что
 касается БД, миграций и фильтрации) крайне желательно сопровождать
-тестами в `tools/promptvault/tests/`. Для тестов, работающих с БД,
+тестами в `tests/promptvault/`. Для тестов, работающих с БД,
 используйте фикстуру `tmp_path` — не пишите тестовые данные в реальную
 `~/.promptvault/promptvault.db`.
 

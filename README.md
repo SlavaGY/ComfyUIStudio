@@ -25,7 +25,7 @@ ComfyUIStudio/
 │   └── promptvault/                PromptVault
 └── tools/                          ЛЕГАСИ: только служебные файлы сборки
     ├── prompt_builder/              отдельных standalone-exe (build_windows.bat/build.spec,
-    └── promptvault/                 build.bat/PromptVault.spec) + tools/promptvault/tests/ —
+    └── promptvault/                 build.bat/PromptVault.spec) —   
                                       исходники самих инструментов здесь больше не лежат,
                                       см. предупреждение в конце этого README
 ```

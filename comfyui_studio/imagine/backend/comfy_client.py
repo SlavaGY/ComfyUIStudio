@@ -16,12 +16,12 @@ import urllib.parse
 import urllib.request
 import uuid
 
+from comfyui_studio.errors import ComfyUIConnectionError, ComfyUIError
 
-class ComfyUIError(Exception):
-    """Сеть/ComfyUI недоступны или ответили ошибкой -- отдаём наружу
-    (в отличие от comfy_api.py в Studio, здесь это FastAPI-бэкенд, у
-    которого есть кому вернуть внятный HTTP-статус вызвавшему фронтенду,
-    поэтому исключение уместнее тихого None)."""
+
+# ComfyUIError переехал в comfyui_studio/errors.py (этап R11.1); имя остаётся
+# доступным отсюда: main.py и тесты импортируют его из comfy_client.
+__all__ = ["ComfyClient", "ComfyUIConnectionError", "ComfyUIError"]
 
 
 class ComfyClient:
@@ -60,8 +60,10 @@ class ComfyClient:
         try:
             with urllib.request.urlopen(url, timeout=timeout or self.timeout) as resp:
                 return json.loads(resp.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        except (urllib.error.HTTPError, json.JSONDecodeError) as exc:  # ComfyUI ответил, но не тем
             raise ComfyUIError(f"GET {path} failed: {exc}") from exc
+        except (urllib.error.URLError, TimeoutError) as exc:  # HTTPError выше: он тоже URLError
+            raise ComfyUIConnectionError(f"GET {path} failed: {exc}") from exc
 
     def _post(self, path: str, payload: dict, timeout: float = None):
         url = f"{self.base_url}{path}"
@@ -76,8 +78,10 @@ class ComfyClient:
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="ignore")
             raise ComfyUIError(f"POST {path} -> HTTP {exc.code}: {detail}") from exc
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        except json.JSONDecodeError as exc:
             raise ComfyUIError(f"POST {path} failed: {exc}") from exc
+        except (urllib.error.URLError, TimeoutError) as exc:  # HTTPError уже обработан выше
+            raise ComfyUIConnectionError(f"POST {path} failed: {exc}") from exc
 
     # -- публичный API ------------------------------------------------------
 
@@ -158,8 +162,10 @@ class ComfyClient:
         try:
             with urllib.request.urlopen(url, timeout=self.timeout) as resp:
                 return resp.read(), resp.headers.get("Content-Type", "image/png")
-        except (urllib.error.URLError, TimeoutError) as exc:
+        except urllib.error.HTTPError as exc:  # ComfyUI ответил кодом ошибки
             raise ComfyUIError(f"Не удалось получить изображение: {exc}") from exc
+        except (urllib.error.URLError, TimeoutError) as exc:
+            raise ComfyUIConnectionError(f"Не удалось получить изображение: {exc}") from exc
 
     def get_object_info(self, node_class: str = None):
         path = "/object_info"

@@ -15,7 +15,7 @@ test_comfy_api.py) не задействовал бы настоящий раз�
 QWebSocket и ничего бы не доказал.
 
 Требует PySide6 (QtWebSockets) и запущенный QApplication — даёт его
-qtbot из pytest-qt (см. tools/promptvault/tests/conftest.py, тот же
+qtbot из pytest-qt (см. tests/promptvault/conftest.py, тот же
 паттерн уже используется для тестов PromptVault с реальными
 Qt-виджетами). ws_server -- fixture из conftest.py (общая с
 test_system_monitor_ws.py).

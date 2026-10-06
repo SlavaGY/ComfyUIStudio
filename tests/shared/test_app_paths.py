@@ -195,7 +195,7 @@ class TestNoScatteredAppdata:
     _ALLOWED = {
         # (файл относительно comfyui_studio, подстрока допустимой строки)
         ("app_paths.py", None),
-        ("imagine/backend/promptgen.py", 'appdata = os.environ.get("APPDATA")'),
+        ("imagine/backend/promptgen_diag.py", 'appdata = os.environ.get("APPDATA")'),
     }
 
     def test_environ_appdata_only_in_app_paths(self):

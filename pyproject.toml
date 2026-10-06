@@ -79,7 +79,7 @@ imagine = [
 # отдельно в tools/promptvault/pyproject.toml (тот файл удалён —
 # единая точка правды вместо двух параллельных pyproject.toml с
 # рассинхронизирующимися версиями зависимостей). pytest/ruff/mypy
-# сейчас используются тестами PromptVault (tools/promptvault/tests/) и
+# сейчас используются тестами PromptVault (tests/promptvault/) и
 # Launcher (tests/launcher/, с этапа 6) — группа объявлена на уровне
 # всего репозитория, а не привязана к одному инструменту.
 #
@@ -141,18 +141,13 @@ include = ["comfyui_studio*"]
 # --------------------------------------------------------------------------
 
 [tool.pytest.ini_options]
-# Тесты PromptVault физически остаются в tools/promptvault/tests/ (этап 2
-# дорожной карты переносил только сам ИМПОРТИРУЕМЫЙ пакет — бывший app/,
-# теперь comfyui_studio/promptvault/ — под общее пространство имён
-# комплекта; сами тесты никогда не переезжали). Тесты Launcher (с этапа 6)
-# живут в новом корневом tests/launcher/ — для Launcher нет своего
-# tools/<name>/, в отличие от PromptVault/Prompt Builder, так что нет и
-# унаследованной директории тестов рядом со старым расположением, которую
-# нужно было бы сохранять. Запускать pytest нужно из корня репозитория
-# (там же, где этот pyproject.toml) — `pythonpath = ["."]` добавляет
-# корень в sys.path, чтобы `import comfyui_studio...` резолвился без
-# отдельной установки пакета.
-testpaths = ["tools/promptvault/tests", "tests"]
+# Все тесты комплекта живут в одном пакете tests/ (этап R11.5 плана
+# рефакторинга): tests/promptvault/ (бывший tools/promptvault/tests/),
+# tests/launcher/, tests/imagine/, tests/shared/ и т.д. Запускать pytest
+# нужно из корня репозитория (там же, где этот pyproject.toml) —
+# `pythonpath = ["."]` добавляет корень в sys.path, чтобы
+# `import comfyui_studio...` резолвился без отдельной установки пакета.
+testpaths = ["tests"]
 pythonpath = ["."]
 qt_api = "pyside6"
 
@@ -170,10 +165,52 @@ target-version = "py311"
 [tool.ruff.lint]
 # намеренно небольшой набор правил на старте — Pyflakes (ошибки) +
 # наведение порядка импортов; расширять по мере обкатки на реальном коде
-select = ["E", "F", "I"]
+select = ["E", "F", "I", "BLE"]
 ignore = [
     "E501",  # длина строки — уже покрыта line-length, не дублируем как ошибку
 ]
+
+# BLE001 (этап R11.2 плана): `except Exception` допустим только как граница
+# подсистемы (с логом). Файлы ниже — те, где такие обработчики уже были на
+# момент включения правила; ни один новый файл в список попадать не должен.
+# Число обработчиков в каждом файле не даст расти тест
+# tests/shared/test_broad_except_budget.py (там же — исходные числа).
+# Трогаешь файл — сужай исключения в нём и уменьшай число в тесте.
+[tool.ruff.lint.per-file-ignores]
+"comfyui_studio/imagine/backend/comfy_client.py" = ["BLE001"]  # 1
+"comfyui_studio/imagine/backend/progress_forwarder.py" = ["BLE001"]  # 1
+"comfyui_studio/imagine/backend/promptgen.py" = ["BLE001"]  # 5
+"comfyui_studio/imagine/backend/promptgen_diag.py" = ["BLE001"]  # 12
+"comfyui_studio/imagine/backend/promptgen_process.py" = ["BLE001"]  # 4
+"comfyui_studio/launcher/core/background.py" = ["BLE001"]  # 1
+"comfyui_studio/launcher/core/comfy_api.py" = ["BLE001"]  # 2
+"comfyui_studio/launcher/core/comfy_process.py" = ["BLE001"]  # 1
+"comfyui_studio/launcher/core/comfy_ws.py" = ["BLE001"]  # 1
+"comfyui_studio/launcher/core/config.py" = ["BLE001"]  # 2
+"comfyui_studio/launcher/core/managed_process.py" = ["BLE001"]  # 6
+"comfyui_studio/launcher/core/remote_net.py" = ["BLE001"]  # 1
+"comfyui_studio/launcher/core/system_monitor.py" = ["BLE001"]  # 3
+"comfyui_studio/launcher/integration/comfy_theme.py" = ["BLE001"]  # 1
+"comfyui_studio/launcher/ui/remote_controller.py" = ["BLE001"]  # 1
+"comfyui_studio/launcher/ui/settings/prompt_history_page.py" = ["BLE001"]  # 5
+"comfyui_studio/launcher/ui/settings/promptvault_page.py" = ["BLE001"]  # 1
+"comfyui_studio/launcher/ui/settings_page.py" = ["BLE001"]  # 2
+"comfyui_studio/mem_diagnostics.py" = ["BLE001"]  # 4
+"comfyui_studio/promptgen_history.py" = ["BLE001"]  # 1
+"comfyui_studio/promptvault/main.py" = ["BLE001"]  # 2
+"comfyui_studio/promptvault/utils.py" = ["BLE001"]  # 1
+"comfyui_studio/remote/app_launcher.py" = ["BLE001"]  # 1
+"comfyui_studio/remote/comfy_launcher.py" = ["BLE001"]  # 2
+"comfyui_studio/remote/device_store.py" = ["BLE001"]  # 1
+"comfyui_studio/remote/fcm.py" = ["BLE001"]  # 2
+"comfyui_studio/remote/generation_watcher.py" = ["BLE001"]  # 1
+"comfyui_studio/remote/gpu_stats.py" = ["BLE001"]  # 3
+"comfyui_studio/remote/mdns.py" = ["BLE001"]  # 2
+"comfyui_studio/remote/process_by_port.py" = ["BLE001"]  # 1
+"comfyui_studio/remote/ssh_config_store.py" = ["BLE001"]  # 1
+"comfyui_studio/remote/ws_hub.py" = ["BLE001"]  # 1
+"comfyui_studio/shared_promptgen.py" = ["BLE001"]  # 3
+"tests/test_promptgen_history.py" = ["BLE001"]  # 1
 
 [tool.ruff.format]
 # ruff format ПОДКЛЮЧЁН и настроен здесь — доступен любому через
@@ -208,9 +245,9 @@ ignore_missing_imports = true
 warn_redundant_casts = true
 # UI-слой (PySide6-виджеты) пока не типизирован полностью — начинаем
 # со строгой проверки только для comfyui_studio/promptvault/core, где
-# сосредоточена бизнес-логика. tools/promptvault/tests/ исключены по
+# сосредоточена бизнес-логика. tests/ исключены по
 # той же причине, что и раньше (тесты не покрыты strict-типизацией).
-exclude = ["comfyui_studio/promptvault/ui/", "tools/promptvault/tests/"]
+exclude = ["comfyui_studio/promptvault/ui/", "tests/"]
 
 [[tool.mypy.overrides]]
 module = "comfyui_studio.promptvault.core.*"
@@ -227,9 +264,15 @@ warn_unused_ignores = true
 warn_return_any = true
 strict_equality = true
 
-# Этапы R8/R2 (правило R11.3 плана: новые модули — со строгим mypy с первого дня).
+# Этапы R8/R2/R9/R11 (правило R11.3 плана: новые модули — со строгим mypy с первого дня).
 [[tool.mypy.overrides]]
-module = ["comfyui_studio.themes.base", "comfyui_studio.i18n_base", "comfyui_studio.app_paths"]
+module = [
+    "comfyui_studio.themes.base",
+    "comfyui_studio.i18n_base",
+    "comfyui_studio.app_paths",
+    "comfyui_studio.prompt_builder.tree_ops",
+    "comfyui_studio.errors",
+]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 disallow_untyped_decorators = true

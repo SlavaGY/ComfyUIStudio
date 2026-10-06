@@ -37,6 +37,7 @@ import urllib.error
 from .constants import PROJECT_ROOT
 from .logging_setup import log
 from .managed_process import ManagedProcess, find_missing_modules
+from ...errors import ProcessStartError
 from ...imagine.__main__ import IMAGINE_CLI_FLAG
 
 IMAGINE_MODULE_NAME = "comfyui_studio.imagine"
@@ -150,7 +151,7 @@ class ImagineProcess(ManagedProcess):
             remote_port=self.remote_port,
         )
         if error:
-            raise RuntimeError(error)
+            raise ProcessStartError(error)
 
         log.info(
             "Запуск Imagine: %s (cwd=%s, comfyui=%s:%s, dev=%s)",

@@ -20,18 +20,18 @@ from typing import Any, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QGroupBox,
-    QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QMessageBox,
+    QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
     QPushButton, QScrollArea, QSpinBox, QSplitter, QStackedWidget,
-    QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QTreeWidget,
-    QTreeWidgetItem, QVBoxLayout, QWidget,
+    QTabWidget, QTextEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
+from comfyui_studio.prompt_builder import tree_ops
 from comfyui_studio.prompt_builder.logic import (
-    display_loras_for, find_legacy_lora_options, format_lora_entry,
-    migrate_legacy_lora_option, new_id, parse_lora_entry,
+    display_loras_for, find_legacy_lora_options, migrate_legacy_lora_option,
 )
-from comfyui_studio.prompt_builder.lora_combo import LoraFileCombo
+from comfyui_studio.prompt_builder.lora_table_editor import LoraTableEditor
+from comfyui_studio.prompt_builder.named_text_list_editor import NamedTextListEditor
+from comfyui_studio.prompt_builder.preset_group_editor import PresetGroupEditor
 
 NODE_TYPES = ["multi_select", "single_select", "free_text"]
 TYPE_LABELS = {
@@ -40,98 +40,6 @@ TYPE_LABELS = {
     "free_text": "✎ Свободный текст",
 }
 NODE_ROLE = Qt.UserRole
-
-
-class LoraTableEditor(QWidget):
-    """Редактор списка LoRA вида ["name:strength", ...] для опций блока."""
-
-    def __init__(self, on_change=None, loc=None, parent=None):
-        super().__init__(parent)
-        self.on_change = on_change
-        self.loc = loc
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self.table = QTableWidget(0, 2)
-        self.table.setHorizontalHeaderLabels([self._tr("LoRA"), self._tr("Сила")])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.table.verticalHeader().setVisible(False)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setMaximumHeight(120)
-        layout.addWidget(self.table)
-
-        row = QHBoxLayout()
-        self.name_edit = LoraFileCombo()
-        self.name_edit.setPlaceholderText(self._tr("имя LoRA"))
-        self.strength_edit = QLineEdit("1.0")
-        self.strength_edit.setMaximumWidth(60)
-        self.add_btn = QPushButton(self._tr("+ Добавить"))
-        self.add_btn.clicked.connect(self._add)
-        self.remove_btn = QPushButton(self._tr("Удалить"))
-        self.remove_btn.clicked.connect(self._remove)
-        row.addWidget(self.name_edit, 1)
-        row.addWidget(self.strength_edit)
-        row.addWidget(self.add_btn)
-        row.addWidget(self.remove_btn)
-        layout.addLayout(row)
-
-    def _tr(self, text):
-        return self.loc.tr(text) if self.loc is not None else text
-
-    def retranslate_ui(self):
-        self.table.setHorizontalHeaderLabels([self._tr("LoRA"), self._tr("Сила")])
-        self.name_edit.setPlaceholderText(self._tr("имя LoRA"))
-        self.add_btn.setText(self._tr("+ Добавить"))
-        self.remove_btn.setText(self._tr("Удалить"))
-
-    def set_entries(self, entries: list[str]):
-        self.table.setRowCount(0)
-        for entry in entries or []:
-            name, strength = parse_lora_entry(entry)
-            self._append_row(name, strength)
-
-    def _append_row(self, name: str, strength: float):
-        row = self.table.rowCount()
-        self.table.insertRow(row)
-        self.table.setItem(row, 0, QTableWidgetItem(name))
-        self.table.setItem(row, 1, QTableWidgetItem(f"{strength:g}"))
-
-    def get_entries(self) -> list[str]:
-        result = []
-        for row in range(self.table.rowCount()):
-            name = self.table.item(row, 0).text()
-            strength = self.table.item(row, 1).text()
-            try:
-                strength_f = float(strength)
-            except ValueError:
-                strength_f = 1.0
-            result.append(format_lora_entry(name, strength_f))
-        return result
-
-    def _add(self):
-        name = self.name_edit.text().strip()
-        if not name:
-            return
-        try:
-            strength = float(self.strength_edit.text().strip() or "1.0")
-        except ValueError:
-            strength = 1.0
-        self._append_row(name, strength)
-        self.name_edit.clear()
-        self.strength_edit.setText("1.0")
-        if self.on_change:
-            self.on_change()
-
-    def _remove(self):
-        rows = sorted({idx.row() for idx in self.table.selectedIndexes()}, reverse=True)
-        if not rows:
-            return
-        for r in rows:
-            self.table.removeRow(r)
-        if self.on_change:
-            self.on_change()
 
 
 class PromptBuilderTab(QWidget):
@@ -450,10 +358,10 @@ class PromptBuilderTab(QWidget):
     # ------------------------------------------------------- presets page
     def _build_presets_page(self):
         layout = QHBoxLayout(self.presets_page)
-        self.preset_editors: dict[str, "_PresetGroupEditor"] = {}
-        self.preset_editors["quality_prefix"] = _PresetGroupEditor(
+        self.preset_editors: dict[str, PresetGroupEditor] = {}
+        self.preset_editors["quality_prefix"] = PresetGroupEditor(
             self._tr("Префикс качества (quality_prefix)"), self._mark_dirty, loc=self.loc)
-        self.preset_editors["source"] = _PresetGroupEditor(
+        self.preset_editors["source"] = PresetGroupEditor(
             self._tr("Источник (source)"), self._mark_dirty, loc=self.loc)
         layout.addWidget(self.preset_editors["quality_prefix"])
         layout.addWidget(self.preset_editors["source"])
@@ -461,7 +369,7 @@ class PromptBuilderTab(QWidget):
     # ----------------------------------------------------- negatives page
     def _build_negatives_page(self):
         layout = QVBoxLayout(self.negatives_page)
-        self.negative_editor = _NamedTextListEditor(
+        self.negative_editor = NamedTextListEditor(
             self._tr("Негативные пресеты (negative_presets)"), self._mark_dirty,
             with_default=True, default_label=self._tr("Пресет по умолчанию (negative_default):"),
             loc=self.loc)
@@ -671,64 +579,35 @@ class PromptBuilderTab(QWidget):
 
     # ------------------------------------------------------------ CRUD ops
     def _current_container_for_add(self) -> list:
-        info = self._selected_info()
-        if info is None:
-            return self.categories
-        if info["kind"] == "group":
-            return info["node"].setdefault("children", [])
-        if info["kind"] == "opt":
-            owner = self._find_owner_category(info["parent_list"])
-            return owner["parent_list"] if owner is not None else self.categories
-        return info["parent_list"]
-
-    def _find_owner_category(self, options_list: list) -> Optional[dict]:
-        def walk(item):
-            for i in range(item.childCount()):
-                child = item.child(i)
-                info = self._item_info(child)
-                if info and info["kind"] == "cat" and info["node"].get("options") is options_list:
-                    return info
-                found = walk(child)
-                if found is not None:
-                    return found
-            return None
-        return walk(self.tree.invisibleRootItem())
+        return tree_ops.current_container_for_add(self.categories, self._selected_info())
 
     def _add_group(self):
         parent_list = self._current_container_for_add()
-        new_node = {"id": new_id("group"), "label": self._tr("Новая группа"), "type": "group", "children": []}
+        new_node = tree_ops.new_group_node(self._tr("Новая группа"))
         parent_list.append(new_node)
         self._rebuild_tree(select_node=new_node)
         self._mark_dirty()
 
     def _add_category(self):
         parent_list = self._current_container_for_add()
-        new_node = {"id": new_id("block"), "label": self._tr("Новый блок"), "type": "multi_select",
-                    "max_random": 0, "options": []}
+        new_node = tree_ops.new_category_node(self._tr("Новый блок"))
         parent_list.append(new_node)
         self._rebuild_tree(select_node=new_node)
         self._mark_dirty()
 
     def _add_option(self):
-        info = self._selected_info()
-        if info is None:
-            QMessageBox.information(self, self._tr("Добавить вариант"),
-                                     self._tr("Сначала выберите блок (категорию), в который нужно добавить вариант."))
-            return
-        if info["kind"] == "opt":
-            options_list = info["parent_list"]
-        elif info["kind"] == "cat":
-            if info["node"].get("type") == "free_text":
-                QMessageBox.information(self, self._tr("Добавить вариант"),
-                                         self._tr("У блока типа «Свободный текст» нет вариантов."))
-                return
-            options_list = info["node"].setdefault("options", [])
-        else:
-            QMessageBox.information(self, self._tr("Добавить вариант"),
-                                     self._tr("Варианты можно добавлять только внутрь блока (не группы)."))
+        options_list, refusal = tree_ops.options_list_for_add(self._selected_info())
+        if options_list is None:
+            if refusal == "no_selection":
+                text = self._tr("Сначала выберите блок (категорию), в который нужно добавить вариант.")
+            elif refusal == "free_text":
+                text = self._tr("У блока типа «Свободный текст» нет вариантов.")
+            else:
+                text = self._tr("Варианты можно добавлять только внутрь блока (не группы).")
+            QMessageBox.information(self, self._tr("Добавить вариант"), text)
             return
 
-        new_opt = {"label": self._tr("Новый вариант"), "tags": ""}
+        new_opt = tree_ops.new_option_node(self._tr("Новый вариант"))
         options_list.append(new_opt)
         self._rebuild_tree(select_node=new_opt)
         self._mark_dirty()
@@ -746,10 +625,7 @@ class PromptBuilderTab(QWidget):
             self, self._tr("Удалить"), self._tr("Удалить выбранный(ую) {}?").format(kind_name)
         ) != QMessageBox.Yes:
             return
-        try:
-            info["parent_list"].remove(info["node"])
-        except ValueError:
-            pass
+        tree_ops.remove_node(info)
         self._rebuild_tree()
         self._mark_dirty()
 
@@ -757,13 +633,8 @@ class PromptBuilderTab(QWidget):
         info = self._selected_info()
         if info is None:
             return
-        lst = info["parent_list"]
-        node = info["node"]
-        idx = lst.index(node)
-        new_idx = idx + direction
-        if 0 <= new_idx < len(lst):
-            lst[idx], lst[new_idx] = lst[new_idx], lst[idx]
-            self._rebuild_tree(select_node=node)
+        if tree_ops.move_node(info, direction):
+            self._rebuild_tree(select_node=info["node"])
             self._mark_dirty()
 
     # ------------------------------------------------ legacy LoRA migration
@@ -836,277 +707,3 @@ class PromptBuilderTab(QWidget):
 
     def has_data(self) -> bool:
         return self.path is not None
-
-
-class _PresetGroupEditor(QGroupBox):
-    """Редактор структуры {"presets": {label: tags}, "default": label} —
-    используется для quality_prefix и source."""
-
-    def __init__(self, title: str, on_dirty, loc=None, parent=None):
-        super().__init__(title, parent)
-        self.on_dirty = on_dirty
-        self.loc = loc
-        layout = QVBoxLayout(self)
-
-        self.table = QTableWidget(0, 2)
-        self.table.setHorizontalHeaderLabels([self._tr("Название"), self._tr("Теги")])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.table.verticalHeader().setVisible(False)
-        self.table.itemSelectionChanged.connect(self._on_select)
-        layout.addWidget(self.table)
-
-        form = QHBoxLayout()
-        self.name_label = QLabel(self._tr("Название:"))
-        form.addWidget(self.name_label)
-        self.label_edit = QLineEdit()
-        form.addWidget(self.label_edit)
-        layout.addLayout(form)
-
-        form2 = QHBoxLayout()
-        self.tags_label = QLabel(self._tr("Теги:"))
-        form2.addWidget(self.tags_label)
-        self.tags_edit = QLineEdit()
-        form2.addWidget(self.tags_edit)
-        layout.addLayout(form2)
-
-        btns = QHBoxLayout()
-        self.add_btn = QPushButton(self._tr("+ Добавить"))
-        self.add_btn.clicked.connect(self._add)
-        self.upd_btn = QPushButton(self._tr("Обновить"))
-        self.upd_btn.clicked.connect(self._update)
-        self.del_btn = QPushButton(self._tr("Удалить"))
-        self.del_btn.setObjectName("dangerButton")
-        self.del_btn.clicked.connect(self._delete)
-        btns.addWidget(self.add_btn)
-        btns.addWidget(self.upd_btn)
-        btns.addWidget(self.del_btn)
-        layout.addLayout(btns)
-
-        default_row = QHBoxLayout()
-        self.default_label = QLabel(self._tr("По умолчанию:"))
-        default_row.addWidget(self.default_label)
-        self.default_combo = QComboBox()
-        self.default_combo.currentTextChanged.connect(lambda _t: self.on_dirty())
-        default_row.addWidget(self.default_combo)
-        layout.addLayout(default_row)
-
-    def _tr(self, text):
-        return self.loc.tr(text) if self.loc is not None else text
-
-    def retranslate_ui(self, title: str):
-        self.setTitle(title)
-        self.table.setHorizontalHeaderLabels([self._tr("Название"), self._tr("Теги")])
-        self.name_label.setText(self._tr("Название:"))
-        self.tags_label.setText(self._tr("Теги:"))
-        self.add_btn.setText(self._tr("+ Добавить"))
-        self.upd_btn.setText(self._tr("Обновить"))
-        self.del_btn.setText(self._tr("Удалить"))
-        self.default_label.setText(self._tr("По умолчанию:"))
-
-    def _on_select(self):
-        rows = self.table.selectedItems()
-        if not rows:
-            return
-        row = self.table.currentRow()
-        self.label_edit.setText(self.table.item(row, 0).text())
-        self.tags_edit.setText(self.table.item(row, 1).text())
-
-    def _refresh_default_options(self):
-        current = self.default_combo.currentText()
-        labels = [self.table.item(r, 0).text() for r in range(self.table.rowCount())]
-        self.default_combo.blockSignals(True)
-        self.default_combo.clear()
-        self.default_combo.addItems(labels)
-        if current in labels:
-            self.default_combo.setCurrentText(current)
-        self.default_combo.blockSignals(False)
-
-    def _add(self):
-        label = self.label_edit.text().strip()
-        if not label:
-            return
-        for r in range(self.table.rowCount()):
-            if self.table.item(r, 0).text() == label:
-                QMessageBox.information(
-                    self, self._tr("Пресет"),
-                    self._tr("Пресет '{}' уже существует, используйте «Обновить».").format(label),
-                )
-                return
-        row = self.table.rowCount()
-        self.table.insertRow(row)
-        self.table.setItem(row, 0, QTableWidgetItem(label))
-        self.table.setItem(row, 1, QTableWidgetItem(self.tags_edit.text()))
-        self._refresh_default_options()
-        self.on_dirty()
-
-    def _update(self):
-        row = self.table.currentRow()
-        if row < 0:
-            return
-        self.table.setItem(row, 0, QTableWidgetItem(self.label_edit.text().strip()))
-        self.table.setItem(row, 1, QTableWidgetItem(self.tags_edit.text()))
-        self._refresh_default_options()
-        self.on_dirty()
-
-    def _delete(self):
-        row = self.table.currentRow()
-        if row < 0:
-            return
-        self.table.removeRow(row)
-        self._refresh_default_options()
-        self.on_dirty()
-
-    def load(self, data: dict):
-        self.table.setRowCount(0)
-        for label, tags in (data.get("presets") or {}).items():
-            row = self.table.rowCount()
-            self.table.insertRow(row)
-            self.table.setItem(row, 0, QTableWidgetItem(label))
-            self.table.setItem(row, 1, QTableWidgetItem(tags))
-        self._refresh_default_options()
-        default = data.get("default", "")
-        if default:
-            self.default_combo.setCurrentText(default)
-
-    def to_raw(self) -> dict:
-        presets = {}
-        for r in range(self.table.rowCount()):
-            presets[self.table.item(r, 0).text()] = self.table.item(r, 1).text()
-        return {"presets": presets, "default": self.default_combo.currentText()}
-
-
-class _NamedTextListEditor(QGroupBox):
-    """Редактор структуры {name: long_text, ...} (+ опционально default) —
-    используется для negative_presets."""
-
-    def __init__(self, title: str, on_dirty, with_default: bool = False,
-                 default_label: str = "По умолчанию:", loc=None, parent=None):
-        super().__init__(title, parent)
-        self.on_dirty = on_dirty
-        self.with_default = with_default
-        self.loc = loc
-        self._data: dict[str, str] = {}
-
-        layout = QHBoxLayout(self)
-
-        self.listbox = QListWidget()
-        self.listbox.setMaximumWidth(220)
-        self.listbox.currentRowChanged.connect(self._on_select)
-        layout.addWidget(self.listbox)
-
-        right = QVBoxLayout()
-        name_row = QHBoxLayout()
-        self.name_label = QLabel(self._tr("Название пресета:"))
-        name_row.addWidget(self.name_label)
-        self.name_edit = QLineEdit()
-        name_row.addWidget(self.name_edit)
-        right.addLayout(name_row)
-
-        self.text_edit = QTextEdit()
-        self.text_edit.setAcceptRichText(False)
-        right.addWidget(self.text_edit)
-
-        btns = QHBoxLayout()
-        self.add_btn = QPushButton(self._tr("+ Добавить"))
-        self.add_btn.clicked.connect(self._add)
-        self.upd_btn = QPushButton(self._tr("Обновить"))
-        self.upd_btn.clicked.connect(self._update)
-        self.del_btn = QPushButton(self._tr("Удалить"))
-        self.del_btn.setObjectName("dangerButton")
-        self.del_btn.clicked.connect(self._delete)
-        btns.addWidget(self.add_btn)
-        btns.addWidget(self.upd_btn)
-        btns.addWidget(self.del_btn)
-        right.addLayout(btns)
-
-        self._default_label_text = default_label
-        if with_default:
-            self.default_row_label = QLabel(default_label)
-            default_row = QHBoxLayout()
-            default_row.addWidget(self.default_row_label)
-            self.default_combo = QComboBox()
-            self.default_combo.currentTextChanged.connect(lambda _t: self.on_dirty())
-            default_row.addWidget(self.default_combo)
-            right.addLayout(default_row)
-
-        layout.addLayout(right, 1)
-
-    def _tr(self, text):
-        return self.loc.tr(text) if self.loc is not None else text
-
-    def retranslate_ui(self, title: str, default_label: Optional[str] = None):
-        self.setTitle(title)
-        self.name_label.setText(self._tr("Название пресета:"))
-        self.add_btn.setText(self._tr("+ Добавить"))
-        self.upd_btn.setText(self._tr("Обновить"))
-        self.del_btn.setText(self._tr("Удалить"))
-        if self.with_default and default_label is not None:
-            self.default_row_label.setText(default_label)
-
-    def _on_select(self, row: int):
-        if row < 0 or row >= self.listbox.count():
-            return
-        name = self.listbox.item(row).text()
-        self.name_edit.setText(name)
-        self.text_edit.setPlainText(self._data.get(name, ""))
-
-    def _refresh_list(self, keep: Optional[str] = None):
-        self.listbox.clear()
-        for name in self._data.keys():
-            self.listbox.addItem(name)
-        if self.with_default:
-            current = self.default_combo.currentText()
-            self.default_combo.blockSignals(True)
-            self.default_combo.clear()
-            self.default_combo.addItems(list(self._data.keys()))
-            if current in self._data:
-                self.default_combo.setCurrentText(current)
-            self.default_combo.blockSignals(False)
-        if keep and keep in self._data:
-            self.listbox.setCurrentRow(list(self._data.keys()).index(keep))
-
-    def _add(self):
-        name = self.name_edit.text().strip()
-        if not name:
-            return
-        self._data[name] = self.text_edit.toPlainText()
-        self._refresh_list(keep=name)
-        self.on_dirty()
-
-    def _update(self):
-        row = self.listbox.currentRow()
-        if row < 0:
-            return
-        old_name = self.listbox.item(row).text()
-        new_name = self.name_edit.text().strip() or old_name
-        text = self.text_edit.toPlainText()
-        if new_name != old_name:
-            ordered = {}
-            for k, v in self._data.items():
-                ordered[new_name if k == old_name else k] = (text if k == old_name else v)
-            self._data = ordered
-        else:
-            self._data[old_name] = text
-        self._refresh_list(keep=new_name)
-        self.on_dirty()
-
-    def _delete(self):
-        row = self.listbox.currentRow()
-        if row < 0:
-            return
-        name = self.listbox.item(row).text()
-        self._data.pop(name, None)
-        self._refresh_list()
-        self.on_dirty()
-
-    def load(self, data: dict, default: str = ""):
-        self._data = dict(data or {})
-        self._refresh_list()
-        if self.with_default and default:
-            self.default_combo.setCurrentText(default)
-
-    def to_raw(self):
-        if self.with_default:
-            return dict(self._data), self.default_combo.currentText()
-        return dict(self._data)

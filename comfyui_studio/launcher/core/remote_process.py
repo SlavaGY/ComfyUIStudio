@@ -29,6 +29,7 @@ import sys
 from .constants import PROJECT_ROOT
 from .logging_setup import log
 from .managed_process import ManagedProcess, find_missing_modules
+from ...errors import ProcessStartError
 from ...remote.__main__ import REMOTE_CLI_FLAG
 
 REMOTE_MODULE_NAME = "comfyui_studio.remote"
@@ -124,7 +125,7 @@ class RemoteProcess(ManagedProcess):
             self.imagine_port, self.dev_mode,
         )
         if error:
-            raise RuntimeError(error)
+            raise ProcessStartError(error)
 
         log.info(
             "Запуск Remote: %s (cwd=%s, comfyui=%s:%s, imagine_port=%s)",
