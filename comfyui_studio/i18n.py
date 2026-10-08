@@ -379,6 +379,16 @@ TRANSLATIONS = {
         "ComfyUI": "ComfyUI",
         "Imagine": "Imagine",
         "Порт Imagine:": "Imagine port:",
+        "Imagine Pony": "Imagine Pony",
+        "Порт Imagine Pony:": "Imagine Pony port:",
+        "Запуск Imagine Pony, ожидание сервера...": "Starting Imagine Pony, waiting for the server...",
+        "Не удалось запустить Imagine Pony: {}": "Failed to start Imagine Pony: {}",
+        "Imagine Pony не поднялся за {} секунд.": "Imagine Pony did not come up within {} seconds.",
+        "Запуск Imagine Pony, ожидание сервера... ({}с)": "Starting Imagine Pony, waiting for the server... ({}s)",
+        (
+            "Процесс Imagine Pony неожиданно завершился (код выхода: {}). "
+            "Подробности — в лог-файле: {}"
+        ): "The Imagine Pony process exited unexpectedly (exit code: {}). See the log file for details: {}",
         (
             "Запускать Imagine в дев-режиме (редактирование каталога стилей)"
         ): "Launch Imagine in dev mode (edit style catalog)",

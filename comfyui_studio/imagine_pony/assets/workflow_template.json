@@ -1,0 +1,274 @@
+{
+  "8": {
+    "inputs": {
+      "samples": [
+        "88",
+        0
+      ],
+      "vae": [
+        "122",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "Декодировать VAE"
+    }
+  },
+  "71": {
+    "inputs": {
+      "prefix": "ponyxl",
+      "output_subdir": "ponyxl",
+      "images": [
+        "8",
+        0
+      ],
+      "gen_info": [
+        "88",
+        2
+      ],
+      "lora_info": [
+        "123",
+        2
+      ]
+    },
+    "class_type": "SaveWithPrompt",
+    "_meta": {
+      "title": "Сохранялка"
+    }
+  },
+  "88": {
+    "inputs": {
+      "add_noise": true,
+      "noise_seed": 1047712819228045,
+      "cfg": 7,
+      "positive_text": [
+        "128",
+        0
+      ],
+      "negative_text": [
+        "129",
+        0
+      ],
+      "model_name": [
+        "122",
+        3
+      ],
+      "model": [
+        "123",
+        0
+      ],
+      "positive": [
+        "130",
+        0
+      ],
+      "negative": [
+        "131",
+        0
+      ],
+      "sampler": [
+        "138",
+        0
+      ],
+      "sigmas": [
+        "137",
+        0
+      ],
+      "latent_image": [
+        "135",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomWithSeed",
+    "_meta": {
+      "title": "Sampler Custom"
+    }
+  },
+  "120": {
+    "inputs": {
+      "selected_names": "[\"rimuru_tempest\"]",
+      "excluded_tags": "[]"
+    },
+    "class_type": "CharacterSearchUI",
+    "_meta": {
+      "title": "Поисковик"
+    }
+  },
+  "121": {
+    "inputs": {
+      "state_json": "{\"__random_cats__\":[\"pose\",\"background\",\"lighting\",\"mood\",\"NSFW_pose\",\"NSFW_action\",\"NSFW_outfit\"],\"__excluded_negative__\":\"[]\",\"base\":[\"Иллюстрация\",\"Детализированный\",\"Хорошие руки\"],\"pose\":[],\"background\":\"Арктика\",\"lighting\":\"Жёсткий свет\",\"mood\":\"\",\"NSFW_pose\":[\"Spooning\"],\"NSFW_action\":[],\"NSFW_outfit\":[\"Сексуальный костюм кролика\"]}",
+      "negative_preset": "NSFW",
+      "extra_negative": "box",
+      "char_tags": [
+        "120",
+        0
+      ],
+      "char_loras": [
+        "120",
+        1
+      ]
+    },
+    "class_type": "PromptBuilderNode",
+    "_meta": {
+      "title": "PonyXL Prompt Builder"
+    }
+  },
+  "122": {
+    "inputs": {
+      "ckpt_name": "prefectPonyXL.safetensors"
+    },
+    "class_type": "CheckpointLoaderWithName",
+    "_meta": {
+      "title": "Checkpoint Loader"
+    }
+  },
+  "123": {
+    "inputs": {
+      "lora_1": "pony\\StS_age_slider_v1_initial_release.safetensors",
+      "strength_1": 0,
+      "lora_2": "none",
+      "strength_2": 1,
+      "lora_3": "none",
+      "strength_3": 1,
+      "lora_4": "none",
+      "strength_4": 1,
+      "lora_5": "none",
+      "strength_5": 1,
+      "model": [
+        "122",
+        0
+      ],
+      "clip": [
+        "122",
+        1
+      ],
+      "lora_list": [
+        "121",
+        2
+      ]
+    },
+    "class_type": "MultiLoraLoader",
+    "_meta": {
+      "title": "Multi LoRA Loader"
+    }
+  },
+  "128": {
+    "inputs": {
+      "text": [
+        "121",
+        0
+      ]
+    },
+    "class_type": "Text Multiline",
+    "_meta": {
+      "title": "Text Multiline"
+    }
+  },
+  "129": {
+    "inputs": {
+      "text": [
+        "121",
+        1
+      ]
+    },
+    "class_type": "Text Multiline",
+    "_meta": {
+      "title": "Text Multiline"
+    }
+  },
+  "130": {
+    "inputs": {
+      "text": [
+        "128",
+        0
+      ],
+      "clip": [
+        "123",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Кодирование текста CLIP (Запрос)"
+    }
+  },
+  "131": {
+    "inputs": {
+      "text": [
+        "129",
+        0
+      ],
+      "clip": [
+        "123",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Кодирование текста CLIP (Запрос)"
+    }
+  },
+  "135": {
+    "inputs": {
+      "width": [
+        "136",
+        0
+      ],
+      "height": [
+        "136",
+        1
+      ],
+      "batch_size": 4
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Пустое латентное изображение"
+    }
+  },
+  "136": {
+    "inputs": {
+      "aspect_ratio": "9:16 (Portrait Widescreen)",
+      "megapixels": 1,
+      "multiple": 8
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "Выбор разрешения"
+    }
+  },
+  "137": {
+    "inputs": {
+      "model_type": "SDXL",
+      "steps": [
+        "141",
+        2
+      ],
+      "denoise": 1
+    },
+    "class_type": "AlignYourStepsScheduler",
+    "_meta": {
+      "title": "Scheduler выравнивания шагов"
+    }
+  },
+  "138": {
+    "inputs": {
+      "sampler_name": "euler_ancestral"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "Выбор KSampler"
+    }
+  },
+  "141": {
+    "inputs": {
+      "number_type": "integer",
+      "minimum": 20,
+      "maximum": 40,
+      "seed": 670362570591758
+    },
+    "class_type": "Random Number",
+    "_meta": {
+      "title": "Random Number"
+    }
+  }
+}

@@ -40,11 +40,21 @@ class FcmService : FirebaseMessagingService() {
         private const val CHANNEL_ID = "generation_events"
         private const val NOTIFICATION_ID = 1
         // Совпадает с путём, который routes/home.py даёт плитке Imagine
-        // (RemoteApp.path в apps_registry.py) -- единственное
-        // зарегистрированное на сегодня приложение (см. §Этап 6.4), по
-        // этому же полю в будущем можно будет различать, из-под какого
-        // именно апп пришло уведомление, если их станет больше.
+        // (RemoteApp.path в apps_registry.py). Теперь это только ЗАПАСНОЙ
+        // путь: сервер кладёт в push поле "app_path" (Imagine или
+        // Imagine Pony, см. fcm.py и generation_watcher.py), и именно оно
+        // решает, куда вести тап и откуда качать картинки; Imagine
+        // берётся, когда поля нет (старый сервер, событие без приложения).
         private const val IMAGINE_PATH = "/apps/imagine/"
+
+        // "/apps/<id>/" -- id приложений в реестре Remote состоят из
+        // латиницы, цифр и "_". Значение приходит с сервера, но проверяем
+        // форму, чтобы в EXTRA_OPEN_PATH и в URL скачивания не попало
+        // ничего, кроме пути приложения.
+        private val APP_PATH_REGEX = Regex("^/apps/[a-z0-9_]+/$")
+
+        fun resolveAppPath(raw: String?): String =
+            if (raw != null && APP_PATH_REGEX.matches(raw)) raw else IMAGINE_PATH
     }
 
     /**
@@ -133,10 +143,11 @@ class FcmService : FirebaseMessagingService() {
             // истории ComfyUI, независимо от того, какая сессия
             // изначально запускала генерацию.
             val promptId = message.data["prompt_id"]
+            val appPath = resolveAppPath(message.data["app_path"])
             val path = if (!promptId.isNullOrBlank()) {
-                "$IMAGINE_PATH?prompt_id=${Uri.encode(promptId)}"
+                "$appPath?prompt_id=${Uri.encode(promptId)}"
             } else {
-                IMAGINE_PATH
+                appPath
             }
             putExtra(TerminalActivity.EXTRA_OPEN_PATH, path)
         }
@@ -199,6 +210,7 @@ class FcmService : FirebaseMessagingService() {
         if (message.data["state"] != "generation.completed") return
         val promptId = message.data["prompt_id"]?.takeIf { it.isNotBlank() } ?: return
         val device = TokenStore(applicationContext).load() ?: return
+        val appPath = resolveAppPath(message.data["app_path"])
         // Сетевые вызовы -- не в главном потоке (тот же приём, что и у
         // onNewToken выше): пара блокирующих HTTP-запросов
         // (статус + скачивание каждой картинки, см.
@@ -206,7 +218,7 @@ class FcmService : FirebaseMessagingService() {
         // MediaStore не должны выполняться в потоке, в котором система
         // и так уже вызывает onMessageReceived.
         thread {
-            GeneratedImageSaver.saveGenerationImages(applicationContext, device, promptId)
+            GeneratedImageSaver.saveGenerationImages(applicationContext, device, promptId, appPath)
         }
     }
 

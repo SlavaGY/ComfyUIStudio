@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 
 from ...launcher.core.comfy_api import ComfyAPIClient
 from ...launcher.core.imagine_process import is_imagine_available
-from .. import app_launcher, comfy_launcher
+from .. import app_launcher, comfy_launcher, pony_launcher
 from ..auth import require_device
 from ..gpu_stats import get_gpu_stats
 from ..models import RemoteStatus
@@ -78,6 +78,7 @@ def stop_server(_device_id: str = Depends(require_device)) -> dict:
     про то, почему это вообще было нужно -- Remote физически не имеет
     доступа к объекту процесса, запущенного другим ОС-процессом,
     Studio)."""
+    pony_launcher.stop_pony()
     app_launcher.stop_imagine()
     comfy_launcher.stop_comfyui()
     return {"status": "stopped"}

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Imagine Pony — генератор PonyXL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- ОТНОСИТЕЛЬНЫЕ пути (без ведущего "/") -- та же причина, что и у Imagine:
+     страница может открываться через reverse-proxy Remote. -->
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/themes.css">
+</head>
+<body>
+
+<div class="loading-screen" id="loadingScreen">
+  <span class="loading-screen__mark">◆</span>
+  <div class="loading-screen__spinner"></div>
+  <p data-i18n="Загрузка…">Загрузка…</p>
+</div>
+
+<header class="topbar">
+  <div class="topbar__brand">
+    <span class="topbar__mark">◆</span>
+    <span class="topbar__title">Imagine Pony</span>
+  </div>
+  <div class="topbar__status">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText" data-i18n="проверка ComfyUI…">проверка ComfyUI…</span>
+  </div>
+  <button class="btn-ghost" id="freeMemoryBtn" title="Выгрузить модели из RAM/VRAM" data-i18n="⤓ выгрузить модели" data-i18n-title="Выгрузить модели из RAM/VRAM">⤓ выгрузить модели</button>
+</header>
+
+<main class="workshop">
+
+  <p class="warn-line" id="nodesWarning" hidden></p>
+
+  <!-- ===== CharacterSearchUI ===== -->
+  <div class="card" id="charCard">
+    <div class="card__label"><span data-i18n="Персонажи">Персонажи</span> <span class="card__counter" id="charCounter"></span></div>
+
+    <div class="rowbar">
+      <div class="seg" id="charModes">
+        <button type="button" data-mode="name" data-i18n="Имя">Имя</button>
+        <button type="button" data-mode="tag" data-i18n="Тег">Тег</button>
+        <button type="button" data-mode="random" data-i18n="Случайно">Случайно</button>
+      </div>
+      <input type="text" id="charSearch" placeholder="Поиск по имени…" data-i18n-placeholder="Поиск по имени…">
+      <button type="button" class="btn-ghost btn-toggle" id="charLoraOnly" title="Только персонажи с LoRA" data-i18n-title="Только персонажи с LoRA" data-i18n="Только LoRA">Только LoRA</button>
+    </div>
+
+    <div class="subpanel" id="charRandom" hidden>
+      <div class="rowbar">
+        <label class="inline-label" for="charRandTags" data-i18n="Теги:">Теги:</label>
+        <input type="text" id="charRandTags" placeholder="blue_hair, 1girl, …">
+      </div>
+      <div class="rowbar">
+        <label class="inline-label" for="charRandCount" data-i18n="Кол-во:">Кол-во:</label>
+        <input type="number" id="charRandCount" min="1" max="50" value="1" class="narrow">
+        <button type="button" class="btn-primary" id="charRandPick" data-i18n="Выбрать">Выбрать</button>
+        <span class="hint" id="charRandStatus"></span>
+      </div>
+    </div>
+
+    <div class="charlist" id="charList"></div>
+
+    <div class="chips-wrap" id="charChipsWrap" hidden>
+      <div class="mini-label" data-i18n="Выбраны:">Выбраны:</div>
+      <div class="chips" id="charChips"></div>
+    </div>
+
+    <div class="tagpreview" id="charTagsWrap" hidden>
+      <div class="tagpreview__head">
+        <span class="mini-label"><span data-i18n="Теги на выходе:">Теги на выходе:</span> <span class="tagpreview__excluded" id="charExcludedCount" hidden></span></span>
+        <span class="tagpreview__btns">
+          <button type="button" class="btn-mini" id="charRestore" hidden data-i18n="восстановить">восстановить</button>
+          <button type="button" class="btn-mini" id="charCopy" data-i18n="копировать">копировать</button>
+        </span>
+      </div>
+      <div class="tagbox" id="charTags"></div>
+      <div class="hint" id="charTagsHint" data-i18n="клик по тегу убирает его с выхода">клик по тегу убирает его с выхода</div>
+    </div>
+
+    <button type="button" class="btn-mini btn-mini--wide" id="charClear" hidden data-i18n="✕ сбросить выбор">✕ сбросить выбор</button>
+  </div>
+
+  <!-- ===== PromptBuilderNode ===== -->
+  <div class="card" id="builderCard">
+    <div class="card__label" data-i18n="Билдер промпта">Билдер промпта</div>
+
+    <div class="rowbar">
+      <button type="button" class="btn-primary" id="bRandom" data-i18n="Случайный промпт">Случайный промпт</button>
+      <button type="button" class="btn-ghost" id="bReset" data-i18n="✕ сбросить">✕ сбросить</button>
+      <button type="button" class="btn-ghost btn-toggle" id="bRandSettings" title="Категории для случайного выбора" data-i18n-title="Категории для случайного выбора" data-i18n="⚙ рандом">⚙ рандом</button>
+      <span class="hint" id="bRandTouched"></span>
+    </div>
+
+    <div class="subpanel" id="bRandPanel" hidden>
+      <div class="tagpreview__head">
+        <span class="mini-label" data-i18n="Категории для рандома:">Категории для рандома:</span>
+        <span class="tagpreview__btns">
+          <button type="button" class="btn-mini" id="bRandAll" data-i18n="все">все</button>
+          <button type="button" class="btn-mini" id="bRandNone" data-i18n="ни одной">ни одной</button>
+        </span>
+      </div>
+      <div class="pills" id="bRandChips"></div>
+    </div>
+
+    <div class="bsections" id="bSections"></div>
+
+    <div class="field bscene" id="bSceneRow" hidden>
+      <label for="bSceneWeight" data-i18n="Вес фона (сцены)">Вес фона (сцены)</label>
+      <input type="number" id="bSceneWeight" min="0" max="2" step="0.05" placeholder="не задан" data-i18n-placeholder="не задан" class="narrow">
+    </div>
+
+    <div class="bsections" id="bNegSection"></div>
+
+    <div class="preview-block">
+      <div class="tagpreview__head">
+        <span class="mini-label" data-i18n="Итоговый промпт:">Итоговый промпт:</span>
+        <button type="button" class="btn-mini" id="bPosCopy" data-i18n="копировать">копировать</button>
+      </div>
+      <pre class="prompt-preview" id="bPositive"></pre>
+      <p class="warn-line" id="bIssues" hidden></p>
+    </div>
+
+    <div class="tagpreview" id="bNegWrap" hidden>
+      <div class="tagpreview__head">
+        <span class="mini-label"><span data-i18n="Негативный промпт:">Негативный промпт:</span> <span class="tagpreview__excluded" id="bNegExcludedCount" hidden></span></span>
+        <span class="tagpreview__btns">
+          <button type="button" class="btn-mini" id="bNegRestore" hidden data-i18n="восстановить">восстановить</button>
+          <button type="button" class="btn-mini" id="bNegCopy" data-i18n="копировать">копировать</button>
+        </span>
+      </div>
+      <div class="tagbox tagbox--neg" id="bNegTags"></div>
+      <div class="hint" id="bNegHint" data-i18n="клик по тегу убирает его из негативного промпта">клик по тегу убирает его из негативного промпта</div>
+    </div>
+  </div>
+
+  <!-- ===== MultiLoraLoader ===== -->
+  <div class="card" id="loraCard">
+    <div class="card__label" data-i18n="LoRA (ручные слоты)">LoRA (ручные слоты)</div>
+    <div class="loraslots" id="loraSlots"></div>
+    <datalist id="loraFileOptions"></datalist>
+    <div class="loranote" id="loraEffective" hidden></div>
+  </div>
+
+  <div class="card">
+    <div class="card__label" data-i18n="Кадр">Кадр</div>
+    <div class="field-grid field-grid--3">
+      <div class="field">
+        <label for="aspectRatio" data-i18n="Соотношение сторон">Соотношение сторон</label>
+        <select id="aspectRatio"></select>
+      </div>
+      <div class="field">
+        <label for="megapixels" data-i18n="Мегапиксели">Мегапиксели</label>
+        <select id="megapixels"></select>
+      </div>
+      <div class="field">
+        <label for="batchSize" data-i18n="Батч">Батч</label>
+        <input type="number" id="batchSize" min="1" max="16" value="4">
+      </div>
+    </div>
+  </div>
+
+  <details class="card advanced">
+    <summary data-i18n="Технические параметры">Технические параметры</summary>
+    <div class="field-grid mono">
+      <div class="field">
+        <label for="stepsMin" data-i18n="Шаги: от">Шаги: от</label>
+        <input type="number" id="stepsMin" min="1" max="150" value="20">
+      </div>
+      <div class="field">
+        <label for="stepsMax" data-i18n="Шаги: до">Шаги: до</label>
+        <input type="number" id="stepsMax" min="1" max="150" value="40">
+      </div>
+      <div class="field">
+        <label for="cfg">CFG</label>
+        <input type="number" id="cfg" min="0" max="30" step="0.1" value="7">
+      </div>
+      <div class="field">
+        <label for="samplerName" data-i18n="Сэмплер">Сэмплер</label>
+        <select id="samplerName"></select>
+      </div>
+      <div class="field field--wide">
+        <label for="checkpoint" data-i18n="Модель (checkpoint)">Модель (checkpoint)</label>
+        <select id="checkpoint"></select>
+      </div>
+      <div class="field">
+        <label for="seed" data-i18n="Сид">Сид</label>
+        <input type="number" id="seed" placeholder="случайный" data-i18n-placeholder="случайный">
+      </div>
+      <div class="field field--checkbox">
+        <label><input type="checkbox" id="randomizeSeed" checked> <span data-i18n="случайный сид каждый раз">случайный сид каждый раз</span></label>
+      </div>
+    </div>
+    <p class="hint" data-i18n="Если «от» и «до» разные, число шагов выбирается случайно в этом диапазоне при каждой генерации.">Если «от» и «до» разные, число шагов выбирается случайно в этом диапазоне при каждой генерации.</p>
+  </details>
+
+  <button class="btn-generate" id="generateBtn">
+    <span id="generateBtnLabel" data-i18n="Сгенерировать">Сгенерировать</span>
+  </button>
+  <p class="error-line" id="errorLine" hidden></p>
+  <p class="info-line" id="infoLine" hidden></p>
+
+  <div class="full-bleed">
+    <section class="gallery">
+      <div class="gallery__empty" id="galleryEmpty">
+        <p data-i18n="Здесь появятся результаты.">Здесь появятся результаты.</p>
+      </div>
+      <div class="gallery__grid" id="galleryGrid"></div>
+    </section>
+  </div>
+
+</main>
+
+<!-- Лайтбокс -->
+<div class="lightbox" id="lightbox" hidden>
+  <button class="lightbox__close" id="lightboxClose" title="Закрыть (Esc)" data-i18n-title="Закрыть (Esc)">✕</button>
+  <button class="lightbox__nav lightbox__nav--prev" id="lightboxPrev" title="Предыдущее (←)" data-i18n-title="Предыдущее (←)">‹</button>
+  <button class="lightbox__nav lightbox__nav--next" id="lightboxNext" title="Следующее (→)" data-i18n-title="Следующее (→)">›</button>
+  <div class="lightbox__viewport" id="lightboxViewport">
+    <img class="lightbox__img" id="lightboxImg" alt="generated" draggable="false">
+  </div>
+  <div class="lightbox__zoom">
+    <span class="lightbox__zoom-label">−</span>
+    <input type="range" id="lightboxZoom" min="100" max="400" step="5" value="100">
+    <span class="lightbox__zoom-label">+</span>
+    <span class="lightbox__zoom-value" id="lightboxZoomValue">100%</span>
+  </div>
+</div>
+
+<script src="js/i18n.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

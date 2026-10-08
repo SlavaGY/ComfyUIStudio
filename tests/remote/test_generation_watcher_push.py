@@ -101,3 +101,64 @@ def test_push_event_matches_what_was_broadcast_over_ws(sent_pushes):
     _run_one_job_to_finish(watcher)
     broadcast = [e for e in hub.events if e["type"] == "generation.completed"]
     assert broadcast == sent_pushes
+
+
+# -- app_path: какое веб-приложение (Imagine / Imagine Pony) ответило за генерацию --
+
+
+def _fake_status(prefix_by_port, responses):
+    """Подмена _fetch_app_status: ответ зависит от порта приложения."""
+    def fetch(self, prompt_id, port, prefix):
+        return responses.get(port)
+    return fetch
+
+
+def test_pony_generation_event_and_push_carry_pony_app_path(sent_pushes, monkeypatch):
+    state.runtime.imagine_port, state.runtime.imagine_pony_port = 7860, 7862
+    monkeypatch.setattr(
+        GenerationWatcher, "_fetch_app_status",
+        _fake_status(None, {7862: ("done", ["/apps/imagine_pony/api/image?filename=a.png"])}),
+    )
+    hub = _Hub()
+    watcher = GenerationWatcher(hub)
+    _run_one_job_to_finish(watcher)
+    expected = {
+        "type": "generation.completed", "prompt_id": "abc",
+        "image_urls": ["/apps/imagine_pony/api/image?filename=a.png"],
+        "app_path": "/apps/imagine_pony/",
+    }
+    assert sent_pushes == [expected]
+    assert [e for e in hub.events if e["type"] == "generation.completed"] == [expected]
+
+
+def test_imagine_generation_event_carries_imagine_app_path(sent_pushes, monkeypatch):
+    state.runtime.imagine_port, state.runtime.imagine_pony_port = 7860, 7862
+    monkeypatch.setattr(
+        GenerationWatcher, "_fetch_app_status",
+        _fake_status(None, {7860: ("error", "нет VRAM")}),
+    )
+    watcher = GenerationWatcher(_Hub())
+    _run_one_job_to_finish(watcher)
+    assert sent_pushes == [
+        {"type": "generation.error", "prompt_id": "abc", "message": "нет VRAM",
+         "app_path": "/apps/imagine/"}
+    ]
+
+
+def test_event_has_no_app_path_when_no_app_knows_the_job(sent_pushes, monkeypatch):
+    state.runtime.imagine_port, state.runtime.imagine_pony_port = 7860, 7862
+    monkeypatch.setattr(GenerationWatcher, "_fetch_app_status", _fake_status(None, {}))
+    watcher = GenerationWatcher(_Hub())
+    _run_one_job_to_finish(watcher)
+    assert sent_pushes == [{"type": "generation.completed", "prompt_id": "abc", "image_urls": []}]
+
+
+def test_app_path_does_not_leak_between_consecutive_jobs(sent_pushes, monkeypatch):
+    state.runtime.imagine_port, state.runtime.imagine_pony_port = 7860, 7862
+    responses = {7862: ("done", ["/apps/imagine_pony/api/image?a=1"])}
+    monkeypatch.setattr(GenerationWatcher, "_fetch_app_status", _fake_status(None, responses))
+    watcher = GenerationWatcher(_Hub())
+    _run_one_job_to_finish(watcher)
+    responses.clear()  # следующую генерацию не знает никто
+    _run_one_job_to_finish(watcher)
+    assert "app_path" in sent_pushes[0] and "app_path" not in sent_pushes[1]

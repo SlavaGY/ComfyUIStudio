@@ -64,6 +64,16 @@ class GenerationWatcher:
         self._tracked_running: set[str] = set()
         self._last_queue_counts: tuple[int, int] | None = None
         self._stopped = False
+        # Префикс приложения ("/apps/imagine/" или "/apps/imagine_pony/"),
+        # которое ответило на последний _fetch_imagine_status. Кладётся в
+        # событие как "app_path": Android по нему решает, куда вести тап
+        # по push и откуда качать картинки (раньше путь Imagine был
+        # прошит в Kotlin). Побочный канал, а не часть возвращаемого
+        # значения, чтобы сохранить форму ("done", [urls]) / ("error", msg),
+        # на которую завязаны вызывающий код и тесты. _tick разбирает
+        # завершившиеся задания строго последовательно (await в цикле),
+        # поэтому гонки между заданиями нет.
+        self._resolved_app_path: str | None = None
 
     async def run(self) -> None:
         """Бесконечный цикл опроса -- запускается один раз при старте
@@ -114,7 +124,9 @@ class GenerationWatcher:
             await self._resolve_finished(prompt_id)
 
     async def _resolve_finished(self, prompt_id: str) -> None:
+        self._resolved_app_path = None
         result = await asyncio.to_thread(self._fetch_imagine_status, prompt_id)
+        app_path = self._resolved_app_path
         if result is None:
             # Imagine не запущен, недоступен, или не знает про этот
             # prompt_id (задание поставлено не через него) -- честно
@@ -126,10 +138,14 @@ class GenerationWatcher:
         state, payload = result
         if state == "error":
             event = {"type": "generation.error", "prompt_id": prompt_id, "message": payload}
+            if app_path:
+                event["app_path"] = app_path
             await self._hub.broadcast(event)
             self._notify_push(event)
         else:
             event = {"type": "generation.completed", "prompt_id": prompt_id, "image_urls": payload}
+            if app_path:
+                event["app_path"] = app_path
             await self._hub.broadcast(event)
             self._notify_push(event)
 
@@ -146,14 +162,30 @@ class GenerationWatcher:
         asyncio.create_task(asyncio.to_thread(fcm.send_generation_push, event))
 
     def _fetch_imagine_status(self, prompt_id: str):
+        """Пробует Imagine, затем Imagine Pony: задание поставлено
+        через одно из них, у другого prompt_id неизвестен (state
+        "unknown" -> None). Контракт GET /api/generate/{id}/status у них
+        одинаков, различаются порт и префикс проксирования."""
+        self._resolved_app_path = None
+        for port, prefix in (
+            (runtime.imagine_port, "/apps/imagine/"),
+            (runtime.imagine_pony_port, "/apps/imagine_pony/"),
+        ):
+            result = self._fetch_app_status(prompt_id, port, prefix)
+            if result is not None:
+                self._resolved_app_path = prefix
+                return result
+        return None
+
+    def _fetch_app_status(self, prompt_id: str, port, prefix: str):
         """Синхронный (вызывается через asyncio.to_thread) поход в
         GET /api/generate/{prompt_id}/status бэкенда Imagine (см.
         comfyui_studio/imagine/backend/main.py). Возвращает
         ("done", [urls]) / ("error", message) / None (Imagine
         недоступен или ответил не тем, что ожидалось)."""
-        if runtime.imagine_port is None:
+        if port is None:
             return None
-        url = f"http://127.0.0.1:{runtime.imagine_port}/api/generate/{prompt_id}/status"
+        url = f"http://127.0.0.1:{port}/api/generate/{prompt_id}/status"
         try:
             with urllib.request.urlopen(url, timeout=IMAGINE_STATUS_TIMEOUT_SECONDS) as resp:
                 data = json.loads(resp.read())
@@ -181,7 +213,7 @@ class GenerationWatcher:
             # страница Imagine открыта не через прокси, см. комментарий
             # там же) -- здесь добавляем "/apps/imagine/" сами.
             urls = [
-                f"/apps/imagine/{img['url']}"
+                f"{prefix}{img['url']}"
                 for img in data.get("images", [])
                 if "url" in img
             ]

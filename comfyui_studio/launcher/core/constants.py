@@ -67,6 +67,9 @@ DEFAULT_CONFIG = {
         # здесь, в настройках лаунчера, откуда Imagine и запускается.
         "dev_mode": False,
     },
+    # Imagine Pony (comfyui_studio/imagine_pony/, interface == "imagine_pony"):
+    # порт веб-интерфейса. 7860 занят Imagine, 7861 -- Remote.
+    "imagine_pony": {"port": 7862},
     # НОВОЕ (этап 4 дорожной карты, "Единое дерево настроек" ->
     # ComfyUI -> Environment): переменные окружения, добавляемые/
     # переопределяемые поверх os.environ для процесса ComfyUI -- см.

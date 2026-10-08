@@ -35,6 +35,9 @@ datas = [
     # ни то ни другое не .py, PyInstaller не подхватит их сам.
     ('comfyui_studio/imagine/static', 'comfyui_studio/imagine/static'),
     ('comfyui_studio/imagine/assets', 'comfyui_studio/imagine/assets'),
+    # Imagine Pony (comfyui_studio/imagine_pony/) -- то же: статика и workflow_template.json.
+    ('comfyui_studio/imagine_pony/static', 'comfyui_studio/imagine_pony/static'),
+    ('comfyui_studio/imagine_pony/assets', 'comfyui_studio/imagine_pony/assets'),
 ]
 binaries = []
 hiddenimports = [
@@ -52,6 +55,9 @@ hiddenimports = [
     # оба уровня лени PyInstaller не обязан пройти статическим анализом.
     "comfyui_studio.imagine.__main__",
     "comfyui_studio.imagine.backend.main",
+    # Imagine Pony -- та же двухуровневая лень (IMAGINE_PONY_CLI_FLAG в main.py).
+    "comfyui_studio.imagine_pony.__main__",
+    "comfyui_studio.imagine_pony.backend.main",
     # comfyui_studio.remote.__main__ -- та же двухуровневая лень, что и у
     # Imagine выше (диспетчеризация REMOTE_CLI_FLAG в main.py, а изнутри
     # __main__.main() лениво импортирует uvicorn/.app), см.

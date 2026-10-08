@@ -61,6 +61,9 @@ object GeneratedImageSaver {
 
     // См. докстринг про повторные попытки в saveGenerationImages.
     private const val MAX_ATTEMPTS = 3
+
+    /** Путь Imagine -- значение по умолчанию, когда push не сообщил приложение. */
+    const val DEFAULT_APP_PATH = "/apps/imagine/"
     private const val RETRY_DELAY_MS = 1500L
 
     // Отдельный подальбом, а не прямо в корень "Изображения" -- чтобы
@@ -102,8 +105,16 @@ object GeneratedImageSaver {
      * `thread { }`), поэтому здесь блокирующий ввод-вывод ожидаем и не
      * требует собственной корутины/экзекьютора.
      */
-    fun saveGenerationImages(context: Context, device: TokenStore.Device, promptId: String) {
-        val relativeUrls = fetchImageUrls(device, promptId)
+    fun saveGenerationImages(
+        context: Context,
+        device: TokenStore.Device,
+        promptId: String,
+        // Путь веб-приложения, поставившего генерацию ("/apps/imagine/",
+        // "/apps/imagine_pony/", ...) -- приходит в push (поле app_path,
+        // см. FcmService.resolveAppPath); по умолчанию Imagine, как было.
+        appPath: String = DEFAULT_APP_PATH,
+    ) {
+        val relativeUrls = fetchImageUrls(device, promptId, appPath)
         if (relativeUrls.isEmpty()) {
             // Либо генерация без картинок (нечего сохранять), либо
             // Imagine/Remote не ответили -- в обоих случаях тихо
@@ -127,7 +138,7 @@ object GeneratedImageSaver {
             var saved = false
             for (attempt in 1..MAX_ATTEMPTS) {
                 try {
-                    downloadAndSave(context, device, relativeUrl)
+                    downloadAndSave(context, device, relativeUrl, appPath)
                     saved = true
                     break
                 } catch (e: IOException) {
@@ -141,8 +152,8 @@ object GeneratedImageSaver {
         }
     }
 
-    private fun fetchImageUrls(device: TokenStore.Device, promptId: String): List<String> {
-        val statusUrl = "http://${device.host}:${device.port}/apps/imagine/api/generate/$promptId/status"
+    private fun fetchImageUrls(device: TokenStore.Device, promptId: String, appPath: String): List<String> {
+        val statusUrl = "http://${device.host}:${device.port}${appPath}api/generate/$promptId/status"
         val request = Request.Builder()
             .url(statusUrl)
             .header("Authorization", "Bearer ${device.accessToken}")
@@ -163,8 +174,13 @@ object GeneratedImageSaver {
         }
     }
 
-    private fun downloadAndSave(context: Context, device: TokenStore.Device, relativeUrl: String) {
-        val fullUrl = "http://${device.host}:${device.port}/apps/imagine/$relativeUrl"
+    private fun downloadAndSave(
+        context: Context,
+        device: TokenStore.Device,
+        relativeUrl: String,
+        appPath: String,
+    ) {
+        val fullUrl = "http://${device.host}:${device.port}$appPath$relativeUrl"
         val request = Request.Builder()
             .url(fullUrl)
             .header("Authorization", "Bearer ${device.accessToken}")

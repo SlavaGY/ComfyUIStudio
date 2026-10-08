@@ -178,4 +178,16 @@ if __name__ == "__main__":
             remote_main(sys.argv[2:])
             sys.exit(0)
 
+
+    # Imagine Pony (comfyui_studio/imagine_pony/, launcher/core/
+    # imagine_pony_process.py) -- тот же приём self-exec со скрытым флагом;
+    # свои аргументы (--host/--port/--comfy-host/--comfy-port) разбирает
+    # сам __main__.main().
+    if len(sys.argv) > 1:
+        from comfyui_studio.imagine_pony.__main__ import IMAGINE_PONY_CLI_FLAG
+        if sys.argv[1] == IMAGINE_PONY_CLI_FLAG:
+            from comfyui_studio.imagine_pony.__main__ import main as imagine_pony_main
+            imagine_pony_main(sys.argv[2:])
+            sys.exit(0)
+
     main()

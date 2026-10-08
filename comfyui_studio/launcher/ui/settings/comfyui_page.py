@@ -142,15 +142,20 @@ class ComfyUISettingsPage(QWidget):
         interface_row = QHBoxLayout()
         self.interface_comfyui_radio = QRadioButton(self._tr("ComfyUI"))
         self.interface_imagine_radio = QRadioButton(self._tr("Imagine"))
+        self.interface_pony_radio = QRadioButton(self._tr("Imagine Pony"))
         interface_row.addWidget(self.interface_comfyui_radio)
         interface_row.addWidget(self.interface_imagine_radio)
+        interface_row.addWidget(self.interface_pony_radio)
         interface_row.addStretch(1)
         if cfg.get("interface") == "imagine":
             self.interface_imagine_radio.setChecked(True)
+        elif cfg.get("interface") == "imagine_pony":
+            self.interface_pony_radio.setChecked(True)
         else:
             self.interface_comfyui_radio.setChecked(True)
-        self.interface_comfyui_radio.toggled.connect(self._on_interface_toggled)
-        self.interface_comfyui_radio.toggled.connect(self._on_field_changed)
+        for radio in (self.interface_comfyui_radio, self.interface_pony_radio):
+            radio.toggled.connect(self._on_interface_toggled)
+            radio.toggled.connect(self._on_field_changed)
         interface_form.addRow(interface_row)
 
         imagine_cfg = cfg.get("imagine", {})
@@ -176,6 +181,13 @@ class ComfyUISettingsPage(QWidget):
         self.imagine_dev_mode_check.setChecked(bool(imagine_cfg.get("dev_mode", False)))
         self.imagine_dev_mode_check.stateChanged.connect(self._on_field_changed)
         interface_form.addRow(self.imagine_dev_mode_check)
+
+        self.pony_port_spin = QSpinBox()
+        self.pony_port_spin.setRange(1, 65535)
+        self.pony_port_spin.setValue(int(cfg.get("imagine_pony", {}).get("port", 7862)))
+        self.pony_port_spin.valueChanged.connect(self._on_field_changed)
+        self.pony_port_row_label = QLabel(self._tr("Порт Imagine Pony:"))
+        interface_form.addRow(self.pony_port_row_label, self.pony_port_spin)
 
         self._on_interface_toggled()
         root.addWidget(interface_box)
@@ -263,6 +275,13 @@ class ComfyUISettingsPage(QWidget):
 
     # -- Interface (imagine) --------------------------------------------
 
+    def _selected_interface(self) -> str:
+        if self.interface_imagine_radio.isChecked():
+            return "imagine"
+        if self.interface_pony_radio.isChecked():
+            return "imagine_pony"
+        return "comfyui"
+
     def _on_interface_toggled(self, *_args):
         """Порт/дев-режим Imagine имеют смысл, только когда выбран
         интерфейс Imagine -- дизейблим их же, не только визуально
@@ -271,6 +290,7 @@ class ComfyUISettingsPage(QWidget):
         enabled = self.interface_imagine_radio.isChecked()
         self.imagine_port_spin.setEnabled(enabled)
         self.imagine_dev_mode_check.setEnabled(enabled)
+        self.pony_port_spin.setEnabled(self.interface_pony_radio.isChecked())
 
     def _browse(self):
         chosen = QFileDialog.getExistingDirectory(
@@ -366,11 +386,12 @@ class ComfyUISettingsPage(QWidget):
             "port": self.port_spin.value(),
             "disable_auto_launch": self.disable_auto_launch_check.isChecked(),
             "sync_comfy_theme": self.sync_comfy_theme_check.isChecked(),
-            "interface": "imagine" if self.interface_imagine_radio.isChecked() else "comfyui",
+            "interface": self._selected_interface(),
             "imagine": {
                 "port": self.imagine_port_spin.value(),
                 "dev_mode": self.imagine_dev_mode_check.isChecked(),
             },
+            "imagine_pony": {"port": self.pony_port_spin.value()},
             "launch_args": self.collect_launch_args(),
             "env_vars": self.collect_env_vars(),
         }
@@ -380,7 +401,8 @@ class ComfyUISettingsPage(QWidget):
     def set_editable(self, editable: bool) -> None:
         for w in (self.path_edit, self.browse_btn, self.script_combo, self.port_spin,
                   self.disable_auto_launch_check, self.sync_comfy_theme_check,
-                  self.interface_comfyui_radio, self.interface_imagine_radio):
+                  self.interface_comfyui_radio, self.interface_imagine_radio,
+                  self.interface_pony_radio):
             w.setEnabled(editable)
         # Порт/дев-режим Imagine остаются под двойным условием даже при
         # editable=True -- см. _on_interface_toggled(): нет смысла их
@@ -390,6 +412,7 @@ class ComfyUISettingsPage(QWidget):
         else:
             self.imagine_port_spin.setEnabled(False)
             self.imagine_dev_mode_check.setEnabled(False)
+            self.pony_port_spin.setEnabled(False)
         for widgets in self.arg_widgets.values():
             widgets["check"].setEnabled(editable)
             if widgets["value"] is not None:
@@ -437,7 +460,9 @@ class ComfyUISettingsPage(QWidget):
         )
         self.interface_comfyui_radio.setText(self._tr("ComfyUI"))
         self.interface_imagine_radio.setText(self._tr("Imagine"))
+        self.interface_pony_radio.setText(self._tr("Imagine Pony"))
         self.imagine_port_row_label.setText(self._tr("Порт Imagine:"))
+        self.pony_port_row_label.setText(self._tr("Порт Imagine Pony:"))
         self.imagine_dev_mode_check.setText(
             self._tr("Запускать Imagine в дев-режиме (редактирование каталога стилей)")
         )

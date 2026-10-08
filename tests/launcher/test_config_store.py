@@ -267,7 +267,7 @@ def test_remote_controller_with_store_does_not_read_disk(monkeypatch):
     rc.RemoteController(MagicMock(), config=store).start()
     assert created == [{
         "host": "0.0.0.0", "port": 7862, "comfy_host": "127.0.0.1",
-        "comfy_port": 8200, "imagine_port": 7999,
+        "comfy_port": 8200, "imagine_port": 7999, "imagine_pony_port": None,
     }]
 
 

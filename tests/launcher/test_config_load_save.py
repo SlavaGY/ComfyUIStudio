@@ -33,12 +33,13 @@ def test_default_config_schema_is_stable():
     d = constants.DEFAULT_CONFIG
     assert set(d) == {
         "root_path", "script", "port", "disable_auto_launch", "sync_comfy_theme",
-        "interface", "imagine", "env_vars", "log_level", "remote",
+        "interface", "imagine", "imagine_pony", "env_vars", "log_level", "remote",
     }
     assert d["port"] == 8188
     assert d["interface"] == "comfyui"
     assert d["log_level"] == "INFO"
     assert d["imagine"] == {"port": 7860, "dev_mode": False}
+    assert d["imagine_pony"] == {"port": 7862}  # 7860 -- Imagine, 7861 -- Remote
     assert d["remote"] == {
         "enabled": False, "port": 7861, "host": "127.0.0.1", "fcm_service_account_path": None,
     }

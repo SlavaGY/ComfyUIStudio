@@ -77,11 +77,13 @@ _HOP_BY_HOP_REQUEST_HEADERS = {"host", "connection", "cookie"}
 _HOP_BY_HOP_RESPONSE_HEADERS = {"connection", "content-length", "transfer-encoding"}
 
 
-@router.api_route(
-    "/apps/imagine/{path:path}",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
-)
-async def proxy_imagine(path: str, request: Request):
+_PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
+
+
+async def _proxy_app(app_id: str, label: str, port, path: str, request: Request):
+    """Общая часть reverse-proxy для всех веб-приложений терминала
+    (Imagine, Imagine Pony): отличаются только id в реестре, порт и
+    название в сообщениях об ошибках."""
     resolved = resolve_device_and_token(request)
     if resolved is None:
         raise HTTPException(
@@ -90,9 +92,9 @@ async def proxy_imagine(path: str, request: Request):
         )
     _device_id, token = resolved
 
-    app = get_app("imagine")
+    app = get_app(app_id)
     if app is None:
-        raise HTTPException(status_code=404, detail="Imagine не зарегистрирован в Remote.")
+        raise HTTPException(status_code=404, detail=f"{label} не зарегистрирован в Remote.")
     # НАЙДЕННЫЙ БАГ (жалоба "загрузка Imagine иногда занимает минуты"):
     # раньше здесь стоял `app.proxy_target()`, который под капотом
     # (`_imagine_target()` в app.py) дёргает СИНХРОННЫЙ, блокирующий
@@ -114,9 +116,9 @@ async def proxy_imagine(path: str, request: Request):
     # достаточно знать НАСТРОЕН ли Imagine вообще (просто чтение int из
     # памяти, без сети) -- а не опрашивать его доступность отдельным
     # HTTP-запросом на каждый суб-ресурс.
-    if runtime.imagine_port is None:
-        raise HTTPException(status_code=503, detail="Imagine сейчас не запущен.")
-    target_base = f"http://127.0.0.1:{runtime.imagine_port}"
+    if port is None:
+        raise HTTPException(status_code=503, detail=f"{label} сейчас не запущен.")
+    target_base = f"http://127.0.0.1:{port}"
 
     upstream_url = f"{target_base}/{path}"
     upstream_headers = {
@@ -136,7 +138,7 @@ async def proxy_imagine(path: str, request: Request):
     try:
         upstream_response = await _client.send(upstream_request, stream=True)
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"Imagine недоступен: {exc}")
+        raise HTTPException(status_code=502, detail=f"{label} недоступен: {exc}")
 
     content_type = upstream_response.headers.get("content-type", "")
     response_headers = {
@@ -174,3 +176,16 @@ async def proxy_imagine(path: str, request: Request):
         # этой же страницы браузер выполнял сам, без ?token= в каждом.
         set_token_cookie(response, token)
     return response
+
+
+@router.api_route("/apps/imagine/{path:path}", methods=_PROXY_METHODS)
+async def proxy_imagine(path: str, request: Request):
+    return await _proxy_app("imagine", "Imagine", runtime.imagine_port, path, request)
+
+
+# Imagine Pony -- тот же прокси на свой порт. Путь "/apps/imagine_pony/..."
+# не пересекается с "/apps/imagine/{path}" выше (после "imagine" там
+# обязателен слэш), порядок регистрации не важен.
+@router.api_route("/apps/imagine_pony/{path:path}", methods=_PROXY_METHODS)
+async def proxy_imagine_pony(path: str, request: Request):
+    return await _proxy_app("imagine_pony", "Imagine Pony", runtime.imagine_pony_port, path, request)

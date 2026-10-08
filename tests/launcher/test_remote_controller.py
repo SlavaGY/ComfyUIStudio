@@ -111,14 +111,15 @@ def test_start_reads_fresh_config_from_disk(env, monkeypatch):
     держит устаревший снимок — порт/хост берутся из свежего load_config()."""
     monkeypatch.setattr(
         rc, "load_config",
-        lambda: {"port": 8200, "imagine": {"port": 7999}, "remote": {"port": 7862, "host": "0.0.0.0"}},
+        lambda: {"port": 8200, "imagine": {"port": 7999}, "imagine_pony": {"port": 7998},
+                 "remote": {"port": 7862, "host": "0.0.0.0"}},
     )
     env.ctl.start()
     proc = FakeRemoteProcess.instances[0]
     assert env.ctl.process is proc and proc.started is True
     assert proc.kwargs == {
         "host": "0.0.0.0", "port": 7862, "comfy_host": "127.0.0.1",
-        "comfy_port": 8200, "imagine_port": 7999,
+        "comfy_port": 8200, "imagine_port": 7999, "imagine_pony_port": 7998,
     }
     assert env.ctl._ready_attempts == 0
     assert [ms for ms, _ in FakeQTimer.calls] == [300]
@@ -130,6 +131,7 @@ def test_start_defaults_when_config_sections_missing(env):
     kwargs = FakeRemoteProcess.instances[0].kwargs
     assert kwargs["port"] == 7861 and kwargs["host"] == "127.0.0.1"
     assert kwargs["comfy_port"] is None and kwargs["imagine_port"] is None
+    assert kwargs["imagine_pony_port"] is None
 
 
 def test_start_error_resets_process_and_reports(env):

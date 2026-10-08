@@ -127,6 +127,11 @@ include = ["comfyui_studio*"]
     "imagine/static/**/*.css",
     "imagine/static/**/*.js",
     "imagine/assets/**/*.json",
+    # Imagine Pony (comfyui_studio/imagine_pony/) -- то же самое.
+    "imagine_pony/static/**/*.html",
+    "imagine_pony/static/**/*.css",
+    "imagine_pony/static/**/*.js",
+    "imagine_pony/assets/**/*.json",
 ]
 
 # --------------------------------------------------------------------------

@@ -30,7 +30,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 
 from ..launcher.core.imagine_process import is_imagine_available
-from . import app_launcher
+from . import app_launcher, pony_launcher
 from . import mdns as mdns_module
 from .apps_registry import RemoteApp, register_app
 from .generation_watcher import GenerationWatcher
@@ -43,7 +43,33 @@ from .ws_hub import hub
 API_PREFIX = "/api/v1/remote"
 
 
+def _register_imagine_pony() -> None:
+    """Imagine Pony -- второе веб-приложение терминала (см. pony_launcher.py).
+    Регистрируется независимо от Imagine: у каждого свой порт и свой
+    переключатель в настройках Studio."""
+    if runtime.imagine_pony_port is None:
+        return
+
+    def _pony_target():
+        if is_imagine_available(runtime.imagine_pony_port):
+            return f"http://127.0.0.1:{runtime.imagine_pony_port}"
+        return None
+
+    register_app(
+        RemoteApp(
+            id="imagine_pony",
+            name="Imagine Pony",
+            path="/apps/imagine_pony/",
+            proxy_target=_pony_target,
+            status_fn=pony_launcher.pony_status,
+            start_fn=pony_launcher.start_pony,
+            error_fn=pony_launcher.pony_last_error,
+        )
+    )
+
+
 def _register_known_apps() -> None:
+    _register_imagine_pony()
     if runtime.imagine_port is None:
         # Imagine не настроен для этого запуска Remote (--imagine-port
         # не передан, см. __main__.py) -- значит, Studio в принципе не

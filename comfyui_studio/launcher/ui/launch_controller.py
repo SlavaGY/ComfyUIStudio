@@ -28,6 +28,7 @@ from PySide6.QtCore import QObject, Signal
 
 from ..core.comfy_process import ComfyProcess
 from ..core.config import build_extra_launch_args, prepare_launch_script
+from ..core.imagine_pony_process import ImaginePonyProcess
 from ..core.imagine_process import ImagineProcess
 from ..core.logging_setup import log
 from ..integration.comfy_theme import sync_comfyui_color_palette
@@ -123,8 +124,12 @@ class LaunchController(QObject):
     def on_server_ready(self):
         log.info("Сервер ComfyUI поднялся")
 
-        if self.cfg.get("interface") == "imagine":
+        interface = self.cfg.get("interface")
+        if interface == "imagine":
             self._start_imagine()
+            return
+        if interface == "imagine_pony":
+            self._start_imagine_pony()
             return
 
         self.comfy_ready.emit()
@@ -162,9 +167,35 @@ class LaunchController(QObject):
             return
         self.imagine_launch_watcher.start(imagine_port, self.imagine_process)
 
+    def _start_imagine_pony(self):
+        """То же, что _start_imagine(), но для Imagine Pony: процесс
+        кладётся в тот же self.imagine_process, поэтому отмена, откат и
+        остановка работают без изменений."""
+        pony_port = self.cfg.get("imagine_pony", {}).get("port", 7862)
+        self._view.show_launch_progress(
+            self._view._tr("Запуск Imagine Pony, ожидание сервера...")
+        )
+        self.imagine_process = ImaginePonyProcess(
+            host="127.0.0.1",
+            port=pony_port,
+            comfy_host="127.0.0.1",
+            comfy_port=self.cfg["port"],
+        )
+        try:
+            self.imagine_process.start()
+        except RuntimeError as e:
+            self.on_imagine_failed(
+                self._view._tr("Не удалось запустить Imagine Pony: {}").format(e)
+            )
+            return
+        self.imagine_launch_watcher.start(pony_port, self.imagine_process, "Imagine Pony")
+
     def on_imagine_ready(self):
         log.info("Сервер Imagine поднялся, открываю встроенный браузер")
         self._view.hide_launch_progress()
+        if self.cfg.get("interface") == "imagine_pony":
+            self.imagine_ready.emit(self.cfg.get("imagine_pony", {}).get("port", 7862))
+            return
         self.imagine_ready.emit(self.cfg.get("imagine", {}).get("port", 7860))
 
     # -- сбои --------------------------------------------------------------

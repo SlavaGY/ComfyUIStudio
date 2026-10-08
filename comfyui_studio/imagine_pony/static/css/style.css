@@ -1,0 +1,753 @@
+/* ============================================================
+   Imagine — design tokens
+   Базовая (:root) тема — GitHub Dark, палитра 1:1 с
+   comfyui_studio/themes/github_dark.qss (та же тема, что в Studio) —
+   применяется, пока JS ещё не выставил data-theme (см. themes.css,
+   js/theme.js) и как раз тот же выбор, что был единственным до
+   появления переключателя тем. Остальные 5 тем комплекта (Dark,
+   Light, Nord, Catppuccin Mocha, Dracula) — в themes.css, тем же
+   способом переопределения custom properties через
+   [data-theme="..."], одно значение на всю палитру темы.
+   ============================================================ */
+
+:root {
+  --bg:            #0d1117;
+  --bg-panel:      #161b22;
+  --bg-input:      #0d1117;
+  --bg-raised:     #21262d;
+  --border:        #30363d;
+  --border-hover:  #484f58;
+
+  --text:          #c9d1d9;
+  --text-muted:    #8b949e;
+  --text-faint:    #6e7681;
+  --text-on-accent:#ffffff;
+
+  --accent:        #58a6ff;
+  --accent-strong: #1f6feb;
+  --danger:        #e74c3c;
+
+  --font-display: 'Space Grotesk', 'Segoe UI', sans-serif;
+  --font-body:    'Inter', 'Segoe UI', sans-serif;
+  --font-mono:    'IBM Plex Mono', 'Consolas', monospace;
+
+  --radius: 5px;
+  --radius-lg: 6px;
+}
+
+* { box-sizing: border-box; }
+
+/* Некоторые элементы (.devdrawer, .gallery__empty) сами задают
+   display: flex — без этого правила оно перебивает встроенное
+   браузерное [hidden] { display: none }, и element.hidden = true
+   перестаёт что-либо скрывать. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* НОВОЕ: скроллбар всей страницы раньше не был темизирован (только
+   .styletilegrid ниже -- горизонтальная полоса стилей) и рендерился
+   нативным цветом браузерного движка (QtWebEngine/Chromium), не
+   реагируя на смену темы -- см. themes.css. Firefox-свойства
+   (scrollbar-width/scrollbar-color) добавлены "на будущее" на случай
+   показа страницы вне QtWebEngine; в самом Imagine рендерит именно
+   Chromium, для него важны -webkit-* правила ниже. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) var(--bg);
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+  border: 2px solid var(--bg);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: var(--bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------------- topbar ---------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: 0.02em;
+}
+.topbar__mark { color: var(--accent); font-size: 14px; }
+
+.topbar__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-right: auto;
+}
+
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text-faint);
+}
+.status-dot.alive { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.status-dot.dead  { background: var(--danger); }
+
+.topbar__devtoggle { font-family: var(--font-mono); font-size: 12px; }
+
+.btn-ghost {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.btn-ghost:hover { background: var(--border); }
+
+/* ---------------- centered workshop layout ---------------- */
+
+.workshop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 24px 24px 48px;
+}
+
+.workshop > * {
+  width: 100%;
+  max-width: 640px;
+}
+
+/* Секции, которым явно велено занимать весь экран ("Стили" и
+   галерея результатов) — остальное остаётся центрированной узкой
+   колонкой настроек. */
+.workshop > .full-bleed {
+  max-width: 100%;
+}
+
+.wide-card { padding: 16px 24px; }
+
+.card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+
+.card__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+
+/* ---------------- prompt card ---------------- */
+
+.promptcard__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.promptcard__head label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+}
+.hint { font-size: 11px; color: var(--text-faint); }
+
+textarea, input[type="text"], input[type="number"], select {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 9px 10px;
+  resize: vertical;
+  transition: border-color 0.15s;
+}
+textarea:focus, input:focus, select:focus { border-color: var(--accent); }
+
+.negative-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+.negative-toggle:hover { color: var(--text-muted); }
+.negative-toggle__arrow { transition: transform 0.15s; display: inline-block; }
+.negative-toggle.open .negative-toggle__arrow { transform: rotate(90deg); }
+
+.negative-body { margin-top: 10px; }
+
+/* ---------------- field grid ---------------- */
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.field-grid--3 { grid-template-columns: 1fr 1fr 1fr; }
+@media (max-width: 520px) { .field-grid--3 { grid-template-columns: 1fr 1fr; } }
+.field-grid.mono input, .field-grid.mono select { font-family: var(--font-mono); }
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 11px; color: var(--text-muted); }
+.field--checkbox { grid-column: 1 / -1; flex-direction: row; align-items: center; }
+.field--checkbox label { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+
+.advanced summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.advanced[open] summary { margin-bottom: 12px; }
+
+/* ---------------- generate button ---------------- */
+
+.btn-generate {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-generate:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+.btn-generate:active { filter: brightness(0.95); }
+.btn-generate:disabled { opacity: 0.6; cursor: progress; }
+
+.error-line {
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin: 0;
+}
+.info-line {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin: 0;
+}
+.active-summary {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  margin: -8px 0 0;
+}
+
+/* ---------------- gallery ---------------- */
+
+.gallery__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.gallery__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: start;
+  gap: 14px;
+}
+@media (max-width: 1100px) { .gallery__grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 800px)  { .gallery__grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px)  { .gallery__grid { grid-template-columns: 1fr; } }
+
+.plate {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.plate:not(.plate--pending) {
+  cursor: zoom-in;
+}
+.plate:not(.plate--pending):hover {
+  border-color: var(--border-hover);
+}
+
+.plate img {
+  width: 100%;
+  height: auto;
+  display: block;
+  opacity: 0;
+  transform: scale(1.02);
+  animation: reveal 0.5s ease-out forwards;
+}
+
+@keyframes reveal {
+  from { opacity: 0; transform: scale(1.02); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.plate--pending {
+  aspect-ratio: 1 / 1; /* пока нет самого изображения, размер плейсхолдера не из чего вывести */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  gap: 8px;
+  flex-direction: column;
+}
+
+.plate--pending .tray-ripple {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Этап 7 дорожной карты: кнопка "Остановить" -- виден только на
+   плашке, которая реально сейчас исполняется в ComfyUI (см.
+   pollGeneration в app.js, состояние "running"), спрятана по
+   умолчанию через [hidden]. */
+.plate-stop-btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.plate-stop-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+.plate-stop-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* ---------------- loading screen ---------------- */
+
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  opacity: 1;
+  transition: opacity 0.25s ease-out;
+}
+.loading-screen.loading-screen--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-screen__mark {
+  color: var(--accent);
+  font-size: 22px;
+}
+
+.loading-screen__spinner {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+
+.loading-screen p {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin: 0;
+}
+
+/* ---------------- lightbox (просмотр изображения на весь экран) ---------------- */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(1, 4, 9, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 32px 16px;
+  gap: 12px;
+}
+
+.lightbox__viewport {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  /* НЕ align-items/justify-content: center -- у центрирования через
+     flex-alignment есть "safe" зажим, из-за которого прокрутка не
+     пускает за стартовый (левый/верхний) край, даже когда там есть
+     содержимое (именно так и проявлялся баг с недоступной частью
+     увеличенной картинки). margin: auto на самой картинке центрирует
+     точно так же, но участвует в области прокрутки честно, без этого
+     ограничения. */
+  cursor: zoom-out;
+}
+
+.lightbox__img {
+  margin: auto;
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius);
+  cursor: grab;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  /* Масштаб от ползунка задаётся из JS через реальные width/height в
+     пикселях (а не CSS transform: scale()) -- transform не меняет
+     layout-размер элемента, только его отрисовку, и то, войдёт ли это
+     визуальное превышение в область прокрутки overflow:auto, зависит от
+     браузера и надёжно не работает (это и было причиной "не пускает за
+     левый/верхний край", даже после исправления центрирования через
+     margin: auto). Реальный размер элемента прокручивается штатно, без
+     исключений. max-width/max-height здесь -- только откат на случай,
+     пока JS ещё не успел посчитать размер (до onload). */
+}
+.lightbox__img--grabbing {
+  cursor: grabbing;
+}
+
+.lightbox__close {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.lightbox__close:hover { border-color: var(--border-hover); }
+
+.lightbox__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.lightbox__nav:hover { border-color: var(--border-hover); }
+.lightbox__nav:disabled { opacity: 0.3; cursor: default; }
+.lightbox__nav:disabled:hover { border-color: var(--border); }
+.lightbox__nav--prev { left: 16px; }
+.lightbox__nav--next { right: 16px; }
+
+.lightbox__zoom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(100%, 360px);
+  flex-shrink: 0;
+  padding: 8px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+}
+.lightbox__zoom-label {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  user-select: none;
+  flex-shrink: 0;
+}
+.lightbox__zoom input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.lightbox__zoom-value {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  width: 42px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+
+/* ============================================================
+   Imagine Pony — компоненты панелей узлов (персонажи, билдер, LoRA)
+   Только токены из :root/themes.css -- ничего темо-специфичного.
+   ============================================================ */
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: 1px solid var(--accent);
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
+.btn-primary:disabled { opacity: 0.6; cursor: progress; }
+
+.btn-toggle.on { border-color: var(--accent); color: var(--accent); }
+
+.btn-mini {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.btn-mini:hover { color: var(--text); border-color: var(--border-hover); }
+.btn-mini--wide { margin-top: 10px; padding: 4px 12px; font-size: 11px; }
+
+.warn-line { color: var(--danger); font-size: 12px; margin: 0; }
+.field--wide { grid-column: 1 / -1; }
+.card__counter { color: var(--accent); margin-left: 6px; text-transform: none; letter-spacing: 0; }
+.mini-label { font-size: 11px; color: var(--text-muted); }
+.inline-label { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+input.narrow { width: 90px; }
+
+.rowbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.rowbar > input[type="text"] { flex: 1; min-width: 140px; width: auto; }
+
+.subpanel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.subpanel .rowbar:last-child { margin-bottom: 0; }
+
+.seg { display: flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; flex-shrink: 0; }
+.seg button {
+  background: transparent; border: none; color: var(--text-faint);
+  padding: 7px 11px; font-size: 12px; cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button.active { background: var(--bg-raised); color: var(--text); }
+
+/* ---------- персонажи ---------- */
+
+.charlist {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+}
+.charrow {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 6px 10px; cursor: pointer; font-size: 13px;
+}
+.charrow:hover { background: var(--bg-raised); }
+.charrow.selected { background: var(--bg-raised); }
+.charrow__top { display: flex; align-items: center; gap: 8px; }
+.charrow__check {
+  width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+  border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: var(--text-on-accent);
+}
+.charrow.selected .charrow__check { background: var(--accent); border-color: var(--accent); }
+.charrow__name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.charrow__tags {
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-faint);
+  padding-left: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.badge {
+  font-family: var(--font-mono); font-size: 10px; flex-shrink: 0;
+  border: 1px solid var(--accent); color: var(--accent);
+  padding: 0 6px; border-radius: 3px;
+}
+mark { background: var(--accent); color: var(--text-on-accent); border-radius: 2px; padding: 0 1px; }
+.charlist__more, .charlist__empty { padding: 8px 12px; color: var(--text-faint); font-size: 12px; }
+
+.chips-wrap { margin-top: 10px; }
+.mini-label + .chips { margin-top: 4px; }
+.chips, .pills { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 6px 2px 10px; border-radius: 20px; font-size: 12px;
+  border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-muted);
+}
+.chip--lora { border-color: var(--accent); color: var(--accent); }
+.chip__x { cursor: pointer; font-size: 14px; line-height: 1; color: var(--text-faint); }
+.chip__x:hover { color: var(--danger); }
+
+/* ---------- плашки (билдер) ---------- */
+
+.pill {
+  padding: 3px 11px; border-radius: 20px; cursor: pointer; user-select: none;
+  font-size: 12px; border: 1px solid var(--border);
+  background: var(--bg-input); color: var(--text-muted);
+  transition: border-color 0.12s, color 0.12s;
+}
+.pill:hover { border-color: var(--border-hover); }
+.pill.active { border-color: var(--accent); color: var(--accent); background: var(--bg-raised); }
+.pill.has-lora { border-style: dashed; }
+.pill--neg.active { border-color: var(--danger); color: var(--danger); }
+.pill--chip { font-size: 11px; }
+
+.bsections { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.bsec { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.bsec__head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px; cursor: pointer; background: var(--bg-raised);
+  font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-muted);
+}
+.bsec__head:hover { color: var(--text); }
+.bsec__arrow { transition: transform 0.15s; }
+.bsec.collapsed .bsec__arrow { transform: rotate(-90deg); }
+.bsec.collapsed > .bsec__body { display: none; }
+.bsec__body { padding: 8px 10px; background: var(--bg-input); display: flex; flex-direction: column; gap: 6px; }
+.bsec .bsec { margin-left: 4px; }
+.bsec__sel { color: var(--accent); text-transform: none; letter-spacing: 0; margin-left: 8px; font-size: 11px; }
+.bsec textarea { font-family: var(--font-mono); font-size: 12px; min-height: 50px; }
+.bsec--neg textarea { color: var(--danger); }
+.bscene { flex-direction: row; align-items: center; gap: 10px; margin-top: 8px; }
+
+.preview-block { margin-top: 12px; }
+.prompt-preview {
+  margin: 4px 0 0; padding: 8px 10px;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius);
+  font-family: var(--font-mono); font-size: 11px; color: var(--text);
+  white-space: pre-wrap; word-break: break-word;
+  min-height: 40px; max-height: 160px; overflow-y: auto;
+}
+
+/* ---------- превью тегов ---------- */
+
+.tagpreview { margin-top: 10px; }
+.tagpreview__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.tagpreview__btns { display: flex; gap: 5px; }
+.tagpreview__excluded { color: var(--danger); font-size: 10px; margin-left: 6px; }
+.tagbox {
+  display: flex; flex-wrap: wrap; gap: 4px; padding: 6px;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius);
+  max-height: 130px; overflow-y: auto;
+}
+.tag {
+  display: inline-block; padding: 1px 8px; border-radius: 12px;
+  font-family: var(--font-mono); font-size: 11px; cursor: pointer; user-select: none;
+  border: 1px solid var(--border); color: var(--text);
+}
+.tag:hover { opacity: 0.7; }
+.tag.excluded { color: var(--text-faint); text-decoration: line-through; background: transparent !important; border-color: var(--border) !important; }
+.tagbox--neg .tag:not(.excluded) { border-color: var(--danger); color: var(--danger); }
+
+/* ---------- LoRA ---------- */
+
+.loraslots { display: flex; flex-direction: column; gap: 8px; }
+.loraslot { display: grid; grid-template-columns: 1fr 88px 30px; gap: 8px; align-items: center; }
+.loraslot input.invalid { border-color: var(--danger); }
+.loraslot__clear {
+  background: transparent; border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text-faint); cursor: pointer; height: 100%;
+}
+.loraslot__clear:hover { color: var(--danger); border-color: var(--danger); }
+.loranote {
+  margin-top: 10px; padding: 8px 10px; font-family: var(--font-mono); font-size: 11px;
+  line-height: 1.6; color: var(--text-muted);
+  border: 1px dashed var(--border); border-radius: var(--radius);
+}
+.loranote b { color: var(--accent); font-weight: 500; }
+.loranote s { color: var(--text-faint); }

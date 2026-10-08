@@ -69,8 +69,10 @@ class Env:
 def env(monkeypatch):
     e = Env()
     e.comfy, e.imagine = _fake_class("FakeComfy"), _fake_class("FakeImagine")
+    e.pony = _fake_class("FakeImaginePony")
     monkeypatch.setattr(lc, "ComfyProcess", e.comfy)
     monkeypatch.setattr(lc, "ImagineProcess", e.imagine)
+    monkeypatch.setattr(lc, "ImaginePonyProcess", e.pony)
     monkeypatch.setattr(lc, "prepare_launch_script", lambda root, script, extra: "launch.bat")
     monkeypatch.setattr(lc, "build_extra_launch_args", lambda cfg: [])
     e.sync = MagicMock()
@@ -343,3 +345,53 @@ def test_default_watchers_are_created_when_not_injected(monkeypatch):
     ctl = lc.LaunchController(view, MagicMock(), lambda: "dark", loc="LOC")
     assert [c[0] for c in created] == ["LW", "IW"]
     assert all(c[1] == "LOC" and c[2] is ctl for c in created)
+
+
+# -- Imagine Pony ----------------------------------------------------------------
+
+
+def test_server_ready_pony_interface_starts_pony_not_imagine(env):
+    env.cfg["interface"] = "imagine_pony"
+    env.cfg["imagine_pony"] = {"port": 7890}
+    env.ctl.on_server_ready()
+    proc = env.pony.instances[0]
+    assert env.imagine.instances == []
+    assert env.ctl.imagine_process is proc and proc.started is True
+    assert proc.kwargs == {
+        "host": "127.0.0.1", "port": 7890, "comfy_host": "127.0.0.1", "comfy_port": 8188,
+    }
+    env.iw.start.assert_called_once_with(7890, proc, "Imagine Pony")
+    assert env.signals == []
+
+
+def test_pony_defaults_port_7862(env):
+    env.cfg.update(interface="imagine_pony")
+    env.cfg.pop("imagine_pony", None)
+    env.ctl.on_server_ready()
+    assert env.pony.instances[0].kwargs["port"] == 7862
+
+
+def test_pony_ready_signals_pony_port_not_imagine_port(env):
+    env.cfg.update(interface="imagine_pony", imagine_pony={"port": 7890})
+    env.ctl.on_imagine_ready()
+    assert env.signals == [("imagine_ready", 7890)]
+
+
+def test_pony_start_error_rolls_back_both_processes(env):
+    env.cfg["interface"] = "imagine_pony"
+    env.ctl.comfy_process = env.comfy()
+    original_init = env.pony.__init__
+
+    def init_failing(self, *a, **k):
+        original_init(self, *a, **k)
+        self.start_error = RuntimeError("порт занят")
+
+    env.pony.__init__ = init_failing
+    env.ctl.on_server_ready()
+
+    assert env.pony.instances[0].stopped is True
+    assert env.ctl.comfy_process.stopped is True
+    status = env.view.set_status.call_args.args[0]
+    assert "Не удалось запустить Imagine Pony" in status and "порт занят" in status
+    env.iw.start.assert_not_called()
+    assert env.signals == []

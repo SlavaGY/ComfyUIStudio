@@ -88,6 +88,7 @@ class RemoteController(QObject):
         port = remote_cfg.get("port", 7861)
         host = remote_cfg.get("host", "127.0.0.1")
         imagine_port = fresh_cfg.get("imagine", {}).get("port")
+        imagine_pony_port = fresh_cfg.get("imagine_pony", {}).get("port")
         try:
             self.process = RemoteProcess(
                 host=host,
@@ -95,6 +96,7 @@ class RemoteController(QObject):
                 comfy_host="127.0.0.1",
                 comfy_port=fresh_cfg.get("port"),
                 imagine_port=imagine_port,
+                imagine_pony_port=imagine_pony_port,
             )
             self.process.start()
         except RuntimeError as e:

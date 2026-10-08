@@ -217,6 +217,12 @@ def _send_generation_push_unsafe(event: dict) -> None:
                     # стоит ли идти скачивать картинки, по этому полю, а
                     # не парся title.
                     "state": str(event.get("type", "")),
+                    # Какое веб-приложение ответило за генерацию
+                    # ("/apps/imagine/" или "/apps/imagine_pony/"): по нему
+                    # FcmService.kt ведёт тап и GeneratedImageSaver качает
+                    # картинки. Пусто -- клиент берёт Imagine (старое
+                    # поведение, и для событий без приложения-ответчика).
+                    "app_path": str(event.get("app_path", "")),
                 },
                 "android": {"priority": "high"},
             }

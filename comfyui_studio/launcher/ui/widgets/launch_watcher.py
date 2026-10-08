@@ -128,12 +128,18 @@ class ImagineLaunchWatcher(QObject):
         self._elapsed = 0
         self._process = None
         self._probe = BackgroundTask(self)
+        self._label = "Imagine"
 
     def _tr(self, text):
+        # Тексты написаны для «Imagine»; для Imagine Pony подставляется
+        # его название -- ДО перевода (в i18n.py есть отдельные ключи).
+        if self._label != "Imagine":
+            text = text.replace("Imagine", self._label)
         return self.loc.tr(text) if self.loc is not None else text
 
-    def start(self, port, process):
+    def start(self, port, process, label="Imagine"):
         self._probe.cancel()
+        self._label = label
         self._port = port
         self._process = process
         self._elapsed = 0
