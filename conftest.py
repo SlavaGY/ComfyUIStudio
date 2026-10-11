@@ -21,9 +21,16 @@ QSettings.setDefaultFormat() на него не действует, а QSettings
 INI-файл во временной папке. Фабрика доступна тестам как fixture
 ``qsettings_factory`` — ей же нужно читать то, что записал менеджер.
 
-Остальные QSettings приложения здесь НЕ перенаправляются (только
-менеджеры тем и языка); ``~/.promptvault`` (собственная папка PromptVault
-вне APPDATA) тоже не затрагивается.
+Подмена теперь ВСЕОБЩАЯ: фабрика ставится и на PySide6.QtCore.QSettings
+(для ленивых и тестовых импортов), и на имя QSettings в каждом уже
+загруженном модуле comfyui_studio -- в т.ч. PromptVault
+(settings.py/hotkeys.py/gallery_manager.py) и Prompt Builder
+(pb_settings.py). Раньше сюда попадали только менеджеры тем и языка, а
+тесты PromptVault вызывали ``QSettings("PromptVault","PromptVault").clear()``
+-- на Windows это реестр настоящего пользователя, и каждый прогон pytest
+стирал его настройки. Отдельные HOME/XDG_CONFIG_HOME-подмены и ``.clear()``
+в тестах больше не нужны (на Windows они всё равно не действуют).
+``~/.promptvault`` (миниатюры) перенаправляет tests/promptvault/conftest.py.
 
 Папки данных (этап R2). Все файлы под ``%APPDATA%\\ComfyUIStudio`` и
 ``%APPDATA%\\ComfyUILauncher`` (настройки генератора промптов, история,
@@ -45,6 +52,11 @@ import tempfile
 
 import pytest
 
+# Qt-тесты не должны зависеть от рабочего стола разработчика (17 файлов /
+# 248 тестов раньше требовали настольной сессии, а offscreen выставляли
+# только 4 файла). Явно заданное пользователем значение не перебиваем.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 _SESSION_DATA_ROOT = tempfile.mkdtemp(prefix="comfyui_studio_tests_")
 os.environ["COMFYUI_STUDIO_DATA_DIR"] = os.path.join(_SESSION_DATA_ROOT, "ComfyUIStudio")
 os.environ["COMFYUI_LAUNCHER_DATA_DIR"] = os.path.join(_SESSION_DATA_ROOT, "ComfyUILauncher")
@@ -65,8 +77,7 @@ def _isolate_shared_theme_language_and_qsettings(tmp_path, monkeypatch):
     monkeypatch.setattr(shared_language, "SHARED_LANGUAGE_PATH", str(shared_dir / "language.json"))
 
     factory = _make_qsettings_factory(tmp_path / "qsettings")
-    monkeypatch.setattr("comfyui_studio.themes.base.QSettings", factory)
-    monkeypatch.setattr("comfyui_studio.i18n_base.QSettings", factory)
+    _patch_qsettings_everywhere(monkeypatch, factory)
     return factory
 
 
@@ -90,3 +101,37 @@ def _make_qsettings_factory(directory):
         )
 
     return factory
+
+
+# Модули, которые держат QSettings под своим именем (from PySide6.QtCore
+# import QSettings). Импортируем их ЗАРАНЕЕ, до подмены: иначе модуль,
+# впервые импортированный посреди теста, навсегда запомнил бы фабрику с
+# папкой уже удалённого теста.
+_QSETTINGS_MODULES = (
+    "comfyui_studio.themes.base",
+    "comfyui_studio.i18n_base",
+    "comfyui_studio.promptvault.settings",
+    "comfyui_studio.promptvault.core.hotkeys",
+    "comfyui_studio.promptvault.core.gallery_manager",
+    "comfyui_studio.prompt_builder.pb_settings",
+)
+
+
+def _patch_qsettings_everywhere(monkeypatch, factory):
+    import importlib
+    import sys
+
+    import PySide6.QtCore as qtcore
+
+    real = qtcore.QSettings
+    for name in _QSETTINGS_MODULES:
+        try:
+            importlib.import_module(name)
+        except ImportError:  # опциональный модуль не импортируется -- не наша забота
+            pass
+    monkeypatch.setattr(qtcore, "QSettings", factory)
+    for mod_name, module in list(sys.modules.items()):
+        if not mod_name.startswith("comfyui_studio") or module is None:
+            continue
+        if getattr(module, "QSettings", None) is real:
+            monkeypatch.setattr(module, "QSettings", factory)

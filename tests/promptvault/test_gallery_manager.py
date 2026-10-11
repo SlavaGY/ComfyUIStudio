@@ -40,29 +40,12 @@ def _write_json(folder, name, **overrides):
 
 
 @pytest.fixture
-def gallery(qapp, tmp_path, monkeypatch):
-    """GalleryManager с изолированной БД и изолированными QSettings
-    (иначе тесты читали/писали бы настройки фильтров реального
-    пользователя из ~/.config).
-
-    Подмены HOME/XDG_CONFIG_HOME одной по себе недостаточно (Qt
-    кеширует уже вычисленный путь к файлу настроек внутри процесса) —
-    нужен ещё явный .clear() перед стартом, как в
-    tests/test_app_settings.py/tests/test_settings_window.py. Раньше
-    этого .clear() здесь не было — тесты в этом файле такое обычно не
-    ловили (каждый сам сначала пишет нужный ключ, потом читает), но
-    задача "сохранение пути к папке между сессиями" (last_folder,
-    см. TestLastFolder ниже) уже проявила пропуск как настоящую
-    межтестовую утечку в общем прогоне."""
-
-    from PySide6.QtCore import QSettings
-
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    monkeypatch.setenv("HOME", str(fake_home))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / ".config"))
-
-    QSettings("PromptVault", "PromptVault").clear()
+def gallery(qapp, tmp_path):
+    """GalleryManager с изолированной БД. QSettings изолирует корневой
+    conftest.py (autouse-фикстура подменяет фабрику QSettings на INI во
+    временной папке), поэтому ни HOME/XDG_CONFIG_HOME, ни ``.clear()``
+    здесь больше не нужны -- ``.clear()`` на Windows стирал настоящий
+    реестр пользователя (HKCU\\Software\\PromptVault)."""
 
     db_path = tmp_path / "test.db"
     repository = GenerationRepository(db_path)
@@ -74,8 +57,6 @@ def gallery(qapp, tmp_path, monkeypatch):
     yield gm, folder
 
     gm.close()
-
-    QSettings("PromptVault", "PromptVault").clear()
 
 
 def _load(gallery_folder_tuple, count=3):

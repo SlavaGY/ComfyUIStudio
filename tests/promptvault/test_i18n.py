@@ -17,22 +17,10 @@ QTranslator устанавливается на него глобально — 
 содержит перевод для строк, которыми проверяются здесь.
 """
 
-import pytest
 from PySide6.QtCore import QCoreApplication
 
 from comfyui_studio.promptvault.i18n import AVAILABLE_LANGUAGES, LocalizationManager
 from comfyui_studio.promptvault.ui.toolbar import Toolbar
-
-
-@pytest.fixture(autouse=True)
-def _isolated_settings(tmp_path, monkeypatch):
-    """QSettings("PromptVault", "PromptVault") иначе читал/писал бы
-    язык интерфейса реального пользователя из ~/.config."""
-
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    monkeypatch.setenv("HOME", str(fake_home))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / ".config"))
 
 
 class TestAvailableLanguages:

@@ -20,30 +20,6 @@ from comfyui_studio.promptvault.ui.settings_window import SettingsWindow
 from comfyui_studio.promptvault.ui.toolbar import Toolbar
 
 
-@pytest.fixture(autouse=True)
-def _isolated_settings(tmp_path, monkeypatch):
-    """QSettings("PromptVault", "PromptVault") иначе читал/писал бы
-    настройки реального пользователя из ~/.config.
-
-    Явная очистка стора (не только подмена HOME/XDG_CONFIG_HOME) — см.
-    подробный комментарий в tests/test_app_settings.py, откуда это и
-    было скопировано после обнаруженной там же утечки состояния между
-    тестовыми файлами."""
-
-    from PySide6.QtCore import QSettings
-
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    monkeypatch.setenv("HOME", str(fake_home))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / ".config"))
-
-    QSettings("PromptVault", "PromptVault").clear()
-
-    yield
-
-    QSettings("PromptVault", "PromptVault").clear()
-
-
 @pytest.fixture
 def settings_window(qapp, tmp_path):
 

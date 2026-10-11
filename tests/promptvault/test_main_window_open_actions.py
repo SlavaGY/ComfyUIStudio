@@ -6,38 +6,9 @@ GenerationList "Open JSON" / "Open in folder" (перенесено из
 
 import json
 
-import pytest
 
 import comfyui_studio.promptvault.ui.main_window as main_window_module
 from comfyui_studio.promptvault.ui.main_window import MainWindow
-
-
-@pytest.fixture(autouse=True)
-def _isolated_settings(tmp_path, monkeypatch):
-    """QSettings("PromptVault", "PromptVault") иначе читал/писал бы
-    настройки реального пользователя из ~/.config — актуально и для
-    этого файла с задачи "сохранение пути к папке между сессиями":
-    gallery.load_folder(...) ниже теперь пишет last_folder в
-    QSettings, а MainWindow() при создании его читает
-    (_restore_last_folder), так что без изоляции один тест этого
-    файла мог бы заставить MainWindow В ДРУГОМ тесте (или тестовом
-    файле) неожиданно открыть чужую tmp_path-папку при старте.
-
-    См. тот же паттерн (и почему одной подмены HOME недостаточно) в
-    tests/test_app_settings.py."""
-
-    from PySide6.QtCore import QSettings
-
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    monkeypatch.setenv("HOME", str(fake_home))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / ".config"))
-
-    QSettings("PromptVault", "PromptVault").clear()
-
-    yield
-
-    QSettings("PromptVault", "PromptVault").clear()
 
 
 def _write_json(folder, name, **overrides):

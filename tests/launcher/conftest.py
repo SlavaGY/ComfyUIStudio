@@ -12,7 +12,11 @@ import threading
 
 import pytest
 
-websockets = pytest.importorskip("websockets")
+# websockets НЕ импортируется на уровне модуля: Skipped наследует
+# BaseException, а pytest при импорте conftest.py ловит только Exception --
+# отсутствие одной опциональной библиотеки блокировало бы всю директорию
+# tests/launcher. Теперь пропуск локален и происходит в тех тестах/
+# фикстурах, которым сервер действительно нужен (см. LocalWsServer._run).
 
 
 def _free_port():
@@ -40,6 +44,8 @@ class LocalWsServer:
         # см. test_comfy_ws.py::test_client_connects_with_client_id_query_param
 
     def _run(self):
+        import websockets
+
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
 
@@ -103,6 +109,7 @@ class LocalWsServer:
 
 @pytest.fixture
 def ws_server():
+    pytest.importorskip("websockets")
     server = LocalWsServer()
     server.start()
     yield server
