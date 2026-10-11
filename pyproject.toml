@@ -214,6 +214,7 @@ ignore = [
 "comfyui_studio/remote/process_by_port.py" = ["BLE001"]  # 1
 "comfyui_studio/remote/ssh_config_store.py" = ["BLE001"]  # 1
 "comfyui_studio/remote/ws_hub.py" = ["BLE001"]  # 1
+"comfyui_studio/rvc/backend/jobs.py" = ["BLE001"]  # 1 -- верх рабочего потока очереди заданий
 "comfyui_studio/shared_promptgen.py" = ["BLE001"]  # 3
 "tests/test_promptgen_history.py" = ["BLE001"]  # 1
 

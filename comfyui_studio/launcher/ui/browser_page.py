@@ -71,6 +71,16 @@ class RestrictedWebPage(QWebEnginePage):
 
 
 class BrowserPage(QWidget):
+    # Имя/папка профиля WebEngine и подписи кнопок -- атрибуты класса, чтобы
+    # другой сервис (Ultimate RVC, см. rvc_browser_page.py) мог показать
+    # свой веб-интерфейс в такой же странице со СВОИМ профилем: два
+    # QWebEngineProfile с одним именем и одной папкой хранилища мешали бы
+    # друг другу. Значения по умолчанию -- прежние, ComfyUI работает как раньше.
+    PROFILE_NAME = "comfyui_launcher"
+    PROFILE_DIR = WEBENGINE_PROFILE_DIR
+    SETTINGS_TOOLTIP = "Вернуться к настройкам, не останавливая ComfyUI"
+    STOP_TOOLTIP = "Остановить процесс ComfyUI"
+
     # Раздельные сигналы: "Настройки" НЕ останавливает сервер,
     # "Остановить" — останавливает. Раньше обе кнопки делали одно и то же.
     settings_requested = Signal()
@@ -100,13 +110,13 @@ class BrowserPage(QWidget):
         top_row.addStretch(1)
 
         self.settings_btn = QPushButton(self._tr("\u2190 Настройки"))
-        self.settings_btn.setToolTip(self._tr("Вернуться к настройкам, не останавливая ComfyUI"))
+        self.settings_btn.setToolTip(self._tr(self.SETTINGS_TOOLTIP))
         self.settings_btn.setFlat(True)
         self.settings_btn.clicked.connect(self.settings_requested.emit)
         top_row.addWidget(self.settings_btn)
 
         self.stop_btn = QPushButton(self._tr("\u23F9 Остановить"))
-        self.stop_btn.setToolTip(self._tr("Остановить процесс ComfyUI"))
+        self.stop_btn.setToolTip(self._tr(self.STOP_TOOLTIP))
         self.stop_btn.setFlat(True)
         self.stop_btn.clicked.connect(self.stop_requested.emit)
         top_row.addWidget(self.stop_btn)
@@ -131,16 +141,17 @@ class BrowserPage(QWidget):
 
     def retranslate_ui(self):
         self.settings_btn.setText(self._tr("\u2190 Настройки"))
-        self.settings_btn.setToolTip(self._tr("Вернуться к настройкам, не останавливая ComfyUI"))
+        self.settings_btn.setToolTip(self._tr(self.SETTINGS_TOOLTIP))
         self.stop_btn.setText(self._tr("\u23F9 Остановить"))
-        self.stop_btn.setToolTip(self._tr("Остановить процесс ComfyUI"))
+        self.stop_btn.setToolTip(self._tr(self.STOP_TOOLTIP))
         self.resource_bar.retranslate_ui()
 
     def load(self, port):
         if self._profile is None:
-            os.makedirs(WEBENGINE_PROFILE_DIR, exist_ok=True)
-            self._profile = QWebEngineProfile("comfyui_launcher", self.view)
-            self._profile.setPersistentStoragePath(WEBENGINE_PROFILE_DIR)
+            os.makedirs(self.PROFILE_DIR, exist_ok=True)
+            self._profile = QWebEngineProfile(self.PROFILE_NAME, self.view)
+            self._profile.setPersistentStoragePath(self.PROFILE_DIR)
+            self._on_profile_created(self._profile)
 
         self._page = RestrictedWebPage(self._profile, "127.0.0.1", port, self.view)
         self._page_ready = False
@@ -149,6 +160,10 @@ class BrowserPage(QWidget):
         url = f"http://127.0.0.1:{port}/"
         self.address_label.setText(url)
         self.view.load(QUrl(url))
+
+    def _on_profile_created(self, profile):
+        """Хук для потомков: настроить свежесозданный профиль (например,
+        подписаться на downloadRequested). Для ComfyUI -- ничего."""
 
     def _on_load_finished(self, ok):
         self._page_ready = bool(ok)

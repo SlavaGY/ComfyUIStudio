@@ -761,12 +761,6 @@ async function loadLoras() {
   } catch (e) {
     console.warn('LoRA-список недоступен:', e);
   }
-  const dl = el('loraFileOptions');
-  dl.replaceChildren(...state.loraFiles.map((f) => {
-    const o = document.createElement('option');
-    o.value = f;
-    return o;
-  }));
   const saved = state.saved.loras;
   if (Array.isArray(saved)) {
     saved.slice(0, LORA_SLOTS).forEach((s, i) => {
@@ -781,6 +775,84 @@ function validateLoraInput(input, value) {
   input.classList.toggle('invalid', !!value && state.loraFiles.length > 0 && !state.loraFiles.includes(value));
 }
 
+// Свой выпадающий список вместо <datalist>: Android WebView (приложение на
+// телефоне) не умеет показывать подсказки datalist вообще -- список просто
+// не появлялся. Работает одинаково на ПК и в WebView: тап/фокус по полю или
+// по стрелке ▾ открывает список, ввод текста фильтрует, ручной ввод
+// произвольного имени по-прежнему возможен.
+const COMBO_MAX_ITEMS = 200;
+
+function attachLoraCombo(input, onPick) {
+  const wrap = h('div', 'combo');
+  const caret = h('button', 'combo__caret', '▾');
+  caret.type = 'button';
+  caret.tabIndex = -1;
+  caret.setAttribute('aria-label', t('Список LoRA'));
+  const list = h('div', 'combo__list');
+  list.hidden = true;
+  wrap.append(input, caret, list);
+
+  let filtering = false; // true только пока пользователь печатает
+
+  function close() { list.hidden = true; }
+
+  function render() {
+    const q = filtering ? input.value.trim().toLowerCase() : '';
+    const all = state.loraFiles;
+    const matches = q ? all.filter((f) => f.toLowerCase().includes(q)) : all;
+    list.replaceChildren();
+    if (!all.length) {
+      list.appendChild(h('div', 'combo__empty', t('Список LoRA пуст или недоступен')));
+      return;
+    }
+    if (!matches.length) {
+      list.appendChild(h('div', 'combo__empty', t('Ничего не найдено')));
+      return;
+    }
+    matches.slice(0, COMBO_MAX_ITEMS).forEach((f) => {
+      const item = h('div', 'combo__item' + (f === input.value ? ' selected' : ''), f);
+      item.addEventListener('click', () => {
+        input.value = f;
+        close();
+        onPick(f);
+      });
+      list.appendChild(item);
+    });
+    if (matches.length > COMBO_MAX_ITEMS) {
+      list.appendChild(h('div', 'combo__empty', t('…и ещё {n}, уточните поиск', { n: matches.length - COMBO_MAX_ITEMS })));
+    }
+  }
+
+  function open() {
+    render();
+    list.hidden = false;
+    // Не даём выпадающему списку уйти за нижний край экрана -- на телефоне
+    // поле часто у самого низа, поэтому при нехватке места открываем вверх.
+    wrap.classList.remove('combo--up');
+    const r = input.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom;
+    if (below < 200 && r.top > below) wrap.classList.add('combo--up');
+  }
+
+  input.addEventListener('focus', () => { filtering = false; open(); });
+  input.addEventListener('click', () => { if (list.hidden) { filtering = false; open(); } });
+  input.addEventListener('input', () => { filtering = true; open(); });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  caret.addEventListener('click', () => {
+    if (list.hidden) { filtering = false; open(); } else { close(); }
+  });
+  // Закрытие по тапу/клику вне поля (а не по blur -- иначе на тач-экранах
+  // blur срабатывает раньше click по пункту и список исчезает до выбора).
+  const onOutside = (e) => {
+    // Слоты перерисовываются целиком -- отцепляем обработчик, когда
+    // этого списка уже нет в документе, чтобы они не копились.
+    if (!wrap.isConnected) { document.removeEventListener('pointerdown', onOutside); return; }
+    if (!wrap.contains(e.target)) close();
+  };
+  document.addEventListener('pointerdown', onOutside);
+  return wrap;
+}
+
 function renderLoraSlots() {
   const box = el('loraSlots');
   box.replaceChildren();
@@ -788,7 +860,7 @@ function renderLoraSlots() {
     const row = h('div', 'loraslot');
     const file = document.createElement('input');
     file.type = 'text';
-    file.setAttribute('list', 'loraFileOptions');
+    file.autocomplete = 'off';
     file.placeholder = t('— нет — (слот {n})', { n: i + 1 });
     file.value = slot.file;
     validateLoraInput(file, slot.file);
@@ -823,7 +895,13 @@ function renderLoraSlots() {
       scheduleSave();
       renderLoraEffective();
     });
-    row.append(file, str, clear);
+    const combo = attachLoraCombo(file, (picked) => {
+      slot.file = picked;
+      validateLoraInput(file, picked);
+      scheduleSave();
+      renderLoraEffective();
+    });
+    row.append(combo, str, clear);
     box.appendChild(row);
   });
 }

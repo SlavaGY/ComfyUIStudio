@@ -737,7 +737,35 @@ mark { background: var(--accent); color: var(--text-on-accent); border-radius: 2
 /* ---------- LoRA ---------- */
 
 .loraslots { display: flex; flex-direction: column; gap: 8px; }
-.loraslot { display: grid; grid-template-columns: 1fr 88px 30px; gap: 8px; align-items: center; }
+/* minmax(0, 1fr), а не 1fr: иначе колонка не сжимается меньше своего
+   содержимого и длинное имя LoRA раздвигает страницу вбок. */
+.loraslot { display: grid; grid-template-columns: minmax(0, 1fr) 88px 30px; gap: 8px; align-items: center; }
+
+/* ---------- выпадающий список LoRA (замена <datalist>, см. app.js) ---------- */
+.combo { position: relative; min-width: 0; }
+.combo > input { padding-right: 30px; }
+.combo__caret {
+  position: absolute; top: 1px; right: 1px; bottom: 1px; width: 28px;
+  background: transparent; border: none; border-radius: 0 var(--radius) var(--radius) 0;
+  color: var(--text-faint); cursor: pointer; font-size: 12px; padding: 0;
+}
+.combo__caret:hover { color: var(--text); }
+.combo__list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 40;
+  max-height: 240px; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--bg-panel); border: 1px solid var(--border-hover);
+  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.combo--up .combo__list { top: auto; bottom: calc(100% + 2px); }
+.combo__item {
+  padding: 8px 10px; font-size: 12px; font-family: var(--font-mono);
+  cursor: pointer; overflow-wrap: anywhere; word-break: break-word;
+  border-bottom: 1px solid var(--border);
+}
+.combo__item:last-child { border-bottom: none; }
+.combo__item:hover, .combo__item.selected { background: var(--bg-raised); }
+.combo__item.selected { color: var(--accent); }
+.combo__empty { padding: 8px 10px; font-size: 12px; color: var(--text-faint); }
 .loraslot input.invalid { border-color: var(--danger); }
 .loraslot__clear {
   background: transparent; border: 1px solid var(--border); border-radius: var(--radius);
@@ -751,3 +779,25 @@ mark { background: var(--accent); color: var(--text-on-accent); border-radius: 2
 }
 .loranote b { color: var(--accent); font-weight: 500; }
 .loranote s { color: var(--text-faint); }
+
+
+/* ============================================================
+   Перенос длинных строк (названия LoRA и т.п. без пробелов)
+   Раньше такое имя не помещалось в ширину экрана телефона, и страница
+   получала горизонтальную прокрутку на пустом месте. overflow-wrap:
+   anywhere разрешает переносить строку даже посреди слова.
+   ============================================================ */
+.loranote, .active-summary, .error-line, .info-line, .warn-line, .hint,
+.chip, .pill, .tag, .prompt-preview, .bsec__sel, .badge, .mini-label,
+.card__label, .field label, .charlist__empty, .charlist__more {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.chip, .pill, .tag { max-width: 100%; }
+.chip, .pill { white-space: normal; text-align: left; }
+
+/* ВАЖНО: НЕ ставить overflow-x: hidden на html/body -- body из-за этого
+   становится собственным скролл-контейнером, и в Android WebView
+   (приложение на телефоне) страница оставалась чёрной. Ширину держат
+   правила переноса выше и min-width: 0. */
+.workshop > * { min-width: 0; }

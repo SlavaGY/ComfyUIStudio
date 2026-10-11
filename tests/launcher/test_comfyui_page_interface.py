@@ -1,4 +1,7 @@
-"""Переключатель «Интерфейс» на странице настроек ComfyUI: ComfyUI / Imagine / Imagine Pony."""
+"""Страница настроек ComfyUI после переноса выбора режима на главный экран:
+радиокнопок «Интерфейс» больше нет, порты Imagine/Pony доступны всегда, а
+collect() не трогает cfg["interface"] (его пишет список на главном экране --
+иначе автосохранение страницы затирало бы выбор устаревшим значением)."""
 
 import pytest
 
@@ -22,36 +25,28 @@ def make(qtbot):
     return _make
 
 
-def test_default_is_comfyui_with_all_extra_fields_disabled(make):
+def test_collect_does_not_write_interface(make):
+    assert "interface" not in make(interface="imagine").collect()
+
+
+def test_radio_buttons_are_gone(make):
     page = make()
-    assert page.collect()["interface"] == "comfyui"
-    assert not page.imagine_port_spin.isEnabled()
-    assert not page.pony_port_spin.isEnabled()
+    for name in ("interface_comfyui_radio", "interface_imagine_radio", "interface_pony_radio"):
+        assert not hasattr(page, name)
 
 
-def test_pony_selected_from_config_enables_only_its_port(make):
-    page = make(interface="imagine_pony", imagine_pony={"port": 7890})
+def test_ports_enabled_regardless_of_selected_mode(make):
+    page = make(interface="comfyui", imagine_pony={"port": 7890})
+    assert page.imagine_port_spin.isEnabled() and page.pony_port_spin.isEnabled()
     out = page.collect()
-    assert out["interface"] == "imagine_pony"
     assert out["imagine_pony"] == {"port": 7890}
-    assert page.pony_port_spin.isEnabled()
-    assert not page.imagine_port_spin.isEnabled() and not page.imagine_dev_mode_check.isEnabled()
+    assert out["imagine"]["port"] == page.imagine_port_spin.value()
 
 
-def test_radios_are_mutually_exclusive(make):
-    page = make(interface="imagine")
-    page.interface_pony_radio.setChecked(True)
-    assert page.collect()["interface"] == "imagine_pony"
-    assert not page.interface_imagine_radio.isChecked()
-    assert page.pony_port_spin.isEnabled() and not page.imagine_port_spin.isEnabled()
-    page.interface_imagine_radio.setChecked(True)
-    assert page.collect()["interface"] == "imagine"
-    assert not page.pony_port_spin.isEnabled()
-
-
-def test_locked_while_running_disables_pony_port(make):
-    page = make(interface="imagine_pony")
+def test_ports_locked_while_comfyui_running(make):
+    page = make()
     page.set_editable(False)
-    assert not page.pony_port_spin.isEnabled() and not page.interface_pony_radio.isEnabled()
+    assert not page.pony_port_spin.isEnabled() and not page.imagine_port_spin.isEnabled()
+    assert not page.imagine_dev_mode_check.isEnabled()
     page.set_editable(True)
-    assert page.pony_port_spin.isEnabled()
+    assert page.pony_port_spin.isEnabled() and page.imagine_dev_mode_check.isEnabled()

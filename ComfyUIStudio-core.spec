@@ -44,6 +44,17 @@ datas = [
     # Imagine Pony (comfyui_studio/imagine_pony/) -- то же: статика и workflow_template.json.
     ('comfyui_studio/imagine_pony/static', 'comfyui_studio/imagine_pony/static'),
     ('comfyui_studio/imagine_pony/assets', 'comfyui_studio/imagine_pony/assets'),
+    # Ultimate RVC (comfyui_studio/rvc/): приложение запускается питоном из venv
+    # Ultimate RVC, а НЕ из этого exe, поэтому его исходники нужны на диске
+    # (внутри exe пакеты лежат в архиве, чужому процессу они недоступны).
+    # rvc_app_src -- то, что launcher/core/rvc_process.py кладёт в PYTHONPATH
+    # (rvc_app_source_root()); __init__.py -- пакет comfyui_studio для питона RVC,
+    # shared_theme/shared_language/app_paths -- общая тема и язык комплекта.
+    ('comfyui_studio/rvc', 'rvc_app_src/comfyui_studio/rvc'),
+    ('comfyui_studio/__init__.py', 'rvc_app_src/comfyui_studio'),
+    ('comfyui_studio/app_paths.py', 'rvc_app_src/comfyui_studio'),
+    ('comfyui_studio/shared_theme.py', 'rvc_app_src/comfyui_studio'),
+    ('comfyui_studio/shared_language.py', 'rvc_app_src/comfyui_studio'),
 ]
 binaries = []
 hiddenimports = [

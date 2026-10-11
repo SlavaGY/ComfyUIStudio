@@ -16,6 +16,7 @@ import gc
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -35,6 +36,7 @@ from ..core.external_apps import (
 )
 from ..core.config import validate_portable_root
 from ..core.config_store import ConfigStore
+from ..core.launch_mode import MODES, is_rvc_mode, mode_label, normalize_mode
 from ..core.logging_setup import log
 from ..integration.tool_registry import IN_PROCESS_WINDOW_FACTORIES, ON_CLOSE_CALLBACKS
 from .settings.app_settings_dialog import AppSettingsDialog
@@ -47,6 +49,13 @@ class SettingsPage(QWidget):
     open_running_requested = Signal()
     stop_requested = Signal()
     cancel_requested = Signal()
+    # Режим запуска (список рядом с «Запустить»): сменился / запуск RVC-режима.
+    # Для comfyui/imagine/imagine_pony «Запустить» работает как раньше
+    # (launch_requested), для режимов Ultimate RVC -- rvc_launch_requested(mode).
+    mode_changed = Signal(str)
+    rvc_launch_requested = Signal(str)
+    rvc_open_requested = Signal()
+    rvc_stop_requested = Signal()
     language_changed = Signal(str)
     # НОВОЕ: Studio-wide выход/перезапуск, см. ui/settings/advanced_page.py
     # (кнопки "Application") и MainWindow.quit_studio()/restart_studio()
@@ -83,6 +92,12 @@ class SettingsPage(QWidget):
         # там теперь окно реально уничтожается по закрытию и запись
         # удаляется из кэша, а не просто "скрывается" навсегда.
         self._child_windows = {}
+        # Занятость по сервисам: кнопка «Запустить» блокируется только если
+        # занят сервис ВЫБРАННОГО режима (ComfyUI и RVC независимы -- пока
+        # работает один, второй можно запускать).
+        self._comfy_busy = False
+        self._comfy_launching = False
+        self._rvc_busy = False
 
         root = QVBoxLayout(self)
 
@@ -104,6 +119,23 @@ class SettingsPage(QWidget):
         running_row.addWidget(self.stop_running_btn)
         root.addWidget(self.running_bar)
         self.running_bar.setVisible(False)
+
+        # Такая же полоса для Ultimate RVC (он работает независимо от ComfyUI).
+        self.rvc_running_bar = QWidget()
+        rvc_running_row = QHBoxLayout(self.rvc_running_bar)
+        rvc_running_row.setContentsMargins(0, 0, 0, 0)
+        self.rvc_running_label = QLabel("")
+        self.rvc_running_label.setStyleSheet("color: #6fbf73; font-weight: bold;")
+        rvc_running_row.addWidget(self.rvc_running_label)
+        rvc_running_row.addStretch(1)
+        self.rvc_open_btn = QPushButton(self._tr("Открыть"))
+        self.rvc_open_btn.clicked.connect(self.rvc_open_requested.emit)
+        rvc_running_row.addWidget(self.rvc_open_btn)
+        self.rvc_stop_btn = QPushButton(self._tr("Остановить"))
+        self.rvc_stop_btn.clicked.connect(self.rvc_stop_requested.emit)
+        rvc_running_row.addWidget(self.rvc_stop_btn)
+        root.addWidget(self.rvc_running_bar)
+        self.rvc_running_bar.setVisible(False)
 
         # Единое дерево настроек (этап 4) -- построено сразу, а не лениво
         # по первому открытию: General-страница внутри должна быть готова
@@ -196,11 +228,42 @@ class SettingsPage(QWidget):
 
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
+        # Выбор того, что запускать (раньше -- радиокнопки в настройках
+        # ComfyUI, без Ultimate RVC). Хранится в cfg["interface"].
+        self.mode_combo = QComboBox()
+        self._fill_mode_combo(normalize_mode(cfg.get("interface")))
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        btn_row.addWidget(self.mode_combo)
         self.launch_btn = QPushButton(self._tr("Запустить"))
         self.launch_btn.setDefault(True)
         self.launch_btn.clicked.connect(self._on_launch)
         btn_row.addWidget(self.launch_btn)
         root.addLayout(btn_row)
+
+    # -- режим запуска ----------------------------------------------------
+
+    def _fill_mode_combo(self, current):
+        self.mode_combo.blockSignals(True)
+        self.mode_combo.clear()
+        for value, label in MODES:
+            self.mode_combo.addItem(self._tr(label), value)
+        self.mode_combo.setCurrentIndex(max(0, self.mode_combo.findData(current)))
+        self.mode_combo.blockSignals(False)
+
+    def selected_mode(self) -> str:
+        return normalize_mode(self.mode_combo.currentData())
+
+    def _on_mode_changed(self, _index):
+        mode = self.selected_mode()
+        # Сохраняется сразу (как поля настроек), а не только при запуске:
+        # выбор должен пережить перезапуск Studio.
+        self.config.update({"interface": mode})
+        self._refresh_launch_btn()
+        self.mode_changed.emit(mode)
+
+    def _refresh_launch_btn(self):
+        busy = self._rvc_busy if is_rvc_mode(self.selected_mode()) else self._comfy_busy
+        self.launch_btn.setEnabled(not busy)
 
     # -- состояние "сервер уже запущен" --------------------------------
 
@@ -223,8 +286,34 @@ class SettingsPage(QWidget):
         self.running_bar.setVisible(running)
         if running and port:
             self.running_label.setText(f"ComfyUI уже запущен на порту {port}")
-        self.launch_btn.setEnabled(not running)
+        self._comfy_busy = running
+        self._refresh_launch_btn()
         self.settings_dialog.set_running_state(running)
+
+    def set_rvc_running(self, running: bool, port=None, mode=None):
+        """Полоса «Ultimate RVC запущен» (зелёная, с Открыть/Остановить)."""
+        self.rvc_running_bar.setVisible(running)
+        if running:
+            name = mode_label(mode) if mode else "Ultimate RVC"
+            text = self._tr("{} запущен на порту {}").format(name, port)
+            self.rvc_running_label.setText(text)
+
+    def show_rvc_progress(self, text):
+        self.progress_status_label.setText(text)
+        self.progress_row.setVisible(True)
+        self._rvc_busy = True
+        self._refresh_launch_btn()
+
+    def update_rvc_progress(self, text):
+        self.progress_status_label.setText(text)
+
+    def hide_rvc_progress(self):
+        # Полоса прогресса общая с запуском ComfyUI -- не прячем её, если
+        # ComfyUI в этот момент как раз запускается.
+        if not self._comfy_launching:
+            self.progress_row.setVisible(False)
+        self._rvc_busy = False
+        self._refresh_launch_btn()
 
     # -- Remote (этап 1 дорожной карты): ретрансляция вниз, к
     # AppSettingsDialog/RemoteSettingsPage -- см. remote_enable_toggled и
@@ -253,17 +342,21 @@ class SettingsPage(QWidget):
     def show_launch_progress(self, text):
         self.progress_status_label.setText(text)
         self.progress_row.setVisible(True)
+        self._comfy_launching = True
         self._set_launch_controls_enabled(False)
 
     def update_launch_progress(self, text):
         self.progress_status_label.setText(text)
 
     def hide_launch_progress(self):
-        self.progress_row.setVisible(False)
+        self._comfy_launching = False
+        if not self._rvc_busy:
+            self.progress_row.setVisible(False)
         self._set_launch_controls_enabled(True)
 
     def _set_launch_controls_enabled(self, enabled):
-        self.launch_btn.setEnabled(enabled)
+        self._comfy_busy = not enabled
+        self._refresh_launch_btn()
         self.settings_dialog.set_running_state(not enabled)
 
     # -- прочее ------------------------------------------------------
@@ -287,6 +380,9 @@ class SettingsPage(QWidget):
         for btn in self.external_launch_btns.values():
             btn.setText(self._tr("Запустить"))
         self.launch_btn.setText(self._tr("Запустить"))
+        self.rvc_open_btn.setText(self._tr("Открыть"))
+        self.rvc_stop_btn.setText(self._tr("Остановить"))
+        self._fill_mode_combo(self.selected_mode())
         self.cancel_launch_btn.setText(self._tr("Отмена"))
         self._refresh_external_status()
         self.log_panel.retranslate_ui()
@@ -412,6 +508,14 @@ class SettingsPage(QWidget):
         # путь вписан и сразу нажато «Запустить»), ещё не в хранилище —
         # сначала сохраняем их, затем берём снимок на момент запуска.
         self.settings_dialog.flush()
+        mode = self.selected_mode()
+        if is_rvc_mode(mode):
+            # Ultimate RVC не зависит от ComfyUI: папка/скрипт ComfyUI тут
+            # не проверяются, запуск ведёт MainWindow через RvcController.
+            self.set_status("")
+            self.log_panel.text.clear()
+            self.rvc_launch_requested.emit(mode)
+            return
         cfg = self.config.cfg
         root_path = cfg.get("root_path", "")
         ok, msg = validate_portable_root(root_path)

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ultimate RVC — Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- ОТНОСИТЕЛЬНЫЕ пути (без ведущего "/"): страница должна одинаково работать по
+     собственному адресу и за reverse-proxy Remote (как у Imagine). -->
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/themes.css">
+</head>
+<body>
+
+<div class="loading-screen" id="loadingScreen">
+  <span class="loading-screen__mark">◆</span>
+  <div class="loading-screen__spinner"></div>
+  <p data-i18n="Загрузка…">Загрузка…</p>
+</div>
+
+<header class="topbar">
+  <div class="topbar__brand"><span class="topbar__mark">◆</span><span>Ultimate RVC</span></div>
+  <div class="topbar__status">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText" data-i18n="проверка движка…">проверка движка…</span>
+  </div>
+  <select id="themeSelect" title="Тема оформления" data-i18n-title="Тема оформления"></select>
+  <select id="langSelect" title="Язык интерфейса" data-i18n-title="Язык интерфейса">
+    <option value="ru">Русский</option>
+    <option value="en">English</option>
+  </select>
+</header>
+
+<div class="banner banner--error" id="engineBanner" hidden></div>
+
+<nav class="tabs">
+  <button class="tab is-active" data-tab="cover" data-i18n="Кавер">Кавер</button>
+  <button class="tab" data-tab="speech" data-i18n="Озвучка">Озвучка</button>
+  <button class="tab" data-tab="models" data-i18n="Модели">Модели</button>
+</nav>
+
+<main class="workshop">
+  <div>
+
+    <!-- ============ Кавер ============ -->
+    <section class="pane" data-pane="cover">
+      <div class="card">
+        <h3 class="card__label" data-i18n="Песня">Песня</h3>
+        <label class="drop" id="coverDrop">
+          <input type="file" id="coverFile" accept="audio/*,video/*,.mp3,.wav,.flac,.m4a,.ogg,.opus,.aac">
+          <span id="coverDropText" data-i18n="Перетащите аудиофайл сюда или нажмите, чтобы выбрать">Перетащите аудиофайл сюда или нажмите, чтобы выбрать</span>
+        </label>
+        <div class="field" style="margin-top:10px">
+          <span data-i18n="или ссылка YouTube / путь к файлу на этом ПК">или ссылка YouTube / путь к файлу на этом ПК</span>
+          <input type="text" id="coverSource" placeholder="https://www.youtube.com/watch?v=…">
+        </div>
+      </div>
+      <div class="card">
+        <h3 class="card__label" data-i18n="Голосовая модель">Голосовая модель</h3>
+        <div class="row">
+          <select id="coverModel" class="grow"></select>
+          <button class="btn-ghost" data-refresh-models title="Обновить список" data-i18n-title="Обновить список">⟳</button>
+        </div>
+      </div>
+      <div id="coverParams" class="pane"></div>
+      <div class="card">
+        <button class="btn-primary" id="coverSubmit" data-i18n="Создать кавер">Создать кавер</button>
+        <div class="msg" id="coverMsg"></div>
+      </div>
+    </section>
+
+    <!-- ============ Озвучка ============ -->
+    <section class="pane" data-pane="speech" hidden>
+      <div class="card">
+        <h3 class="card__label" data-i18n="Текст">Текст</h3>
+        <textarea id="speechText" placeholder="Что должен сказать голос…" data-i18n-placeholder="Что должен сказать голос…"></textarea>
+      </div>
+      <div class="card">
+        <h3 class="card__label" data-i18n="Голос Edge TTS">Голос Edge TTS</h3>
+        <div class="field-grid">
+          <label class="field"><span data-i18n="Язык">Язык</span><select id="voiceLocale"></select></label>
+          <label class="field"><span data-i18n="Голос">Голос</span><select id="ttsVoice" data-param="tts_voice" data-type="str"></select></label>
+        </div>
+        <div class="field-grid field-grid--3">
+          <label class="field"><span data-i18n="Тон, Гц">Тон, Гц</span><input type="number" data-param="tts_pitch_shift" data-type="int" min="-100" max="100" step="1" value="0"></label>
+          <label class="field"><span data-i18n="Скорость, %">Скорость, %</span><input type="number" data-param="tts_speed_change" data-type="int" min="-50" max="100" step="1" value="0"></label>
+          <label class="field"><span data-i18n="Громкость, %">Громкость, %</span><input type="number" data-param="tts_volume_change" data-type="int" min="-50" max="100" step="1" value="0"></label>
+        </div>
+        <p class="hint" data-i18n="Список голосов Edge TTS загружается из интернета.">Список голосов Edge TTS загружается из интернета.</p>
+      </div>
+      <div class="card">
+        <h3 class="card__label" data-i18n="Голосовая модель">Голосовая модель</h3>
+        <div class="row">
+          <select id="speechModel" class="grow"></select>
+          <button class="btn-ghost" data-refresh-models title="Обновить список" data-i18n-title="Обновить список">⟳</button>
+        </div>
+      </div>
+      <div id="speechParams" class="pane"></div>
+      <div class="card">
+        <button class="btn-primary" id="speechSubmit" data-i18n="Озвучить">Озвучить</button>
+        <div class="msg" id="speechMsg"></div>
+      </div>
+    </section>
+
+    <!-- ============ Модели ============ -->
+    <section class="pane" data-pane="models" hidden>
+      <div class="card">
+        <h3 class="card__label" data-i18n="Установленные модели">Установленные модели</h3>
+        <div class="list" id="modelList"></div>
+        <div class="msg" id="modelListMsg"></div>
+      </div>
+      <div class="card">
+        <h3 class="card__label" data-i18n="Добавить из файлов">Добавить из файлов</h3>
+        <div class="field-grid">
+          <label class="field"><span data-i18n="Имя модели">Имя модели</span><input type="text" id="importName"></label>
+          <label class="field"><span data-i18n="Файлы: .pth и .index или один .zip">Файлы: .pth и .index или один .zip</span><input type="file" id="importFiles" multiple accept=".pth,.index,.zip"></label>
+        </div>
+        <div class="row" style="margin-top:10px"><button class="btn-ghost" id="importBtn" data-i18n="Добавить модель">Добавить модель</button></div>
+        <div class="msg" id="importMsg"></div>
+      </div>
+      <div class="card">
+        <h3 class="card__label" data-i18n="Скачать по ссылке">Скачать по ссылке</h3>
+        <div class="field-grid">
+          <label class="field"><span data-i18n="Имя модели">Имя модели</span><input type="text" id="dlName"></label>
+          <label class="field"><span data-i18n="Ссылка на zip-архив">Ссылка на zip-архив</span><input type="url" id="dlUrl" placeholder="https://…"></label>
+        </div>
+        <div class="row" style="margin-top:10px"><button class="btn-ghost" id="dlBtn" data-i18n="Скачать модель">Скачать модель</button></div>
+        <div class="msg" id="dlMsg"></div>
+      </div>
+      <div class="card">
+        <h3 class="card__label" data-i18n="Каталог публичных моделей">Каталог публичных моделей</h3>
+        <div class="row">
+          <input type="text" id="pubSearch" class="grow" placeholder="поиск по названию и описанию" data-i18n-placeholder="поиск по названию и описанию">
+          <select id="pubTag"></select>
+          <button class="btn-ghost" id="pubLoad" data-i18n="Показать каталог">Показать каталог</button>
+        </div>
+        <div class="list" id="pubList" style="margin-top:10px"></div>
+        <div class="msg" id="pubMsg"></div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ============ Очередь ============ -->
+  <aside class="jobs" id="jobs">
+    <h3 class="card__label" style="margin:0" data-i18n="Очередь и результаты">Очередь и результаты</h3>
+    <div class="empty-hint" id="jobsEmpty" data-i18n="Заданий пока нет.">Заданий пока нет.</div>
+  </aside>
+</main>
+
+<script src="js/i18n.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 package com.comfyuistudio.terminal.tunnel
 
+import com.comfyuistudio.terminal.ui.ComfyStudioTheme
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -33,7 +34,7 @@ class TunnelSettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            ComfyStudioTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     TunnelSettingsScreen()
                 }

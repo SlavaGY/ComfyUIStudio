@@ -45,6 +45,7 @@ WEBENGINE_PROFILE_DIR = os.path.join(APP_DIR, "webengine_profile")
 LAUNCH_SCRIPT_TMP = os.path.join(APP_DIR, "_launch_current.bat")
 COMFY_LOG_PATH = os.path.join(APP_DIR, "comfyui_last_run.log")
 APP_LOG_PATH = os.path.join(APP_DIR, "launcher.log")
+RVC_LOG_PATH = os.path.join(APP_DIR, "rvc_last_run.log")
 
 DEFAULT_CONFIG = {
     "root_path": "",
@@ -91,6 +92,17 @@ DEFAULT_CONFIG = {
     # реальный LAN-адрес ("0.0.0.0") появится в UI на этапе 8 ("LAN
     # Release"), когда сценарий "мобильный браузер без приложения"
     # станет частью критерия готовности, а не только внутренним curl.
+    # НОВОЕ (этап RVC-1, см. docs/RVC_APPLY.md и core/rvc_process.py):
+    # Ultimate RVC как независимый от ComfyUI сервис. Секция читается через
+    # rvc_settings(cfg), которая дополняет недостающие ключи значениями по
+    # умолчанию (старый config.json секции не содержит). 7860 -- Imagine,
+    # 7861 -- Remote, 7862 -- Imagine Pony, поэтому RVC -- 7863.
+    "rvc": {
+        "root_path": "",
+        "port": 7863,
+        "launch_args": "",
+        "auto_start": False,
+    },
     "remote": {
         "enabled": False,
         "port": 7861,

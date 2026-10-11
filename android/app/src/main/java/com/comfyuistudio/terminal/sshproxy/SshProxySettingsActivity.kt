@@ -1,5 +1,6 @@
 package com.comfyuistudio.terminal.sshproxy
 
+import com.comfyuistudio.terminal.ui.ComfyStudioTheme
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -42,7 +43,7 @@ class SshProxySettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            ComfyStudioTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     SshProxySettingsScreen()
                 }

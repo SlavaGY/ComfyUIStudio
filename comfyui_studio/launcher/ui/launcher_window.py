@@ -18,11 +18,19 @@ from ..core.comfy_process import ProcessLogBridge
 from ..core.config_store import ConfigStore
 from ..core.constants import APP_NAME, PROJECT_ROOT
 from ..core.logging_setup import ICON_PATH, log, set_console_log_level
+from ..core.launch_mode import RVC, RVC_GRADIO, normalize_mode, rvc_process_kind
+from ..core.rvc_process import MODE_APP, MODE_GRADIO, rvc_settings
 from ..core.system_monitor import ResourceMonitor
 from ..integration.comfy_theme import COMFY_PALETTE_MAP
 from .browser_page import BrowserPage
 from .launch_controller import LaunchController
 from .remote_controller import RemoteController
+from .rvc_browser_page import RvcBrowserPage
+from .rvc_controller import FAILED as RVC_FAILED
+from .rvc_controller import RUNNING as RVC_RUNNING
+from .rvc_controller import STARTING as RVC_STARTING
+from .rvc_controller import RvcController
+from .rvc_controller import STOPPED as RVC_STOPPED
 from .settings_page import SettingsPage
 from .tray import TrayIcon
 
@@ -62,8 +70,14 @@ class MainWindow(QMainWindow):
         self.settings_page = SettingsPage(self.config, theme_manager, loc)
         self.browser_page = BrowserPage(loc)
 
+        # Ultimate RVC (этап RVC-1): своя страница браузера (свой профиль
+        # WebEngine) -- ComfyUI и RVC могут работать одновременно, и
+        # переключение между ними не должно сбрасывать открытую страницу.
+        self.rvc_browser_page = RvcBrowserPage(loc)
+
         self.stack.addWidget(self.settings_page)
         self.stack.addWidget(self.browser_page)
+        self.stack.addWidget(self.rvc_browser_page)
 
         self.settings_page.open_running_requested.connect(self._show_browser_page)
         self.settings_page.stop_requested.connect(self._stop_and_show_settings)
@@ -92,10 +106,29 @@ class MainWindow(QMainWindow):
         self.launch_controller.comfy_ready.connect(self._show_comfyui_browser)
         self.launch_controller.imagine_ready.connect(self._show_imagine_browser)
         self.settings_page.launch_requested.connect(self._on_launch)
-        self.settings_page.cancel_requested.connect(self.launch_controller.cancel)
+        self.settings_page.cancel_requested.connect(self._on_cancel_launch)
 
         self.browser_page.settings_requested.connect(self._show_settings_keep_running)
         self.browser_page.stop_requested.connect(self._stop_and_show_settings)
+
+        # Ultimate RVC: процесс и watcher -- в RvcController (независим от
+        # ComfyUI и Imagine); окно только переключает страницы.
+        self.rvc = RvcController(self.config, loc=self.loc, parent=self)
+        self._rvc_show_on_ready = False
+        self._rvc_loaded_port = None
+        # Запуск/остановка RVC -- только с главного экрана (список режимов +
+        # полоса «запущен»); в настройках остались только параметры.
+        self.rvc.notice.connect(self.settings_page.set_status)
+        self.rvc.state_changed.connect(self._on_rvc_state_changed)
+        self.rvc.ready.connect(self._on_rvc_ready)
+        # Главный экран: «Запустить» в режимах Ultimate RVC, полоса «запущен»
+        # и вывод процесса в общую панель лога (как у ComfyUI).
+        self.settings_page.rvc_launch_requested.connect(self._on_main_rvc_launch)
+        self.settings_page.rvc_open_requested.connect(self._show_rvc_browser)
+        self.settings_page.rvc_stop_requested.connect(self._stop_rvc_and_show_settings)
+        self.rvc.log_line.connect(self.settings_page.log_panel.append_line)
+        self.rvc_browser_page.settings_requested.connect(self._show_settings_from_rvc)
+        self.rvc_browser_page.stop_requested.connect(self._stop_rvc_and_show_settings)
 
         self.theme_manager.theme_applied.connect(self._on_app_theme_applied)
 
@@ -128,6 +161,11 @@ class MainWindow(QMainWindow):
         # у Remote нет такой зависимости, см. §0.1 дорожной карты).
         if self.config.get("remote", {}).get("enabled"):
             self.remote.start()
+
+        # Автозапуск Ultimate RVC -- после показа окна (singleShot), и без
+        # перехода на его страницу: автозапуск не должен перехватывать вид.
+        if rvc_settings(self.config.cfg)["auto_start"]:
+            QTimer.singleShot(0, self._autostart_rvc)
 
     # -- лог процесса ComfyUI -----------------------------------------
 
@@ -203,6 +241,85 @@ class MainWindow(QMainWindow):
         self.launch_controller.stop()
         self.stack.setCurrentWidget(self.settings_page)
 
+    # -- Ultimate RVC ------------------------------------------------------
+
+    def _rvc_kind_for_selected_mode(self):
+        """Какой RVC запускать при автозапуске: по выбранному режиму, а если
+        выбран не RVC -- собственное приложение Studio."""
+        mode = normalize_mode(self.config.get("interface"))
+        return rvc_process_kind(mode) or MODE_APP
+
+    def _autostart_rvc(self):
+        self._rvc_show_on_ready = False
+        self.rvc.start(self._rvc_kind_for_selected_mode())
+
+    def _on_main_rvc_launch(self, mode):
+        # SettingsPage уже сделал flush() диалога настроек. Журнал на
+        # главном экране теперь показывает вывод RVC -- живой лог.
+        self._rvc_show_on_ready = True
+        self.settings_page.set_status("")
+        self.rvc.start(rvc_process_kind(mode) or MODE_APP)
+
+    def _on_cancel_launch(self):
+        """«Отмена» на полосе прогресса: полоса общая для ComfyUI и RVC."""
+        if self.rvc.state == RVC_STARTING:
+            self._stop_rvc_and_show_settings()
+        else:
+            self.launch_controller.cancel()
+
+    def _update_main_screen_for_rvc(self, state, message):
+        page = self.settings_page
+        if state == RVC_STARTING:
+            if page.progress_row.isVisible() and page._rvc_busy:
+                page.update_rvc_progress(message)
+            else:
+                page.show_rvc_progress(message)
+            return
+        page.hide_rvc_progress()
+        if state == RVC_RUNNING:
+            mode = RVC_GRADIO if self.rvc.kind == MODE_GRADIO else RVC
+            page.set_rvc_running(True, self.rvc.port, mode)
+        else:
+            page.set_rvc_running(False)
+            if state == RVC_FAILED:
+                page.set_status(message)
+
+    def _on_rvc_state_changed(self, state, message):
+        self.settings_page.settings_dialog.rvc_page.set_state(state, message)
+        self._update_main_screen_for_rvc(state, message)
+        if state in (RVC_STOPPED, RVC_FAILED):
+            # Остановлен или упал (в т.ч. уже после запуска): страницу с
+            # мёртвым сервером не держим, возвращаемся к настройкам.
+            self._rvc_loaded_port = None
+            self.rvc_browser_page.unload()
+            if self.stack.currentWidget() is self.rvc_browser_page:
+                self.stack.setCurrentWidget(self.settings_page)
+
+    def _on_rvc_ready(self, _port):
+        if self._rvc_show_on_ready:
+            self._show_rvc_browser()
+
+    def _show_rvc_browser(self):
+        port = self.rvc.port
+        if port is None or self.rvc.state != RVC_RUNNING:
+            return
+        if self._rvc_loaded_port != port:
+            self.rvc_browser_page.load(port)
+            self._rvc_loaded_port = port
+        self.stack.setCurrentWidget(self.rvc_browser_page)
+        self._restore_from_tray()
+
+    def _show_settings_from_rvc(self):
+        # «Настройки» из окна браузера RVC -- сервер продолжает работать.
+        self.stack.setCurrentWidget(self.settings_page)
+
+    def _stop_rvc_and_show_settings(self):
+        self._rvc_loaded_port = None
+        self.rvc_browser_page.unload()
+        self.rvc.stop()
+        if self.stack.currentWidget() is self.rvc_browser_page:
+            self.stack.setCurrentWidget(self.settings_page)
+
     # -- трей --------------------------------------------------------
 
     def _retranslate_secondary_ui(self, _code):
@@ -226,6 +343,7 @@ class MainWindow(QMainWindow):
         на прежнем языке до перезапуска приложения, хотя дерево настроек и
         окна остальных инструментов обновлялись сразу же."""
         self.browser_page.retranslate_ui()
+        self.rvc_browser_page.retranslate_ui()
         self.tray.retranslate_ui()
         self.settings_page.retranslate_ui()
 
@@ -308,6 +426,12 @@ class MainWindow(QMainWindow):
         # останавливается при настоящем выходе, независимо от того, был
         # ли запущен ComfyUI (ветка выше это решение уже приняла).
         self.remote.stop()
+        # Ultimate RVC -- дочерний процесс лаунчера, при настоящем выходе
+        # останавливается всегда (как Remote; в отличие от ComfyUI о нём не
+        # спрашиваем: незаконченной работы в нём не бывает -- результаты
+        # RVC пишет на диск сам).
+        self.rvc_browser_page.unload()
+        self.rvc.stop()
 
         # Явно отвязываем страницу ComfyUI от вида перед выходом (как и
         # при возврате в настройки без остановки, см. unload() выше) --

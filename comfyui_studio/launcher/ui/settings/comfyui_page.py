@@ -35,7 +35,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QRadioButton,
     QScrollArea,
     QSpinBox,
     QTableWidget,
@@ -129,34 +128,14 @@ class ComfyUISettingsPage(QWidget):
 
         self.interface_hint = QLabel(
             self._tr(
-                "Чем открыть ComfyUI после запуска: его собственным веб-"
-                "интерфейсом (как раньше) или Imagine — карточным "
-                "генератором поверх того же ComfyUI, запущенного этим же "
-                "лаунчером."
+                "Что запускать — ComfyUI, Imagine, Imagine Pony или Ultimate "
+                "RVC — выбирается списком рядом с кнопкой «Запустить» на "
+                "главном экране. Здесь — порты и параметры этих режимов."
             )
         )
         self.interface_hint.setWordWrap(True)
         self.interface_hint.setObjectName("mutedLabel")
         interface_form.addRow(self.interface_hint)
-
-        interface_row = QHBoxLayout()
-        self.interface_comfyui_radio = QRadioButton(self._tr("ComfyUI"))
-        self.interface_imagine_radio = QRadioButton(self._tr("Imagine"))
-        self.interface_pony_radio = QRadioButton(self._tr("Imagine Pony"))
-        interface_row.addWidget(self.interface_comfyui_radio)
-        interface_row.addWidget(self.interface_imagine_radio)
-        interface_row.addWidget(self.interface_pony_radio)
-        interface_row.addStretch(1)
-        if cfg.get("interface") == "imagine":
-            self.interface_imagine_radio.setChecked(True)
-        elif cfg.get("interface") == "imagine_pony":
-            self.interface_pony_radio.setChecked(True)
-        else:
-            self.interface_comfyui_radio.setChecked(True)
-        for radio in (self.interface_comfyui_radio, self.interface_pony_radio):
-            radio.toggled.connect(self._on_interface_toggled)
-            radio.toggled.connect(self._on_field_changed)
-        interface_form.addRow(interface_row)
 
         imagine_cfg = cfg.get("imagine", {})
 
@@ -189,7 +168,6 @@ class ComfyUISettingsPage(QWidget):
         self.pony_port_row_label = QLabel(self._tr("Порт Imagine Pony:"))
         interface_form.addRow(self.pony_port_row_label, self.pony_port_spin)
 
-        self._on_interface_toggled()
         root.addWidget(interface_box)
 
         # -- Arguments (бывший LaunchArgsDialog) ---------------------------
@@ -272,25 +250,6 @@ class ComfyUISettingsPage(QWidget):
         self._refresh_scripts()
 
     # -- Installation / scripts -----------------------------------------
-
-    # -- Interface (imagine) --------------------------------------------
-
-    def _selected_interface(self) -> str:
-        if self.interface_imagine_radio.isChecked():
-            return "imagine"
-        if self.interface_pony_radio.isChecked():
-            return "imagine_pony"
-        return "comfyui"
-
-    def _on_interface_toggled(self, *_args):
-        """Порт/дев-режим Imagine имеют смысл, только когда выбран
-        интерфейс Imagine -- дизейблим их же, не только визуально
-        затемняем, чтобы не создавать впечатление, что они на что-то
-        влияют, пока выбран ComfyUI."""
-        enabled = self.interface_imagine_radio.isChecked()
-        self.imagine_port_spin.setEnabled(enabled)
-        self.imagine_dev_mode_check.setEnabled(enabled)
-        self.pony_port_spin.setEnabled(self.interface_pony_radio.isChecked())
 
     def _browse(self):
         chosen = QFileDialog.getExistingDirectory(
@@ -386,7 +345,6 @@ class ComfyUISettingsPage(QWidget):
             "port": self.port_spin.value(),
             "disable_auto_launch": self.disable_auto_launch_check.isChecked(),
             "sync_comfy_theme": self.sync_comfy_theme_check.isChecked(),
-            "interface": self._selected_interface(),
             "imagine": {
                 "port": self.imagine_port_spin.value(),
                 "dev_mode": self.imagine_dev_mode_check.isChecked(),
@@ -401,18 +359,13 @@ class ComfyUISettingsPage(QWidget):
     def set_editable(self, editable: bool) -> None:
         for w in (self.path_edit, self.browse_btn, self.script_combo, self.port_spin,
                   self.disable_auto_launch_check, self.sync_comfy_theme_check,
-                  self.interface_comfyui_radio, self.interface_imagine_radio,
-                  self.interface_pony_radio):
+                  self.imagine_port_spin, self.imagine_dev_mode_check,
+                  self.pony_port_spin):
             w.setEnabled(editable)
-        # Порт/дев-режим Imagine остаются под двойным условием даже при
-        # editable=True -- см. _on_interface_toggled(): нет смысла их
-        # включать, если сейчас выбран интерфейс ComfyUI.
-        if editable:
-            self._on_interface_toggled()
-        else:
-            self.imagine_port_spin.setEnabled(False)
-            self.imagine_dev_mode_check.setEnabled(False)
-            self.pony_port_spin.setEnabled(False)
+        # Порты Imagine/Pony больше не зависят от выбранного режима (режим
+        # выбирается на главном экране, а порты настраиваются заранее),
+        # поэтому блокируются только вместе со всей страницей, пока ComfyUI
+        # запущен.
         for widgets in self.arg_widgets.values():
             widgets["check"].setEnabled(editable)
             if widgets["value"] is not None:
@@ -452,15 +405,11 @@ class ComfyUISettingsPage(QWidget):
         self.interface_box.setTitle(self._tr("Интерфейс"))
         self.interface_hint.setText(
             self._tr(
-                "Чем открыть ComfyUI после запуска: его собственным веб-"
-                "интерфейсом (как раньше) или Imagine — карточным "
-                "генератором поверх того же ComfyUI, запущенного этим же "
-                "лаунчером."
+                "Что запускать — ComfyUI, Imagine, Imagine Pony или Ultimate "
+                "RVC — выбирается списком рядом с кнопкой «Запустить» на "
+                "главном экране. Здесь — порты и параметры этих режимов."
             )
         )
-        self.interface_comfyui_radio.setText(self._tr("ComfyUI"))
-        self.interface_imagine_radio.setText(self._tr("Imagine"))
-        self.interface_pony_radio.setText(self._tr("Imagine Pony"))
         self.imagine_port_row_label.setText(self._tr("Порт Imagine:"))
         self.pony_port_row_label.setText(self._tr("Порт Imagine Pony:"))
         self.imagine_dev_mode_check.setText(

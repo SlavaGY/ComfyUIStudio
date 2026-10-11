@@ -1,5 +1,6 @@
 package com.comfyuistudio.terminal.terminal
 
+import com.comfyuistudio.terminal.ui.ComfyStudioTheme
 import android.annotation.SuppressLint
 import com.comfyuistudio.terminal.BuildConfig
 import android.content.Intent
@@ -99,7 +100,7 @@ class TerminalActivity : ComponentActivity() {
         openPathState = intent.getStringExtra(EXTRA_OPEN_PATH)
 
         setContent {
-            MaterialTheme {
+            ComfyStudioTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     if (device == null) {
                         // Токен пропал между роутингом MainActivity и этим
@@ -153,6 +154,20 @@ class TerminalActivity : ComponentActivity() {
 }
 
 /**
+ * Состояние WebView, нужное и самому [TerminalWebView], и рамке вокруг
+ * него в [TerminalScreen] (кнопки "SSH"/"VPN" показываются ТОЛЬКО на
+ * домашней странице или при ошибке -- внутри конкретного апп (Imagine,
+ * Imagine Pony…) они перекрывали бы интерфейс самой страницы).
+ */
+private class TerminalUiState(openPath: String?) {
+    /** Загружена домашняя страница ("/" -- список апп), а не конкретный апп. */
+    var isHomePage by mutableStateOf(openPath == null)
+
+    /** Сервер недоступен (показан [ConnectionErrorOverlay]). */
+    var connectionError by mutableStateOf(false)
+}
+
+/**
  * Незавершённый запрос WebView на выбор файла (`<input type="file">`) --
  * см. комментарий у `fileChooserLauncher` в [TerminalWebView]. Простой
  * держатель, а не Compose-состояние: читается только из колбэков
@@ -176,6 +191,7 @@ private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
     // же, что было раньше (VPN, если включён, иначе прямое
     // подключение) -- см. комментарии внутри блоков ниже про
     // "ничего не меняет для тех, кто не настраивал X".
+    val ui = remember { TerminalUiState(openPath) }
     val sshStore = remember { SshProxyConfigStore(context) }
     val tunnelStore = remember { TunnelConfigStore(context) }
     var accessReady by remember { mutableStateOf(!sshStore.enabled && !tunnelStore.enabled) }
@@ -347,7 +363,7 @@ private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
                 Text(if (sshStore.enabled) "Подключение по SSH…" else "Подключение к VPN…")
             }
         } else {
-            TerminalWebView(device, openPath)
+            TerminalWebView(device, openPath, ui)
             accessError?.let {
                 // Ненавязчивое уведомление поверх WebView -- не
                 // блокирует терминал (см. комментарии выше про то, что
@@ -364,17 +380,24 @@ private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
             }
         }
 
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(12.dp),
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(onClick = { context.startActivity(Intent(context, SshProxySettingsActivity::class.java)) }) {
-                Text("SSH")
-            }
-            OutlinedButton(onClick = { context.startActivity(Intent(context, TunnelSettingsActivity::class.java)) }) {
-                Text("VPN")
+        // Кнопки доступа вне дома -- только на домашней странице (список
+        // апп) или когда что-то пошло не так (ошибка SSH/VPN-подключения
+        // либо сервер недоступен). Во вкладках самих апп они не нужны и
+        // перекрывают интерфейс страницы.
+        val showAccessButtons = ui.isHomePage || ui.connectionError || accessError != null
+        if (showAccessButtons) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(12.dp),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(onClick = { context.startActivity(Intent(context, SshProxySettingsActivity::class.java)) }) {
+                    Text("SSH")
+                }
+                OutlinedButton(onClick = { context.startActivity(Intent(context, TunnelSettingsActivity::class.java)) }) {
+                    Text("VPN")
+                }
             }
         }
     }
@@ -382,9 +405,8 @@ private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun TerminalWebView(device: TokenStore.Device, openPath: String?) {
+private fun TerminalWebView(device: TokenStore.Device, openPath: String?, ui: TerminalUiState) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var connectionError by remember { mutableStateOf(false) }
     var reloadTrigger by remember { mutableStateOf(0) }
     // НОВОЕ (просьба "кнопка назад должна выходить к списку апп", а не
     // сразу закрывать приложение целиком) -- ссылка на сам WebView, чтобы
@@ -429,9 +451,9 @@ private fun TerminalWebView(device: TokenStore.Device, openPath: String?) {
         }
     }
     // Путь текущей загруженной страницы ("/" -- список апп, что угодно
-    // ещё -- конкретное апп) -- обновляется в onLoadStarted, см. её же
-    // докстринг в AuthWebViewClient.kt.
-    var isHomePage by remember { mutableStateOf(openPath == null) }
+    // ещё -- конкретное апп) -- ui.isHomePage, обновляется в onLoadStarted,
+    // см. её же докстринг в AuthWebViewClient.kt. Состояние поднято в
+    // TerminalUiState, чтобы рамка (кнопки SSH/VPN) тоже его видела.
 
     // НОВОЕ (живой отчёт: "Imagine уходил в загрузку на 2 минуты" +
     // просьба "добавить кнопку перезагрузку, когда приложение не
@@ -463,7 +485,7 @@ private fun TerminalWebView(device: TokenStore.Device, openPath: String?) {
         loadCompleted = false
         delay(LOAD_TIMEOUT_MS)
         if (!loadCompleted) {
-            connectionError = true
+            ui.connectionError = true
         }
     }
 
@@ -485,15 +507,15 @@ private fun TerminalWebView(device: TokenStore.Device, openPath: String?) {
     // ConnectionErrorOverlay (connectionError=true) тоже не перехватываем
     // -- там кнопка "назад" должна закрывать экран, а не пытаться
     // куда-то грузить всё ещё недоступный сервер.
-    androidx.activity.compose.BackHandler(enabled = !connectionError && !isHomePage) {
+    androidx.activity.compose.BackHandler(enabled = !ui.connectionError && !ui.isHomePage) {
         webViewRef?.loadUrl(homeUrl)
     }
 
-    if (connectionError) {
+    if (ui.connectionError) {
         ConnectionErrorOverlay(
             host = "${device.host}:${device.port}",
             onRetry = {
-                connectionError = false
+                ui.connectionError = false
                 reloadTrigger++
                 // loadGeneration НЕ трогаем здесь вручную -- после
                 // reloadTrigger++ AndroidView.factory ниже пересоздаст
@@ -535,9 +557,9 @@ private fun TerminalWebView(device: TokenStore.Device, openPath: String?) {
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
                     webViewClient = AuthWebViewClient(
-                        onConnectionError = { connectionError = true },
+                        onConnectionError = { ui.connectionError = true },
                         onPageLoaded = {
-                            connectionError = false
+                            ui.connectionError = false
                             loadCompleted = true
                         },
                         onLoadStarted = { url ->
@@ -546,7 +568,7 @@ private fun TerminalWebView(device: TokenStore.Device, openPath: String?) {
                             // "http://host:port" без хвостового слэша)
                             // оба считаются домашней страницей.
                             val path = url?.let { android.net.Uri.parse(it).path }
-                            isHomePage = path.isNullOrEmpty() || path == "/"
+                            ui.isHomePage = path.isNullOrEmpty() || path == "/"
                         },
                     )
                     // См. комментарий у setWebContentsDebuggingEnabled

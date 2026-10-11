@@ -1,5 +1,6 @@
 package com.comfyuistudio.terminal
 
+import com.comfyuistudio.terminal.ui.ComfyStudioTheme
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -58,7 +59,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            MaterialTheme {
+            ComfyStudioTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     PairingScreen(
                         onPaired = {

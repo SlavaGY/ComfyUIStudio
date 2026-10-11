@@ -54,6 +54,7 @@ BASELINE = {
     "comfyui_studio/remote/process_by_port.py": 1,
     "comfyui_studio/remote/ssh_config_store.py": 1,
     "comfyui_studio/remote/ws_hub.py": 1,
+    "comfyui_studio/rvc/backend/jobs.py": 1,
     "comfyui_studio/shared_promptgen.py": 3,
 }
 
