@@ -31,7 +31,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import params as P
-from .engine import ERROR, LOADING, READY, Engine
+from .engine import ERROR, READY, Engine
 from .jobs import FINISHED, JobManager
 
 try:  # общая тема/язык комплекта -- необязательны

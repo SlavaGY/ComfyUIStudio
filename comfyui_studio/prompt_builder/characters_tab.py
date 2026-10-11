@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMessageBox,
     QPushButton,
-    QSizePolicy,
     QSplitter,
     QTextEdit,
     QVBoxLayout,
