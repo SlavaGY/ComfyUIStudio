@@ -203,3 +203,22 @@ def test_display_loras_for_includes_new_and_legacy_without_duplicates():
     node = {"loras": ["a:1"], "lora": "b", "lora_strength": 0.5}
     assert display_loras_for(node) == ["a:1", "b:0.5"]
     assert display_loras_for({"loras": ["b:0.5"], "lora": "b", "lora_strength": 0.5}) == ["b:0.5"]
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ({"strength": None}, 1.0),  # раньше TypeError
+        ({"strength": "abc"}, 1.0),  # раньше ValueError
+        ({"strength": None, "lora_strength": 0.7}, 0.7),
+        ({"strength": "0.5"}, 0.5),
+        ({"strength": float("nan")}, 1.0),
+        ({"strength": True}, 1.0),
+        ({}, 1.0),
+    ],
+)
+def test_character_entry_survives_bad_strength(raw, expected):
+    from comfyui_studio.prompt_builder.logic import CharacterEntry
+
+    entry = CharacterEntry.from_raw({"tags": "x", "lora": "l", **raw})
+    assert entry.strength == pytest.approx(expected)

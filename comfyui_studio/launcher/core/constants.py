@@ -38,7 +38,11 @@ def app_base_dir():
     )
 
 
-APP_NAME = "ComfyUI Launcher"
+# Имя продукта в заголовках, трее и диалогах. Раньше было "ComfyUI Launcher",
+# хотя main.py и весь README называют продукт "ComfyUI Studio". НЕ связано с
+# автозапуском (там своё имя значения реестра, см. autostart._VALUE_NAME) и с
+# папками данных (app_paths), поэтому смена не затрагивает сохранённые данные.
+APP_NAME = "ComfyUI Studio"
 APP_DIR = app_paths.launcher_data_dir()
 CONFIG_PATH = os.path.join(APP_DIR, "config.json")
 WEBENGINE_PROFILE_DIR = os.path.join(APP_DIR, "webengine_profile")

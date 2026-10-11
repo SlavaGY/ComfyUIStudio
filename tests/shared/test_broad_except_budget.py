@@ -31,7 +31,6 @@ BASELINE = {
     "comfyui_studio/launcher/core/comfy_api.py": 2,
     "comfyui_studio/launcher/core/comfy_process.py": 1,
     "comfyui_studio/launcher/core/comfy_ws.py": 1,
-    "comfyui_studio/launcher/core/config.py": 2,
     "comfyui_studio/launcher/core/managed_process.py": 6,
     "comfyui_studio/launcher/core/remote_net.py": 1,
     "comfyui_studio/launcher/core/system_monitor.py": 3,

@@ -6,33 +6,52 @@
 """
 
 import os
-import json
+
+from comfyui_studio.jsonfile import CORRUPT, OK, atomic_write_json, load_json
 
 from .constants import APP_DIR, CONFIG_PATH, DEFAULT_CONFIG, LAUNCH_SCRIPT_TMP
 from .logging_setup import log
 
+# Текст для пользователя, если при чтении config.json файл оказался
+# повреждён. Раньше load_config() молча возвращал значения по умолчанию,
+# и настройки (путь к ComfyUI, порт, аргументы) пропадали без единого
+# предупреждения. UI забирает сообщение один раз через take_load_warning().
+_load_warning = None
+
+
+def take_load_warning():
+    """Сообщение о повреждённом config.json (однократно) или None."""
+    global _load_warning
+    warning, _load_warning = _load_warning, None
+    return warning
+
 
 def load_config():
+    global _load_warning
     os.makedirs(APP_DIR, exist_ok=True)
-    if os.path.exists(CONFIG_PATH):
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            cfg = DEFAULT_CONFIG.copy()
-            cfg.update(data)
-            return cfg
-        except Exception:
-            log.exception("Не удалось прочитать config.json, используем значения по умолчанию")
-    return DEFAULT_CONFIG.copy()
-
+    result = load_json(CONFIG_PATH, quarantine=True)
+    cfg = DEFAULT_CONFIG.copy()
+    if result.status == OK:
+        cfg.update(result.data)
+    elif result.status == CORRUPT:
+        where = (
+            f"Повреждённый файл сохранён как {result.quarantined_to}."
+            if result.quarantined_to
+            else f"Не удалось сохранить копию повреждённого файла {CONFIG_PATH}."
+        )
+        _load_warning = (
+            "Файл настроек config.json повреждён, поэтому загружены значения "
+            f"по умолчанию. {where} Пути и параметры нужно задать заново "
+            "(или перенести значения из сохранённой копии вручную)."
+        )
+    return cfg
 
 
 def save_config(cfg):
     os.makedirs(APP_DIR, exist_ok=True)
     try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except Exception:
+        atomic_write_json(CONFIG_PATH, cfg)
+    except (OSError, TypeError, ValueError):
         log.exception("Не удалось сохранить config.json")
 
 

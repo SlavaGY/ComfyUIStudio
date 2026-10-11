@@ -51,6 +51,8 @@ datas = [
     ('comfyui_studio/app_paths.py', 'rvc_app_src/comfyui_studio'),
     ('comfyui_studio/shared_theme.py', 'rvc_app_src/comfyui_studio'),
     ('comfyui_studio/shared_language.py', 'rvc_app_src/comfyui_studio'),
+    # shared_theme/shared_language импортируют jsonfile (атомарная запись)
+    ('comfyui_studio/jsonfile.py', 'rvc_app_src/comfyui_studio'),
 ]
 binaries = []
 hiddenimports = [

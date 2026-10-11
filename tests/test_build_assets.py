@@ -151,3 +151,31 @@ def test_hiddenimports_point_to_existing_modules():
         if not ((ROOT / rel).with_suffix(".py").exists() or (ROOT / rel / "__init__.py").exists()):
             broken.append(name)
     assert not broken, f"hiddenimports ссылаются на отсутствующие модули: {broken}"
+
+
+def test_rvc_payload_modules_import_only_bundled_modules():
+    """Файлы comfyui_studio/*.py из rvc_app_src читает ОТДЕЛЬНЫЙ питон
+    Ultimate RVC: всё, что они импортируют из пакета, должно лежать там же.
+    Иначе, например, shared_theme -> jsonfile молча отвалится (RVC ловит
+    ImportError и работает без общей темы)."""
+    shipped = {
+        Path(src).stem
+        for src, dst in _spec_datas()
+        if dst.replace("\\", "/") == "rvc_app_src/comfyui_studio" and src.endswith(".py")
+    }
+    missing = []
+    for stem in sorted(shipped):
+        tree = ast.parse((PKG / f"{stem}.py").read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level == 1:
+                # from . import app_paths / from .jsonfile import x
+                names = [node.module] if node.module else [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0 and node.module.startswith("comfyui_studio."):
+                names = [node.module.split(".")[1]]
+            else:
+                continue
+            for name in names:
+                top = name.split(".")[0]
+                if (PKG / f"{top}.py").exists() and top not in shipped:
+                    missing.append(f"{stem}.py -> {top}.py")
+    assert not missing, f"не попадут в rvc_app_src: {missing}"

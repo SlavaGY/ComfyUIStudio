@@ -15,6 +15,7 @@ from comfyui_studio.themes.theme_manager import ThemeManager
 from comfyui_studio.i18n import LocalizationManager
 
 from ..core.comfy_process import ProcessLogBridge
+from ..core.config import take_load_warning
 from ..core.config_store import ConfigStore
 from ..core.constants import APP_NAME, PROJECT_ROOT
 from ..core.logging_setup import ICON_PATH, log, set_console_log_level
@@ -493,7 +494,13 @@ def create_window(app: QApplication) -> "MainWindow":
     loc.apply_language(loc.current_language())
 
     log.info("=== Запуск %s ===", APP_NAME)
-    return MainWindow(theme_manager, loc)
+    window = MainWindow(theme_manager, loc)
+    # config.json мог оказаться повреждён (см. core/config.py): не молчим,
+    # а один раз говорим об этом пользователю, когда окно уже готово.
+    warning = take_load_warning()
+    if warning:
+        QTimer.singleShot(0, lambda: QMessageBox.warning(window, APP_NAME, warning))
+    return window
 
 
 
