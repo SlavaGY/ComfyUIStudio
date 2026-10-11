@@ -141,6 +141,14 @@ def test_rvc_payload_is_bundled():
         assert (f"comfyui_studio/{needed}", "rvc_app_src/comfyui_studio") in _spec_datas(), needed
 
 
+def test_ssh_setup_script_is_bundled():
+    """launcher/core/ssh_setup.find_script() в exe ищет скрипт под
+    _MEIPASS/tools/ssh_setup -- без записи в datas кнопка «Настроить
+    SSH-доступ» в собранной версии не находила бы скрипт."""
+    assert ("tools/ssh_setup", "tools/ssh_setup") in _spec_datas()
+    assert (ROOT / "tools" / "ssh_setup" / "Setup-SshAccess.ps1").is_file()
+
+
 def test_hiddenimports_point_to_existing_modules():
     """Ссылки spec на удалённые модули (embedding_worker и т.п.) -- мусор."""
     broken = []

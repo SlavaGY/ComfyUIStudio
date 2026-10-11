@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from ..auth import require_device
 from ..models import SshConfigResponse
@@ -19,7 +19,12 @@ router = APIRouter()
 
 
 @router.get("/ssh/config", response_model=SshConfigResponse)
-def get_ssh_config(_device_id: str = Depends(require_device)) -> SshConfigResponse:
+def get_ssh_config(
+    response: Response, _device_id: str = Depends(require_device)
+) -> SshConfigResponse:
+    # Ответ содержит приватный ключ -- не даём кешировать ни клиенту, ни
+    # промежуточным прокси.
+    response.headers["Cache-Control"] = "no-store"
     config = ssh_config_store.current()
     # Пустой host -- значит PS1-скрипт не нашёл ни одного глобального
     # IPv6-адреса (см. routes/internal.py::post_ssh_config) -- без
