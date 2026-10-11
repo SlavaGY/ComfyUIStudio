@@ -135,7 +135,6 @@ class AppSettingsDialog(QDialog):
     # RemoteProcess.
     remote_enable_toggled = Signal(bool)
     remote_pairing_requested = Signal()
-    remote_ssh_setup_requested = Signal()
     remote_refresh_devices_requested = Signal()
     remote_revoke_requested = Signal(list)
 
@@ -235,7 +234,6 @@ class AppSettingsDialog(QDialog):
         self.prompt_generator_page.changed.connect(self._schedule_autosave)
         self.remote_page.enable_toggled.connect(self._on_remote_enable_toggled)
         self.remote_page.pairing_requested.connect(self.remote_pairing_requested.emit)
-        self.remote_page.ssh_setup_requested.connect(self.remote_ssh_setup_requested.emit)
         self.remote_page.refresh_devices_requested.connect(
             self.remote_refresh_devices_requested.emit
         )
@@ -362,18 +360,6 @@ class AppSettingsDialog(QDialog):
 
     def set_remote_devices(self, devices: list) -> None:
         self.remote_page.set_devices(devices)
-
-    def set_remote_ssh_busy(self, busy: bool) -> None:
-        self.remote_page.set_ssh_busy(busy)
-
-    def choose_remote_ssh_host(self, candidates: list) -> str | None:
-        return self.remote_page.choose_ssh_host(candidates)
-
-    def show_remote_ssh_result(self, host: str, key_version: int, warnings: list) -> None:
-        self.remote_page.show_ssh_result(host, key_version, warnings)
-
-    def show_remote_ssh_error(self, message: str) -> None:
-        self.remote_page.show_ssh_error(message)
 
     def show_remote_devices_error(self, message: str) -> None:
         self.remote_page.show_devices_error(message)

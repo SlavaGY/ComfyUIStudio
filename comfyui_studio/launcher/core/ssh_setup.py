@@ -25,7 +25,6 @@ import json
 import logging
 import os
 import platform
-import sys
 import tempfile
 import threading
 import uuid
@@ -36,23 +35,7 @@ from .constants import TOOLS_DIR
 
 log = logging.getLogger(__name__)
 
-SCRIPT_NAME = "Setup-SshAccess.ps1"
-SCRIPT_PATH = os.path.join(TOOLS_DIR, "ssh_setup", SCRIPT_NAME)
-
-
-def find_script() -> str | None:
-    """Путь к Setup-SshAccess.ps1 или None. При запуске из исходников --
-    tools/ssh_setup/ в корне проекта. В собранном exe TOOLS_DIR -- папка
-    рядом с exe, куда сборка скрипт не кладёт; он лежит в datas спека
-    (tools/ssh_setup) и находится под sys._MEIPASS."""
-    candidates = [SCRIPT_PATH]
-    bundle_root = getattr(sys, "_MEIPASS", None)
-    if bundle_root:
-        candidates.append(os.path.join(bundle_root, "tools", "ssh_setup", SCRIPT_NAME))
-    for path in candidates:
-        if os.path.isfile(path):
-            return path
-    return None
+SCRIPT_PATH = os.path.join(TOOLS_DIR, "ssh_setup", "Setup-SshAccess.ps1")
 
 # ERROR_CANCELLED -- пользователь сам отклонил UAC-диалог; отдельно от
 # прочих ошибок, чтобы не пугать формулировкой "не удалось запустить"
@@ -100,8 +83,7 @@ def _run_in_background(
     if platform.system() != "Windows":
         worker.failed.emit("Автонастройка SSH доступна только на Windows.")
         return
-    script_path = find_script()
-    if script_path is None:
+    if not os.path.isfile(SCRIPT_PATH):
         worker.failed.emit(f"Не найден скрипт настройки: {SCRIPT_PATH}")
         return
 
@@ -109,7 +91,7 @@ def _run_in_background(
         tempfile.gettempdir(), f"comfyui_studio_ssh_setup_{uuid.uuid4().hex}.json"
     )
     params = (
-        f'-NoProfile -ExecutionPolicy Bypass -File "{script_path}" '
+        f'-NoProfile -ExecutionPolicy Bypass -File "{SCRIPT_PATH}" '
         f'-Username "{username}" -SshPort {ssh_port} '
         f'-PermitOpenHost "{permit_open_host}" -PermitOpenPort {permit_open_port} '
         f'-OutputJsonPath "{output_path}"'

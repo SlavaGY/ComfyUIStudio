@@ -37,18 +37,11 @@ from ..core.remote_net import (
     is_remote_available,
 )
 from ..core.remote_process import RemoteProcess
-from ..core.ssh_setup import start_ssh_setup
 
 READY_POLL_INTERVAL_MS = 300
 READY_MAX_ATTEMPTS = 20  # ~6 секунд при шаге 300 мс
 
 NOT_RUNNING_MESSAGE = "Remote не запущен -- включите удалённый доступ."
-
-# Имя урезанной SSH-учётной записи -- то же, что по умолчанию в
-# tools/ssh_setup/Setup-SshAccess.ps1 и в SSH_Proxy_Server_Setup.md.
-SSH_USERNAME = "comfyui-ssh"
-SSH_DEFAULT_PORT = 2222
-SSH_PUSH_PATH = "/api/v1/remote/internal/ssh-config"
 
 
 def _spawn_thread(fn):
@@ -60,18 +53,12 @@ class RemoteController(QObject):
     # .singleShot из рабочего потока: у того нет цикла событий.
     _result_ready = Signal(object)
 
-    def __init__(self, view, parent=None, spawn=None, config=None, ssh_setup=None):
+    def __init__(self, view, parent=None, spawn=None, config=None):
         """config — общий ConfigStore; без него (отдельное использование)
-        конфиг читается с диска при каждом start(). ssh_setup — подмена
-        start_ssh_setup() в тестах (запуск PS1 с UAC)."""
+        конфиг читается с диска при каждом start()."""
         super().__init__(parent)
         self._view = view
         self._config = config
-        self._start_ssh_setup = ssh_setup or start_ssh_setup
-        # Идущая настройка SSH и процесс Remote, для которого она запущена
-        # (если Remote перезапустили -- результат устарел, см. ниже).
-        self._ssh_worker = None
-        self._ssh_proc = None
         # Подмена потока в тестах: spawn(fn) должен выполнить fn.
         self._spawn = spawn or _spawn_thread
         self.process = None
@@ -126,10 +113,6 @@ class RemoteController(QObject):
             self.process = None
         self._inflight.clear()  # ответы уже летящих запросов станут устаревшими
         self._ready_probe.cancel()
-        if self._ssh_worker is not None:
-            self._ssh_worker = None
-            self._ssh_proc = None
-            self._view.set_remote_ssh_busy(False)
         self._view.set_remote_running_state(False)
 
     def on_enable_toggled(self, enabled: bool):
@@ -256,97 +239,6 @@ class RemoteController(QObject):
         if isinstance(error, urllib.error.HTTPError):  # подкласс URLError — первым
             return extract_error_detail(error)
         return str(error)
-
-    # -- SSH-доступ вне дома (этап 3 аудита) --------------------------------
-
-    def request_ssh_setup(self):
-        """Кнопка «Настроить SSH-доступ»: PS1 с повышением прав -> выбор
-        адреса -> POST /internal/ssh-config в Remote. Remote нужен
-        запущенным ДО запуска скрипта: иначе ключ уже будет создан (а
-        старый на телефоне -- сломан), а доставить его будет некуда."""
-        if not self.is_running():
-            self._view.show_remote_ssh_error(NOT_RUNNING_MESSAGE)
-            return
-        if self._ssh_worker is not None:
-            return  # настройка уже идёт (двойной клик)
-        fresh_cfg = self._config.cfg if self._config is not None else load_config()
-        remote_cfg = fresh_cfg.get("remote", {})
-        try:
-            ssh_port = int(remote_cfg.get("ssh_port", SSH_DEFAULT_PORT))
-        except (TypeError, ValueError):
-            ssh_port = SSH_DEFAULT_PORT
-        proc = self.process
-        self._view.set_remote_ssh_busy(True)
-        worker = self._start_ssh_setup(SSH_USERNAME, ssh_port, "127.0.0.1", proc.port)
-        self._ssh_worker = worker
-        self._ssh_proc = proc
-        worker.succeeded.connect(self._on_ssh_setup_succeeded)
-        worker.failed.connect(self._on_ssh_setup_failed)
-
-    def _ssh_setup_is_current(self) -> bool:
-        """False, если Remote остановили/перезапустили за время настройки
-        (UAC и сам скрипт идут десятки секунд)."""
-        return self._ssh_worker is not None and self._ssh_proc is self.process
-
-    def _on_ssh_setup_failed(self, message):
-        if not self._ssh_setup_is_current():
-            return
-        self._ssh_worker = None
-        self._ssh_proc = None
-        self._view.show_remote_ssh_error(str(message))
-
-    def _on_ssh_setup_succeeded(self, result):
-        if not self._ssh_setup_is_current():
-            return
-        proc = self._ssh_proc
-        self._ssh_worker = None
-        self._ssh_proc = None
-        try:
-            username = str(result["username"])
-            ssh_port = int(result["ssh_port"])
-            private_key = result["private_key"]
-            if not isinstance(private_key, str) or not private_key.strip():
-                raise ValueError("пустой ключ")
-        except (KeyError, TypeError, ValueError) as e:
-            # Само значение ключа в сообщение не включаем.
-            self._view.show_remote_ssh_error(
-                f"неожиданный результат скрипта настройки ({type(e).__name__})"
-            )
-            return
-        candidates = [
-            str(a).strip() for a in (result.get("ipv6_candidates") or []) if str(a).strip()
-        ]
-        # Глобальные адреса (2000::/3) выше: fc00::/7 и прочее снаружи не работает.
-        candidates.sort(key=lambda a: not a.startswith(("2", "3")))
-        warnings = [str(w) for w in (result.get("warnings") or [])]
-        # Отмена выбора адреса не отменяет сам ключ: скрипт уже заменил его
-        # на сервере. Поэтому и в этом случае пушим (с пустым host), а
-        # телефон профиль получит после повторной настройки с адресом.
-        host = self._view.choose_remote_ssh_host(candidates) or ""
-        payload = {
-            "username": username,
-            "ssh_port": ssh_port,
-            "host": host,
-            "private_key": private_key,
-        }
-        port = proc.port
-        self._view.set_remote_ssh_busy(True)
-        self._run_async(
-            "ssh_push",
-            lambda: call_local_api(port, "POST", SSH_PUSH_PATH, json_body=payload),
-            lambda res, err: self._on_ssh_push_done(host, warnings, res, err),
-        )
-
-    def _on_ssh_push_done(self, host, warnings, result, error):
-        if error is None:
-            try:
-                key_version = int(result["key_version"])
-            except (KeyError, TypeError, ValueError):
-                error = ValueError(f"неожиданный ответ Remote: {result!r}")
-        if error is not None:
-            self._view.show_remote_ssh_error(self._describe_error(error))
-            return
-        self._view.show_remote_ssh_result(host, key_version, warnings)
 
     # -- рабочий поток -----------------------------------------------------
 

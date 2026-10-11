@@ -104,6 +104,7 @@ dev = [
     "pytest-qt>=4.4",
     "ruff>=0.6",
     "mypy>=1.11",
+    "pre-commit>=3.7",
     "websockets>=13.0",
 ]
 
@@ -161,10 +162,20 @@ pythonpath = ["."]
 qt_api = "pyside6"
 
 [tool.coverage.run]
-source = ["comfyui_studio.promptvault"]
+# Весь пакет, а не только PromptVault (этап 4.8 роадмапа). Пороги по
+# подсистемам (fail_under) не задаём, пока нет первого прогона в CI --
+# сначала смотрим реальные цифры, потом фиксируем планку.
+source = ["comfyui_studio"]
 omit = [
     "comfyui_studio/promptvault/ui/*",
     "comfyui_studio/promptvault/main.py",
+]
+
+[tool.coverage.report]
+skip_empty = true
+exclude_also = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
 ]
 
 [tool.ruff]

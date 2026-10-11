@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class RemoteStatus(BaseModel):
@@ -100,34 +100,3 @@ class QueueStatusResponse(BaseModel):
     (см. §2/§3 дорожной карты про realtime и пошаговый прогресс)."""
     running: int
     pending: int
-
-
-class SshConfigPush(BaseModel):
-    """Тело POST /internal/ssh-config -- Studio присылает результат
-    tools/ssh_setup/Setup-SshAccess.ps1 (после выбора адреса сервера).
-    host может быть пустым, если у ПК нет глобального адреса: стор
-    запомнит ключ, но телефону профиль не отдастся (см.
-    routes/ssh_config.py). private_key исключён из repr, чтобы он не
-    попал в лог при печати модели или ошибки валидации."""
-    username: str = Field(min_length=1, max_length=64)
-    ssh_port: int = Field(ge=1, le=65535)
-    host: str = Field(default="", max_length=253)
-    private_key: str = Field(min_length=1, repr=False)
-
-
-class SshConfigPushResult(BaseModel):
-    key_version: int
-
-
-class SshConfigResponse(BaseModel):
-    """Ответ GET /ssh/config телефону. available=False -- профиля нет
-    (Studio ещё не прогонял настройку или нет адреса сервера), остальные
-    поля тогда None. key_version растёт при каждом пуше из Studio --
-    телефон сравнивает его с сохранённым и обновляет профиль только
-    если версия новее."""
-    available: bool
-    key_version: Optional[int] = None
-    username: Optional[str] = None
-    host: Optional[str] = None
-    ssh_port: Optional[int] = None
-    private_key: Optional[str] = Field(default=None, repr=False)

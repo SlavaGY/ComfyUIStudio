@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -43,14 +42,6 @@ from PySide6.QtWidgets import (
 
 
 class RemoteSettingsPage(QWidget):
-    _SSH_HINT = (
-        "Чтобы телефон подключался к Studio не только дома: Studio настроит "
-        "на этом ПК OpenSSH-сервер с урезанной учётной записью (только "
-        "проброс порта), создаст ключ и сама передаст его телефону при "
-        "следующем подключении -- вводить ничего вручную не нужно. Потребуется "
-        "подтверждение прав администратора (UAC). Проброс порта на роутере, "
-        "если ПК не доступен по IPv6, делается отдельно (см. README)."
-    )
     # см. докстринг класса — эта страница не действует сама, только
     # просит launcher_window.py действовать и ждёт обратного вызова.
     changed = Signal()  # enabled/port изменились -- автосохранение cfg
@@ -58,7 +49,6 @@ class RemoteSettingsPage(QWidget):
     pairing_requested = Signal()
     refresh_devices_requested = Signal()
     revoke_requested = Signal(list)  # list[str] -- device_id выбранных строк
-    ssh_setup_requested = Signal()  # кнопка «Настроить SSH-доступ» (этап 3 аудита)
 
     def __init__(self, cfg: dict, loc=None, parent=None):
         super().__init__(parent)
@@ -155,37 +145,6 @@ class RemoteSettingsPage(QWidget):
 
         root.addWidget(pairing_box)
 
-        # -- Доступ вне дома (SSH) (этап 3 аудита) ------------------------
-        # Страница ничего не запускает сама: кнопка эмитит
-        # ssh_setup_requested, а скрипт с повышением прав, выбор адреса и
-        # отправку результата в Remote делает RemoteController.
-        ssh_box = QGroupBox(self._tr("Доступ вне дома (SSH)"))
-        self.ssh_box = ssh_box
-        ssh_form = QFormLayout(ssh_box)
-
-        self.ssh_hint_label = QLabel(self._tr(self._SSH_HINT))
-        self.ssh_hint_label.setWordWrap(True)
-        self.ssh_hint_label.setObjectName("mutedLabel")
-        ssh_form.addRow(self.ssh_hint_label)
-
-        self.ssh_port_spin = QSpinBox()
-        self.ssh_port_spin.setRange(1, 65535)
-        self.ssh_port_spin.setValue(int(remote_cfg.get("ssh_port", 2222)))
-        self.ssh_port_spin.valueChanged.connect(self._on_field_changed)
-        self.ssh_port_row_label = QLabel(self._tr("Порт SSH-сервера:"))
-        ssh_form.addRow(self.ssh_port_row_label, self.ssh_port_spin)
-
-        self.ssh_setup_btn = QPushButton(self._tr("Настроить SSH-доступ…"))
-        self.ssh_setup_btn.clicked.connect(self.ssh_setup_requested.emit)
-        ssh_form.addRow(self.ssh_setup_btn)
-
-        self.ssh_status_label = QLabel("")
-        self.ssh_status_label.setWordWrap(True)
-        self.ssh_status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        ssh_form.addRow(self.ssh_status_label)
-
-        root.addWidget(ssh_box)
-
         # -- Push-уведомления (§Этап 6.5 дорожной карты) -----------------
         # Заводить/настраивать сам Firebase-проект -- вручную в консоли
         # Google (это единственное, что эта страница в принципе не может
@@ -268,7 +227,6 @@ class RemoteSettingsPage(QWidget):
     def _on_enable_changed(self, *_args):
         enabled = self.enable_check.isChecked()
         self.pairing_box.setEnabled(enabled)
-        self.ssh_box.setEnabled(enabled)
         self.devices_box.setEnabled(enabled)
         self.changed.emit()
         self.enable_toggled.emit(enabled)
@@ -374,64 +332,6 @@ class RemoteSettingsPage(QWidget):
             self._tr("Не удалось получить список устройств: {}").format(message)
         )
 
-    def set_ssh_busy(self, busy: bool) -> None:
-        """Пока скрипт настройки идёт (UAC-диалог, окно PowerShell),
-        повторное нажатие кнопки и смена порта бессмысленны."""
-        self.ssh_setup_btn.setEnabled(not busy)
-        self.ssh_port_spin.setEnabled(not busy)
-        if busy:
-            self.ssh_status_label.setText(
-                self._tr(
-                    "Идёт настройка… подтвердите запрос прав администратора и "
-                    "дождитесь окна PowerShell (30–60 секунд)."
-                )
-            )
-
-    def choose_ssh_host(self, candidates: list[str]) -> str | None:
-        """Адрес сервера, который получит телефон. Список -- глобальные
-        IPv6-адреса ПК; можно ввести вручную другой адрес или доменное имя.
-        None -- пользователь закрыл диалог."""
-        label = self._tr(
-            "Выберите адрес этого ПК, по которому телефон будет подключаться "
-            "снаружи, или введите свой (IPv6, IPv4 или доменное имя)."
-        )
-        if not candidates:
-            label += "\n" + self._tr(
-                "Глобальных IPv6-адресов не найдено -- введите адрес вручную "
-                "(например, внешний IPv4 с пробросом порта на роутере)."
-            )
-        text, ok = QInputDialog.getItem(
-            self,
-            self._tr("Адрес SSH-сервера"),
-            label,
-            list(candidates),
-            0,
-            True,
-        )
-        if not ok:
-            return None
-        return text.strip()
-
-    def show_ssh_result(self, host: str, key_version: int, warnings: list[str]) -> None:
-        if host:
-            text = self._tr(
-                "Готово. Телефон получит профиль при следующем подключении "
-                "(адрес: {}, версия ключа: {})."
-            ).format(host, key_version)
-        else:
-            text = self._tr(
-                "Адрес не задан: ключ создан, но телефон не получит профиль, "
-                "пока вы не повторите настройку и не укажете адрес."
-            )
-        if warnings:
-            text += "\n" + self._tr("Предупреждения:") + "\n- " + "\n- ".join(warnings)
-        self.ssh_status_label.setText(text)
-        self.set_ssh_busy(False)
-
-    def show_ssh_error(self, message: str) -> None:
-        self.ssh_status_label.setText(self._tr("Ошибка настройки SSH: {}").format(message))
-        self.set_ssh_busy(False)
-
     # -- сбор состояния для автосохранения ---------------------------------
 
     def collect(self) -> dict:
@@ -444,7 +344,6 @@ class RemoteSettingsPage(QWidget):
                 # заполнено; comfyui_studio/remote/fcm.py трактует и то,
                 # и другое одинаково ("push не настроен").
                 "fcm_service_account_path": self.fcm_path_edit.text().strip() or None,
-                "ssh_port": self.ssh_port_spin.value(),
             }
         }
 
@@ -480,10 +379,6 @@ class RemoteSettingsPage(QWidget):
         )
         self.pairing_box.setTitle(self._tr("Подключить телефон"))
         self.pair_btn.setText(self._tr("Получить код для телефона"))
-        self.ssh_box.setTitle(self._tr("Доступ вне дома (SSH)"))
-        self.ssh_hint_label.setText(self._tr(self._SSH_HINT))
-        self.ssh_port_row_label.setText(self._tr("Порт SSH-сервера:"))
-        self.ssh_setup_btn.setText(self._tr("Настроить SSH-доступ…"))
         self.push_box.setTitle(self._tr("Push-уведомления"))
         self.push_hint_label.setText(
             self._tr(

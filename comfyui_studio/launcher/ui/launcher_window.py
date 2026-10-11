@@ -91,7 +91,6 @@ class MainWindow(QMainWindow):
         self.remote = RemoteController(self.settings_page, parent=self, config=self.config)
         self.settings_page.remote_enable_toggled.connect(self.remote.on_enable_toggled)
         self.settings_page.remote_pairing_requested.connect(self.remote.request_pairing)
-        self.settings_page.remote_ssh_setup_requested.connect(self.remote.request_ssh_setup)
         self.settings_page.remote_refresh_devices_requested.connect(self.remote.refresh_devices)
         self.settings_page.remote_revoke_requested.connect(self.remote.revoke)
 

@@ -14,8 +14,11 @@
 моменту «готово»; отмена посреди генерации тоже гасит процесс; падение
 llama-server при старте превращается в понятную ошибку с хвостом вывода.
 
-Тесты запускаются только на POSIX (shebang-скрипт как исполняемый файл) --
-Windows-специфичные части (Job Object, .exe) здесь не проверяются.
+Поддельный сервер -- обычный python-скрипт. На POSIX он запускается как
+исполняемый файл (shebang), на Windows -- как `python.exe скрипт` (подмена
+`_spawn`, см. фикстуру env): shebang-скрипты там не исполняются. Тесты,
+которым нужен процесс с именем «llama-server» (sweep_stale сверяет имя), --
+только POSIX.
 """
 
 import json
@@ -30,7 +33,9 @@ from comfyui_studio import promptgen_history as ph
 from comfyui_studio import shared_promptgen as sp
 from comfyui_studio.imagine.backend import promptgen as pg
 
-pytestmark = pytest.mark.skipif(os.name == "nt", reason="поддельный llama-server -- shebang-скрипт")
+posix_only = pytest.mark.skipif(
+    os.name == "nt", reason="нужен процесс с именем llama-server (shebang-скрипт)"
+)
 
 FAKE_SERVER = r'''#!__PYTHON__
 import json, os, sys, time
@@ -55,7 +60,7 @@ if ctl.get("cache_grow_mb"):
         f.write(b"0" * int(ctl["cache_grow_mb"] * 1048576))
 if ctl.get("child"):
     import subprocess
-    child = subprocess.Popen(["sleep", "300"])
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"])
     open(ctl["childfile"], "w").write(str(child.pid))
 started = time.time()
 
@@ -114,9 +119,30 @@ def env(tmp_path, monkeypatch):
 
     llama_dir = tmp_path / "llama"
     llama_dir.mkdir()
-    exe = llama_dir / "llama-server"
-    exe.write_text(FAKE_SERVER.replace("__PYTHON__", sys.executable), encoding="utf-8")
-    exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
+    script_text = FAKE_SERVER.replace("__PYTHON__", sys.executable)
+    if os.name == "nt":
+        # shebang на Windows не работает: рядом с пустой заглушкой
+        # llama-server.exe (её ищет find_server_exe) лежит скрипт, а запуск
+        # подменяется на `python.exe скрипт <аргументы llama-server>`.
+        script = llama_dir / "fake_llama_server.py"
+        script.write_text(script_text, encoding="utf-8")
+        (llama_dir / "llama-server.exe").write_bytes(b"")
+        real_spawn = pg._spawn
+
+        # Не sys.executable: в venv на Windows это лаунчер-«переходник», который
+        # запускает настоящий python.exe ДОЧЕРНИМ процессом -- pid в реестре
+        # (pid лаунчера) разошёлся бы с pid скрипта. Фейку нужна только stdlib,
+        # поэтому берём базовый интерпретатор напрямую.
+        python = getattr(sys, "_base_executable", sys.executable)
+
+        def spawn_via_python(cmd, cwd, env, log_path):
+            return real_spawn([python, str(script), *cmd[1:]], cwd, env, log_path)
+
+        monkeypatch.setattr(pg, "_spawn", spawn_via_python)
+    else:
+        exe = llama_dir / "llama-server"
+        exe.write_text(script_text, encoding="utf-8")
+        exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
 
     files = {
         "pidfile": str(tmp_path / "pid.txt"),
@@ -171,20 +197,15 @@ def wait_finished(gen, job_id, timeout=20):
 
 
 def process_gone(pid, timeout=5):
+    """Процесса нет (зомби, ещё не reaped, тоже считается «ушедшим»)."""
+    import psutil
+
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return True
-        except PermissionError:
-            return False
-        # зомби (ещё не reaped) тоже считается «ушедшим» -- смотрим /proc
-        try:
-            with open(f"/proc/{pid}/stat", encoding="utf-8") as f:
-                if f.read().split(") ")[-1].startswith("Z"):
-                    return True
-        except OSError:
+            if psutil.Process(pid).status() == psutil.STATUS_ZOMBIE:
+                return True
+        except psutil.NoSuchProcess:
             return True
         time.sleep(0.05)
     return False
@@ -292,7 +313,7 @@ def test_build_command_flags(env):
     )
     cfg = sp.read_settings()
     cmd = pg.build_command(cfg, 5555)
-    assert cmd[0].endswith("llama-server")
+    assert os.path.basename(cmd[0]).startswith("llama-server")
     assert cmd[cmd.index("-m") + 1] == str(env.model)
     assert cmd[cmd.index("--port") + 1] == "5555"
     assert cmd[cmd.index("--host") + 1] == "127.0.0.1"
@@ -311,11 +332,11 @@ def test_build_command_omits_optional_flags(env):
 
 
 def test_build_env_prepends_dll_dirs(env, monkeypatch):
-    monkeypatch.setenv("PATH", "/usr/bin")
+    monkeypatch.setenv("PATH", str(env.tmp / "somebin"))
     env.configure()
     path = pg.build_env(sp.read_settings())["PATH"]
     assert path.split(os.pathsep)[0] == str(env.llama_dir)
-    assert path.endswith("/usr/bin")
+    assert path.endswith(str(env.tmp / "somebin"))
 
 
 # ---------------------------------------------------------------------------
@@ -432,7 +453,13 @@ def test_cancel_during_generation_kills_process(env, gen):
 def test_cancel_while_model_loading(env, gen):
     env.configure({"load_s": 60})
     job_id = gen.start("x", None)
-    time.sleep(1.0)  # процесс запущен, модель "грузится"
+    # Ждём, пока процесс реально запущен (фейк пишет pid-файл), а не фиксированную
+    # секунду: на Windows запуск идёт дольше (опрос GPU и т.п.), и отмена
+    # прилетала ДО старта процесса -- pid-файла ещё не было.
+    deadline = time.monotonic() + 20
+    while not os.path.exists(env.files["pidfile"]):
+        assert time.monotonic() < deadline, "фейковый llama-server не запустился"
+        time.sleep(0.05)
     assert gen.get_job(job_id)["state"] == "loading"
     assert gen.cancel(job_id) is True
     snap = wait_finished(gen, job_id)
@@ -723,6 +750,7 @@ def _spawn_sleeper(tmp_path, name):
     return subprocess.Popen([str(script)])
 
 
+@posix_only
 def test_sweep_stale_kills_orphaned_llama_server(env):
     orphan = _spawn_sleeper(env.tmp, "llama-server")
     try:
@@ -736,6 +764,7 @@ def test_sweep_stale_kills_orphaned_llama_server(env):
         orphan.wait()
 
 
+@posix_only
 def test_sweep_stale_ignores_reused_pid_and_foreign_processes(env):
     innocent = _spawn_sleeper(env.tmp, "llama-server")      # имя похоже, но время создания не то
     other = _spawn_sleeper(env.tmp, "not-related-tool")     # время создания то, но имя чужое

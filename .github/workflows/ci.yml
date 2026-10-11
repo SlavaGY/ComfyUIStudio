@@ -1,0 +1,116 @@
+# Автоматические проверки проекта (этап 4 роадмапа аудита).
+#
+# GitHub сам запускает этот файл на своей Windows-машине после каждого push
+# в main и в каждом Pull Request. Результат -- зелёная галочка / красный
+# крестик у коммита. Локально ничего ставить не нужно.
+#
+# Два задания:
+#   tests         -- pytest (в т.ч. страж сборки tests/test_build_assets.py)
+#                    + покрытие, ruff и mypy;
+#   min-versions  -- тесты Remote/Imagine на МИНИМАЛЬНЫХ версиях
+#                    зависимостей, заявленных в pyproject.toml.
+# Внутри tests ruff и mypy по всему пакету пока "мягкие"
+# (continue-on-error): в коде ещё есть старые замечания. Жёсткими они
+# станут после этапов 4.3/4.4 -- тогда просто убрать `continue-on-error`
+# у этих двух шагов.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Новый push в ту же ветку отменяет ещё идущий прогон -- экономит минуты.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Qt без экрана: на runner'е нет монитора.
+  QT_QPA_PLATFORM: offscreen
+  # conftest.py: тест, пропущенный из-за отсутствующей зависимости
+  # ("could not import ..."), валит прогон, а не молча считается зелёным.
+  STUDIO_STRICT_SKIPS: "1"
+  PYTHONUTF8: "1"
+
+jobs:
+  tests:
+    name: tests + lint (Windows, Python 3.11)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Установка зависимостей
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,imagine]"
+
+      - name: pytest (с покрытием)
+        run: >-
+          python -m pytest -rs
+          --cov=comfyui_studio --cov-report=term --cov-report=xml
+
+      - name: Сохранить отчёт о покрытии
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
+
+      # --- ЖЁСТКАЯ проверка типов: строгие модули (сейчас 0 ошибок) ----
+      - name: mypy (строгие модули)
+        run: >-
+          python -m mypy
+          -m comfyui_studio.themes.base
+          -m comfyui_studio.i18n_base
+          -m comfyui_studio.app_paths
+          -m comfyui_studio.prompt_builder.tree_ops
+          -m comfyui_studio.errors
+          -p comfyui_studio.promptvault.core
+
+      # --- МЯГКИЕ проверки: видны в логе и аннотациях, но не краснят CI ---
+      - name: ruff (мягко, пока не выполнены 4.3/4.4)
+        continue-on-error: true
+        run: python -m ruff check . --output-format=github
+
+      - name: mypy по всему пакету (мягко)
+        continue-on-error: true
+        run: python -m mypy comfyui_studio
+
+  min-versions:
+    name: минимальные версии зависимостей (Windows, Python 3.11)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # `--resolution lowest-direct` ставит НИЖНЮ границу каждой прямой
+      # зависимости из pyproject.toml (fastapi>=0.110 -> 0.110.0 и т.д.),
+      # а транзитивные -- свежие совместимые. Так проверяется, что
+      # заявленные минимумы действительно рабочие.
+      - name: Установка минимальных версий
+        run: |
+          python -m pip install --upgrade pip uv
+          uv pip install --system --resolution lowest-direct -e ".[dev,imagine]"
+
+      - name: pytest (Remote, Imagine, WebSocket-клиент)
+        run: >-
+          python -m pytest -rs
+          tests/remote tests/imagine tests/imagine_pony tests/launcher/test_comfy_ws.py

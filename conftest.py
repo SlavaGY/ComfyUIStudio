@@ -135,3 +135,43 @@ def _patch_qsettings_everywhere(monkeypatch, factory):
             continue
         if getattr(module, "QSettings", None) is real:
             monkeypatch.setattr(module, "QSettings", factory)
+
+
+# ---------------------------------------------------------------------------
+# Молчаливые пропуски из-за отсутствующих зависимостей (этап 4.1 роадмапа)
+# ---------------------------------------------------------------------------
+# `pytest.importorskip("X")` тихо превращает «не установлен X» в skip: тесты
+# выглядят зелёными, хотя ничего не проверяли. Если задана переменная
+# окружения STUDIO_STRICT_SKIPS=1 (её ставит CI), любой skip с причиной
+# «could not import ...» валит прогон. Обычные skip по условию («только
+# Windows», «только POSIX») не затрагиваются. Локально без переменной всё
+# работает как раньше.
+
+_STRICT_ENV = "STUDIO_STRICT_SKIPS"
+
+
+def _skip_reason(report) -> str:
+    longrepr = getattr(report, "longrepr", None)
+    if isinstance(longrepr, tuple) and len(longrepr) == 3:
+        return str(longrepr[2])
+    return str(longrepr or "")
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if os.environ.get(_STRICT_ENV) != "1":
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is None:
+        return
+    offenders = sorted(
+        {
+            f"{r.nodeid or r.longrepr[0]}: {_skip_reason(r)}"
+            for r in reporter.stats.get("skipped", [])
+            if "could not import" in _skip_reason(r)
+        }
+    )
+    if offenders:
+        reporter.write_sep("=", f"{_STRICT_ENV}: тесты пропущены из-за отсутствующих зависимостей")
+        for line in offenders:
+            reporter.write_line(line)
+        session.exitstatus = 1

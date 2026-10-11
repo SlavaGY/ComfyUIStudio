@@ -73,38 +73,6 @@ class SshProxyConfigStore(context: Context) {
         get() = prefs.getBoolean(KEY_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_ENABLED, value).apply()
 
-    /** Версия ключа, с которой профиль был получен от Studio
-     * (GET /ssh/config, см. SshProfileSync). 0 -- профиль не получали
-     * автоматически (пустой или введён вручную). */
-    val keyVersion: Int
-        get() = prefs.getInt(KEY_KEY_VERSION, 0)
-
-    /**
-     * Применяет профиль, полученный от Studio: сохраняет его вместе с
-     * версией, сбрасывает запомненный отпечаток ключа сервера (замена
-     * профиля -- как "переезд на другой сервер", см. [clearConfig]) и
-     * при ПЕРВОМ автоматическом получении ([keyVersion] == 0) включает
-     * тумблер -- пользователь сам нажал "Настроить SSH-доступ" в Studio,
-     * вводить и включать что-то вручную не нужно. Дальнейшие обновления
-     * флаг [enabled] не трогают: если человек выключил SSH, он остаётся
-     * выключенным.
-     */
-    fun applyServerProfile(profile: Profile, serverKeyVersion: Int) {
-        val firstAutomaticImport = keyVersion == 0
-        val editor = prefs.edit()
-            .putString(KEY_HOST, profile.host)
-            .putInt(KEY_PORT, profile.port)
-            .putString(KEY_USERNAME, profile.username)
-            .putString(KEY_PRIVATE_KEY, profile.privateKeyPem)
-            .remove(KEY_PASSPHRASE)
-            .remove(KEY_HOST_KEY_FP)
-            .putInt(KEY_KEY_VERSION, serverKeyVersion)
-        if (firstAutomaticImport) {
-            editor.putBoolean(KEY_ENABLED, true)
-        }
-        editor.apply()
-    }
-
     fun loadHostKeyFingerprint(): String? = prefs.getString(KEY_HOST_KEY_FP, null)
 
     fun saveHostKeyFingerprint(fingerprint: String) {
@@ -120,6 +88,5 @@ class SshProxyConfigStore(context: Context) {
         private const val KEY_PASSPHRASE = "passphrase"
         private const val KEY_ENABLED = "enabled"
         private const val KEY_HOST_KEY_FP = "host_key_fingerprint"
-        private const val KEY_KEY_VERSION = "key_version"
     }
 }

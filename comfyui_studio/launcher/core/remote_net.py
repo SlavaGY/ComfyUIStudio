@@ -67,16 +67,6 @@ def extract_error_detail(http_error: urllib.error.HTTPError) -> str:
         body = http_error.read()
         data = _json.loads(body) if body else {}
         detail = data.get("detail") if isinstance(data, dict) else None
-        if isinstance(detail, list):
-            # Ошибки валидации FastAPI (422): элементы содержат "input" --
-            # присланное значение целиком, а в теле запроса может быть
-            # приватный SSH-ключ. Берём только поле и текст ошибки.
-            parts = []
-            for item in detail:
-                if isinstance(item, dict):
-                    loc = ".".join(str(x) for x in item.get("loc", ())[1:])
-                    parts.append(f"{loc}: {item.get('msg', '')}".strip(": "))
-            return "; ".join(p for p in parts if p) or str(http_error)
         return detail or str(http_error)
     except Exception:
         return str(http_error)

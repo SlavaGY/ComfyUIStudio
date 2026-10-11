@@ -35,17 +35,7 @@ from . import mdns as mdns_module
 from .apps_registry import RemoteApp, register_app
 from .generation_watcher import GenerationWatcher
 from .imagine_proxy import router as imagine_proxy_router
-from .routes import (
-    apps,
-    devices,
-    fcm as fcm_routes,
-    internal,
-    pairing_routes,
-    queue,
-    ssh_config,
-    system,
-    ws,
-)
+from .routes import apps, devices, fcm as fcm_routes, internal, pairing_routes, queue, system, ws
 from .routes import home as home_routes
 from .state import runtime
 from .ws_hub import hub
@@ -161,7 +151,6 @@ app.include_router(queue.router, prefix=API_PREFIX, tags=["queue"])
 app.include_router(ws.router, prefix=API_PREFIX, tags=["realtime"])
 app.include_router(internal.router, prefix=API_PREFIX, tags=["internal"])
 app.include_router(fcm_routes.router, prefix=API_PREFIX, tags=["fcm"])
-app.include_router(ssh_config.router, prefix=API_PREFIX, tags=["ssh"])
 
 # Без префикса /api/v1/remote -- это "терминальные" маршруты для
 # браузера/WebView, а не REST-контракт для нативного клиента (см. §0.3

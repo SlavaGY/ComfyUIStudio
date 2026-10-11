@@ -1,0 +1,50 @@
+# Локальные проверки перед коммитом. Те же ruff и mypy, что запускает CI
+# (.github/workflows/ci.yml): хуки ruff/mypy -- `repo: local`, то есть берут
+# версии из dev-окружения (`pip install -e ".[dev]"`), а не из отдельного
+# зеркала pre-commit, поэтому версии не могут разойтись с CI.
+#
+# Установка (один раз, в активированном окружении проекта):
+#   pip install -e ".[dev]"
+#   pre-commit install
+# Прогнать вручную на всём проекте:  pre-commit run --all-files
+#
+# ruff format намеренно НЕ подключён: у проекта "разреженный" стиль (много
+# намеренных пустых строк внутри функций), форматтер его схлопывает.
+# Подробности -- [tool.ruff.format] в pyproject.toml.
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (lint + сортировка импортов)
+        entry: python -m ruff check --fix
+        language: system
+        types: [python]
+        require_serial: true
+
+      - id: mypy-strict
+        name: mypy (строгие модули)
+        # Тот же набор, что и жёсткий шаг CI: promptvault.core + модули из
+        # [[tool.mypy.overrides]] pyproject.toml.
+        entry: >-
+          python -m mypy
+          -m comfyui_studio.themes.base
+          -m comfyui_studio.i18n_base
+          -m comfyui_studio.app_paths
+          -m comfyui_studio.prompt_builder.tree_ops
+          -m comfyui_studio.errors
+          -p comfyui_studio.promptvault.core
+        language: system
+        pass_filenames: false
+        files: ^comfyui_studio/.*\.py$
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^android/|\.(patch|reg|qm|ts)$
+      - id: end-of-file-fixer
+        exclude: ^android/|\.(patch|reg|qm|ts)$
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=2000]

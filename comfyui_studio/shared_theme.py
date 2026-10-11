@@ -72,9 +72,10 @@ def write_shared_theme(theme_name):
 try:
     from PySide6.QtCore import QFileSystemWatcher, QObject, Signal
 except ImportError:  # pragma: no cover - модуль остаётся полезен и без Qt
-    QFileSystemWatcher = None
-    QObject = object
-    Signal = None
+    # Qt-заглушки: типы PySide6 это не допускают, поведение рантайма -- как задумано.
+    QFileSystemWatcher = None  # type: ignore[misc, assignment]
+    QObject = object  # type: ignore[misc, assignment]
+    Signal = None  # type: ignore[misc, assignment]
 
 
 if QFileSystemWatcher is not None:

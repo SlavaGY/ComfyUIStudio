@@ -69,7 +69,6 @@ class SettingsPage(QWidget):
     # MainWindow делает").
     remote_enable_toggled = Signal(bool)
     remote_pairing_requested = Signal()
-    remote_ssh_setup_requested = Signal()
     remote_refresh_devices_requested = Signal()
     remote_revoke_requested = Signal(list)
 
@@ -155,9 +154,6 @@ class SettingsPage(QWidget):
         self.settings_dialog.restart_studio_requested.connect(self.restart_studio_requested.emit)
         self.settings_dialog.remote_enable_toggled.connect(self.remote_enable_toggled.emit)
         self.settings_dialog.remote_pairing_requested.connect(self.remote_pairing_requested.emit)
-        self.settings_dialog.remote_ssh_setup_requested.connect(
-            self.remote_ssh_setup_requested.emit
-        )
         self.settings_dialog.remote_refresh_devices_requested.connect(
             self.remote_refresh_devices_requested.emit
         )
@@ -337,18 +333,6 @@ class SettingsPage(QWidget):
 
     def set_remote_devices(self, devices: list) -> None:
         self.settings_dialog.set_remote_devices(devices)
-
-    def set_remote_ssh_busy(self, busy: bool) -> None:
-        self.settings_dialog.set_remote_ssh_busy(busy)
-
-    def choose_remote_ssh_host(self, candidates: list) -> str | None:
-        return self.settings_dialog.choose_remote_ssh_host(candidates)
-
-    def show_remote_ssh_result(self, host: str, key_version: int, warnings: list) -> None:
-        self.settings_dialog.show_remote_ssh_result(host, key_version, warnings)
-
-    def show_remote_ssh_error(self, message: str) -> None:
-        self.settings_dialog.show_remote_ssh_error(message)
 
     def show_remote_devices_error(self, message: str) -> None:
         self.settings_dialog.show_remote_devices_error(message)

@@ -733,26 +733,3 @@ def test_stop_does_not_kill_when_graceful_stop_succeeds(monkeypatch):
     assert p.stop() is True
     assert proc.kill_calls == 0
     assert p.proc is None
-
-
-def test_extract_error_detail_for_validation_errors_never_echoes_input():
-    """422 FastAPI содержит "input" -- присланное значение целиком; для
-    POST /internal/ssh-config это приватный ключ."""
-    body = json.dumps(
-        {
-            "detail": [
-                {
-                    "type": "string_type",
-                    "loc": ["body", "private_key"],
-                    "msg": "Input should be a valid string",
-                    "input": {"secret": "SECRET-KEY-MATERIAL"},
-                }
-            ]
-        }
-    ).encode("utf-8")
-    err = urllib.error.HTTPError("http://x", 422, "Unprocessable", {}, io.BytesIO(body))
-
-    text = remote_net.extract_error_detail(err)
-
-    assert "private_key" in text
-    assert "SECRET-KEY-MATERIAL" not in text
