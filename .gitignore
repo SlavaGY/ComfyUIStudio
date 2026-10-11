@@ -16,3 +16,5 @@ __pycache__/
 # Firebase / Google Cloud credentials
 *-firebase-adminsdk-*.json
 *.env
+backup.reg
+desktop.ini
