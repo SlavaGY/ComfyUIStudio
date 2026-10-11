@@ -62,7 +62,6 @@ from .promptvault_page import PromptVaultSettingsPage
 from .remote_page import RemoteSettingsPage
 from .rvc_page import RvcSettingsPage
 
-
 # Желаемый размер окна при открытии и доля доступной области экрана, за
 # которую он выходить не должен (см. initial_geometry()).
 PREFERRED_SIZE = QSize(900, 640)

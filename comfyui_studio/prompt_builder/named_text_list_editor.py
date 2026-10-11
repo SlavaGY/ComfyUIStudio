@@ -12,8 +12,15 @@ from __future__ import annotations
 from typing import Optional
 
 from PySide6.QtWidgets import (
-    QComboBox, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QPushButton, QTextEdit, QVBoxLayout,
+    QComboBox,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
 )
 
 

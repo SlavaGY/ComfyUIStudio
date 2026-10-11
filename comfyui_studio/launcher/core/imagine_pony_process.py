@@ -12,11 +12,11 @@ ui/settings/comfyui_page.py), тот же приём self-exec со скрыты
 import os
 import sys
 
+from ...errors import ProcessStartError
+from ...imagine_pony.__main__ import IMAGINE_PONY_CLI_FLAG
 from .constants import PROJECT_ROOT
 from .logging_setup import log
 from .managed_process import ManagedProcess, find_missing_modules
-from ...errors import ProcessStartError
-from ...imagine_pony.__main__ import IMAGINE_PONY_CLI_FLAG
 
 IMAGINE_PONY_MODULE_NAME = "comfyui_studio.imagine_pony"
 # Те же зависимости, что у Imagine (extras 'imagine' в pyproject.toml);

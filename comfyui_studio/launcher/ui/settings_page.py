@@ -28,14 +28,14 @@ from PySide6.QtWidgets import (
 
 from comfyui_studio.themes.theme_manager import ThemeManager
 
+from ..core.config import validate_portable_root
+from ..core.config_store import ConfigStore
 from ..core.external_apps import (
     EXTERNAL_APPS,
     ExternalApp,
     launch_external_app,
     resolve_external_launch,
 )
-from ..core.config import validate_portable_root
-from ..core.config_store import ConfigStore
 from ..core.launch_mode import MODES, is_rvc_mode, mode_label, normalize_mode
 from ..core.logging_setup import log
 from ..integration.tool_registry import IN_PROCESS_WINDOW_FACTORIES, ON_CLOSE_CALLBACKS

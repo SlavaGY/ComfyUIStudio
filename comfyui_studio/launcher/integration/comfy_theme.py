@@ -4,13 +4,12 @@
 Вынесено из comfyui_launcher.py (этап 1 дорожной карты).
 """
 
-import os
 import json
+import os
 
 from comfyui_studio.jsonfile import atomic_write_json
 
 from ..core.logging_setup import log
-
 
 # Наша тема оформления -> ближайшая ВСТРОЕННАЯ палитра ComfyUI
 # (Comfy.ColorPalette: dark/light/nord/github/solarized/arc). Для тем без

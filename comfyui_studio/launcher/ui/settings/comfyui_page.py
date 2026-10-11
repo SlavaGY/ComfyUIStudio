@@ -43,7 +43,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...core.config import LAUNCH_ARG_DEFS, find_run_scripts, guess_default_script, validate_portable_root
+from ...core.config import (
+    LAUNCH_ARG_DEFS,
+    find_run_scripts,
+    guess_default_script,
+    validate_portable_root,
+)
 
 
 class ComfyUISettingsPage(QWidget):

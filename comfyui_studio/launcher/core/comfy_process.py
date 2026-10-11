@@ -12,10 +12,10 @@ ManagedProcess (core/managed_process.py); запуск внешних прило
 """
 
 import os
-import threading
 import subprocess
+import threading
 
-from PySide6.QtCore import Signal, QObject
+from PySide6.QtCore import QObject, Signal
 
 from .constants import COMFY_LOG_PATH
 from .logging_setup import log

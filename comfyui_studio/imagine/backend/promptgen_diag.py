@@ -20,7 +20,7 @@ import re
 import time
 from typing import TYPE_CHECKING, Optional
 
-from comfyui_studio.imagine.backend.promptgen_base import MAX_TOKENS, _MIB
+from comfyui_studio.imagine.backend.promptgen_base import _MIB, MAX_TOKENS
 from comfyui_studio.imagine.backend.promptgen_deps import shared_promptgen
 
 if TYPE_CHECKING:  # только для аннотаций: promptgen_job сам ничего отсюда не берёт

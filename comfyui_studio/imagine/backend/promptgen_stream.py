@@ -19,7 +19,11 @@ import urllib.request
 from typing import TYPE_CHECKING, Optional
 
 from comfyui_studio.imagine.backend.promptgen_base import (
-    MAX_TOKENS, STREAM_TIMEOUT_S, PromptGenError, _Cancelled, _error_text,
+    MAX_TOKENS,
+    STREAM_TIMEOUT_S,
+    PromptGenError,
+    _Cancelled,
+    _error_text,
 )
 from comfyui_studio.imagine.backend.promptgen_process import _exit_message
 

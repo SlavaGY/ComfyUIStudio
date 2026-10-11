@@ -7,9 +7,9 @@
 константы путей.
 """
 
+import logging
 import os
 import sys
-import logging
 from logging.handlers import RotatingFileHandler
 
 from .constants import APP_DIR, APP_LOG_PATH, app_base_dir

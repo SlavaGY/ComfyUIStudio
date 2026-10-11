@@ -35,7 +35,8 @@ from . import mdns as mdns_module
 from .apps_registry import RemoteApp, register_app
 from .generation_watcher import GenerationWatcher
 from .imagine_proxy import router as imagine_proxy_router
-from .routes import apps, devices, fcm as fcm_routes, internal, pairing_routes, queue, system, ws
+from .routes import apps, devices, internal, pairing_routes, queue, system, ws
+from .routes import fcm as fcm_routes
 from .routes import home as home_routes
 from .state import runtime
 from .ws_hub import hub

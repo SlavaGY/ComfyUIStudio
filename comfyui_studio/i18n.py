@@ -129,7 +129,6 @@ TRANSLATIONS = {
         "Готово — откроется в этом же приложении.": "Ready — opens in this same app.",
         "{} открыт.": "{} opened.",
         "{} запущен в отдельном процессе.": "{} launched in a separate process.",
-        "Запуск ComfyUI, ожидание сервера...": "Launching ComfyUI, waiting for the server...",
         "Запуск ComfyUI, ожидание сервера... ({}с)": "Launching ComfyUI, waiting for the server... ({}s)",
         "Процесс ComfyUI неожиданно завершился (код выхода: {}). Подробности — в логе ниже.": (
             "The ComfyUI process exited unexpectedly (exit code: {}). See the log below for details."
@@ -402,7 +401,6 @@ TRANSLATIONS = {
             "design choice — see its documentation): dev mode is only "
             "enabled here, with this toggle, when launched from Studio."
         ),
-        "Запуск ComfyUI, ожидание сервера...": "Starting ComfyUI, waiting for the server...",
         "Запуск Imagine, ожидание сервера...": "Starting Imagine, waiting for the server...",
         "Imagine не поднялся за {} секунд.": "Imagine did not come up within {} seconds.",
         (
@@ -463,7 +461,6 @@ TRANSLATIONS = {
         ),
         "Не удалось получить код: {}": "Failed to get a code: {}",
         "Сопряжённые устройства": "Paired devices",
-        "Имя": "Name",
         "Создано": "Created",
         "Последний раз в сети": "Last seen",
         "Статус": "Status",

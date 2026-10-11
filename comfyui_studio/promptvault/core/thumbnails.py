@@ -8,7 +8,11 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 
-from comfyui_studio.promptvault.config import THUMBNAIL_CACHE_DIR, THUMBNAIL_CACHE_MAX_BYTES, THUMBNAIL_MAX_AGE_DAYS
+from comfyui_studio.promptvault.config import (
+    THUMBNAIL_CACHE_DIR,
+    THUMBNAIL_CACHE_MAX_BYTES,
+    THUMBNAIL_MAX_AGE_DAYS,
+)
 from comfyui_studio.promptvault.utils import enforce_dir_size_limit
 
 

@@ -133,7 +133,7 @@ def _apply_loras(lora_inputs: dict, loras: list) -> None:
     """Ручные слоты MultiLoraLoader. Пустые -- явно «none»/1, чтобы
     значения из шаблона (там в lora_1 лежит слайдер со силой 0) не
     просочились в генерацию."""
-    selected = [l for l in loras if l.get("file")][:MAX_LORA_SLOTS]
+    selected = [lora for lora in loras if lora.get("file")][:MAX_LORA_SLOTS]
     for i in range(1, MAX_LORA_SLOTS + 1):
         if i <= len(selected):
             lora_inputs[f"lora_{i}"] = selected[i - 1]["file"]

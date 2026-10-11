@@ -30,8 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from . import config_store, launcher, lora_scan, workflow
-from . import progress_forwarder, promptgen
+from . import config_store, launcher, lora_scan, progress_forwarder, promptgen, workflow
 from .comfy_client import ComfyClient, ComfyUIError
 
 try:

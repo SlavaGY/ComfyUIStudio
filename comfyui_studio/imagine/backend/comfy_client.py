@@ -18,7 +18,6 @@ import uuid
 
 from comfyui_studio.errors import ComfyUIConnectionError, ComfyUIError
 
-
 # ComfyUIError переехал в comfyui_studio/errors.py (этап R11.1); имя остаётся
 # доступным отсюда: main.py и тесты импортируют его из comfy_client.
 __all__ = ["ComfyClient", "ComfyUIConnectionError", "ComfyUIError"]
