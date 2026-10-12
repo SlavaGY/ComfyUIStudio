@@ -7,7 +7,6 @@ MainWindow._restore_last_folder/_open_folder_path.
 import json
 import shutil
 
-
 from comfyui_studio.promptvault.ui.main_window import MainWindow
 
 

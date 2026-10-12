@@ -472,6 +472,7 @@ def test_comfy_process_start_builds_command_env_and_reads_log(monkeypatch, tmp_p
 def test_comfy_process_env_overrides_do_not_leak_to_os_environ(monkeypatch, tmp_path):
     pytest.importorskip("PySide6.QtCore")
     import os
+
     from comfyui_studio.launcher.core import comfy_process
 
     monkeypatch.setattr(comfy_process, "COMFY_LOG_PATH", str(tmp_path / "c.log"))

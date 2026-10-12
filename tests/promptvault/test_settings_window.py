@@ -9,7 +9,6 @@ import sys
 
 import pytest
 from PySide6.QtGui import QKeySequence
-from PySide6.QtWidgets import QMessageBox
 
 from comfyui_studio.promptvault.core.gallery_manager import GalleryManager
 from comfyui_studio.promptvault.core.hotkeys import DEFAULT_HOTKEYS, HOTKEY_ACTIONS, HotkeyManager

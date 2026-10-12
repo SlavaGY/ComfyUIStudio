@@ -20,7 +20,8 @@ pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QMessageBox  # noqa: E402
 
 from comfyui_studio.prompt_builder.logic import (  # noqa: E402
-    format_lora_entry, parse_lora_entry,
+    format_lora_entry,
+    parse_lora_entry,
 )
 from comfyui_studio.prompt_builder.lora_table_editor import LoraTableEditor  # noqa: E402
 from comfyui_studio.prompt_builder.named_text_list_editor import NamedTextListEditor  # noqa: E402

@@ -6,7 +6,6 @@ GenerationList "Open JSON" / "Open in folder" (перенесено из
 
 import json
 
-
 import comfyui_studio.promptvault.ui.main_window as main_window_module
 from comfyui_studio.promptvault.ui.main_window import MainWindow
 

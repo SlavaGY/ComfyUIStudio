@@ -97,6 +97,7 @@ def test_kill_pid_tree_non_windows_terminates_via_psutil(monkeypatch):
 
 def test_kill_pid_tree_swallows_errors(monkeypatch, caplog):
     import logging
+
     import psutil
 
     caplog.set_level(logging.ERROR, logger="comfyui_launcher")
