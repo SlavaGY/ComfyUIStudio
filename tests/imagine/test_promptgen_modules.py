@@ -20,6 +20,8 @@ import pytest
 
 from comfyui_studio.imagine.backend import (
     promptgen as pg,
+)
+from comfyui_studio.imagine.backend import (
     promptgen_base,
     promptgen_diag,
     promptgen_job,

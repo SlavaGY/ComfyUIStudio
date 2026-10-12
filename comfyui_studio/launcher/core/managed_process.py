@@ -191,8 +191,39 @@ class ManagedProcess:
     # -- остановка -------------------------------------------------------
 
     def stop(self):
-        if self.proc is None:
-            return
-        log.info("Остановка %s (PID %s)", self.label, self.proc.pid)
-        terminate_process_tree(self.proc, self.label)
+        """Останавливает процесс. Возвращает True, если его больше нет
+        (или его и не было), False -- если он пережил и штатную остановку,
+        и kill().
+
+        Раньше результат terminate_process_tree() выбрасывался, а self.proc
+        обнулялся безусловно: переживший таймаут процесс терял единственную
+        ссылку (Popen), добить его было нечем -- «фантомный процесс».
+        Теперь при неудаче штатной остановки делается kill(), а ссылка
+        сбрасывается, только когда процесс действительно завершён; иначе
+        is_running() остаётся True и повторный stop() может попробовать
+        ещё раз."""
+        proc = self.proc
+        if proc is None:
+            return True
+        log.info("Остановка %s (PID %s)", self.label, proc.pid)
+        if not terminate_process_tree(proc, self.label):
+            log.warning(
+                "%s (PID %s) не завершился за отведённое время -- kill()",
+                self.label, proc.pid,
+            )
+            try:
+                proc.kill()
+            except OSError:
+                log.exception("Не удалось выполнить kill() для %s (PID %s)", self.label, proc.pid)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            if proc.poll() is None:
+                log.error(
+                    "%s (PID %s) не удалось остановить; ссылка на процесс сохранена",
+                    self.label, proc.pid,
+                )
+                return False
         self.proc = None
+        return True

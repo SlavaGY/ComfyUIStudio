@@ -190,10 +190,10 @@ class StatisticsWindow(QMainWindow):
 
         value_label = QLabel(value)
         value_label.setStyleSheet("font-size: 22px; font-weight: bold;")
-        value_label.setAlignment(Qt.AlignCenter)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         title_label = QLabel(title)
-        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         layout.addWidget(value_label)
         layout.addWidget(title_label)
@@ -221,14 +221,14 @@ class StatisticsWindow(QMainWindow):
 
         axis_x = QBarCategoryAxis()
         axis_x.append([str(label) for label, _count in data])
-        chart.addAxis(axis_x, Qt.AlignBottom)
+        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
         series.attachAxis(axis_x)
 
         axis_y = QValueAxis()
         axis_y.setLabelFormat("%d")
         max_count = max((count for _label, count in data), default=1)
         axis_y.setRange(0, max(1, max_count))
-        chart.addAxis(axis_y, Qt.AlignLeft)
+        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
         series.attachAxis(axis_y)
 
         chart.legend().hide()
@@ -263,14 +263,14 @@ class StatisticsWindow(QMainWindow):
 
         axis_x = QBarCategoryAxis()
         axis_x.append([bucket.label for bucket in buckets])
-        chart.addAxis(axis_x, Qt.AlignBottom)
+        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
         series.attachAxis(axis_x)
 
         axis_y = QValueAxis()
         axis_y.setLabelFormat("%d")
         max_count = max((bucket.count for bucket in buckets), default=1)
         axis_y.setRange(0, max(1, max_count))
-        chart.addAxis(axis_y, Qt.AlignLeft)
+        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
         series.attachAxis(axis_y)
 
         chart.legend().hide()
@@ -304,7 +304,7 @@ class StatisticsWindow(QMainWindow):
     def _chart_view(chart: QChart) -> QChartView:
 
         view = QChartView(chart)
-        view.setRenderHint(QPainter.Antialiasing)
+        view.setRenderHint(QPainter.RenderHint.Antialiasing)
         view.setMinimumHeight(280)
 
         return view

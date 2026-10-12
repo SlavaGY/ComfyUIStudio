@@ -336,8 +336,10 @@ def test_default_watchers_are_created_when_not_injected(monkeypatch):
             super().__init__()
             created.append((type(self).__name__, loc, parent))
 
-    class LW(W): pass
-    class IW(W): pass
+    class LW(W): 
+        pass
+    class IW(W): 
+        pass
 
     monkeypatch.setattr(lc, "LaunchWatcher", LW)
     monkeypatch.setattr(lc, "ImagineLaunchWatcher", IW)

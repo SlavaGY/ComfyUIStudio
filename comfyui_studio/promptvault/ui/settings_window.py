@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QFormLayout,
     QGroupBox,
@@ -166,7 +165,7 @@ class SettingsWindow(QDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFixedHeight(180)
-        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
 
         content = QWidget()
         form = QFormLayout(content)
@@ -426,11 +425,11 @@ class SettingsWindow(QDialog):
             self,
             self.tr("Restart application"),
             self.tr("Restart PromptVault now?"),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if answer == QMessageBox.Yes:
+        if answer == QMessageBox.StandardButton.Yes:
             self.restartRequested.emit()
 
     def _on_quit_clicked(self) -> None:
@@ -439,11 +438,11 @@ class SettingsWindow(QDialog):
             self,
             self.tr("Quit application"),
             self.tr("Quit PromptVault now?"),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if answer == QMessageBox.Yes:
+        if answer == QMessageBox.StandardButton.Yes:
             self.quitRequested.emit()
 
     # --------------------------------------------------

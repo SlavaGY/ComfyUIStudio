@@ -23,15 +23,20 @@ import sys
 
 from PySide6.QtGui import QIcon, QKeySequence
 from PySide6.QtWidgets import (
-    QApplication, QFileDialog, QMainWindow, QMessageBox, QTabWidget, QToolBar,
+    QApplication,
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+    QTabWidget,
+    QToolBar,
 )
 
 from comfyui_studio.prompt_builder.characters_tab import CharactersTab
 from comfyui_studio.prompt_builder.json_store import JsonStoreError, load_json, save_json
-from comfyui_studio.prompt_builder.promptbuilder_tab import PromptBuilderTab
-from comfyui_studio.prompt_builder.theme_manager import ThemeManager, resource_base
 from comfyui_studio.prompt_builder.pb_i18n import LocalizationManager
 from comfyui_studio.prompt_builder.pb_settings import get_extension_folder
+from comfyui_studio.prompt_builder.promptbuilder_tab import PromptBuilderTab
+from comfyui_studio.prompt_builder.theme_manager import ThemeManager, resource_base
 
 CHARACTERS_FILENAME = "characters.json"
 PROMPT_BUILDER_FILENAME = "prompt_builder_config.json"

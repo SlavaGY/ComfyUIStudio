@@ -26,6 +26,7 @@ import glob
 import json
 import os
 import tempfile
+from typing import Any
 
 from . import app_paths
 
@@ -92,7 +93,7 @@ FREE_COMFY_MODES = ("auto", "always", "never")
 DEFAULT_IMAGE_MAX_SIDE = 1024
 IMAGE_MAX_SIDE_RANGE = (256, 4096)
 
-DEFAULTS = {
+DEFAULTS: dict[str, Any] = {
     # версия схемы файла (см. _coerce -- миграции значений по умолчанию)
     "settings_version": SETTINGS_VERSION,
     # папка с llama-server(.exe) и его DLL
@@ -134,7 +135,7 @@ def _coerce(data: dict) -> dict:
     неизвестные ключи и значения неверного типа (повреждённый/
     отредактированный вручную файл не должен ронять ни лаунчер, ни
     Imagine)."""
-    cfg = dict(DEFAULTS)
+    cfg: dict[str, Any] = dict(DEFAULTS)
     if not isinstance(data, dict):
         return cfg
     for key, default in DEFAULTS.items():

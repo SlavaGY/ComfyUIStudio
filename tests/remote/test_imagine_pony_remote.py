@@ -1,7 +1,6 @@
 """Imagine Pony в Remote: регистрация в реестре, reverse-proxy, запуск/остановка
 с телефона, определение завершения генерации."""
 
-import asyncio
 import json
 
 import httpx

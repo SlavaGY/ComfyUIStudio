@@ -31,14 +31,14 @@ pydantic/python-multipart были в venv сборки и, значит, поп
 
 import os
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 
+from ...errors import ProcessStartError
+from ...imagine.__main__ import IMAGINE_CLI_FLAG
 from .constants import PROJECT_ROOT
 from .logging_setup import log
 from .managed_process import ManagedProcess, find_missing_modules
-from ...errors import ProcessStartError
-from ...imagine.__main__ import IMAGINE_CLI_FLAG
 
 IMAGINE_MODULE_NAME = "comfyui_studio.imagine"
 IMAGINE_REQUIRED_MODULES = ("fastapi", "uvicorn", "pydantic", "multipart", "websockets")

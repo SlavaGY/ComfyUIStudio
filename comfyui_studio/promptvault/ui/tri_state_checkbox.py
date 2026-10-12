@@ -35,28 +35,28 @@ class TriStateFilterCheckBox(QCheckBox):
 
         current = self.checkState()
 
-        if current == Qt.Unchecked:
-            self.setCheckState(Qt.Checked)
-        elif current == Qt.Checked:
-            self.setCheckState(Qt.PartiallyChecked)
+        if current == Qt.CheckState.Unchecked:
+            self.setCheckState(Qt.CheckState.Checked)
+        elif current == Qt.CheckState.Checked:
+            self.setCheckState(Qt.CheckState.PartiallyChecked)
         else:
-            self.setCheckState(Qt.Unchecked)
+            self.setCheckState(Qt.CheckState.Unchecked)
 
     def set_state(self, included: bool, excluded: bool) -> None:
         """Программная установка состояния (не через клик пользователя) —
         используется при восстановлении сохранённых фильтров."""
 
         if excluded:
-            self.setCheckState(Qt.PartiallyChecked)
+            self.setCheckState(Qt.CheckState.PartiallyChecked)
         elif included:
-            self.setCheckState(Qt.Checked)
+            self.setCheckState(Qt.CheckState.Checked)
         else:
-            self.setCheckState(Qt.Unchecked)
+            self.setCheckState(Qt.CheckState.Unchecked)
 
     def is_included(self) -> bool:
 
-        return self.checkState() == Qt.Checked
+        return self.checkState() == Qt.CheckState.Checked
 
     def is_excluded(self) -> bool:
 
-        return self.checkState() == Qt.PartiallyChecked
+        return self.checkState() == Qt.CheckState.PartiallyChecked

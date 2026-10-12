@@ -4,11 +4,12 @@
 Вынесено из comfyui_launcher.py (этап 1 дорожной карты).
 """
 
-import os
 import json
+import os
+
+from comfyui_studio.jsonfile import atomic_write_json
 
 from ..core.logging_setup import log
-
 
 # Наша тема оформления -> ближайшая ВСТРОЕННАЯ палитра ComfyUI
 # (Comfy.ColorPalette: dark/light/nord/github/solarized/arc). Для тем без
@@ -41,8 +42,9 @@ def sync_comfyui_color_palette(root_path, app_theme_name):
             with open(settings_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         data["Comfy.ColorPalette"] = palette
-        with open(settings_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        # файл принадлежит ComfyUI: пишем атомарно, чтобы обрыв записи
+        # не оставил ему обрезанные настройки
+        atomic_write_json(settings_path, data)
         log.info(
             "Тема ComfyUI синхронизирована: '%s' -> палитра '%s' (%s)",
             app_theme_name, palette, settings_path,

@@ -20,14 +20,30 @@ from typing import Any, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-    QPushButton, QScrollArea, QSpinBox, QSplitter, QStackedWidget,
-    QTabWidget, QTextEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+    QCheckBox,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QSplitter,
+    QStackedWidget,
+    QTabWidget,
+    QTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from comfyui_studio.prompt_builder import tree_ops
 from comfyui_studio.prompt_builder.logic import (
-    display_loras_for, find_legacy_lora_options, migrate_legacy_lora_option,
+    display_loras_for,
+    find_legacy_lora_options,
+    migrate_legacy_lora_option,
 )
 from comfyui_studio.prompt_builder.lora_table_editor import LoraTableEditor
 from comfyui_studio.prompt_builder.named_text_list_editor import NamedTextListEditor
@@ -39,7 +55,7 @@ TYPE_LABELS = {
     "single_select": "◉ Одиночный выбор",
     "free_text": "✎ Свободный текст",
 }
-NODE_ROLE = Qt.UserRole
+NODE_ROLE = Qt.ItemDataRole.UserRole
 
 
 class PromptBuilderTab(QWidget):
@@ -667,7 +683,7 @@ class PromptBuilderTab(QWidget):
                 "Перенести все найденные варианты на новую архитектуру сейчас?"
             ).format(count),
         )
-        if proceed != QMessageBox.Yes:
+        if proceed != QMessageBox.StandardButton.Yes:
             return
 
         migrated = sum(1 for opt in legacy_options if migrate_legacy_lora_option(opt))

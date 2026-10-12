@@ -8,31 +8,7 @@ GalleryManager.more_generations_loaded -> GenerationList.append_generations
 
 import json
 
-import pytest
-
 from comfyui_studio.promptvault.ui.main_window import MainWindow
-
-
-@pytest.fixture(autouse=True)
-def _isolated_settings(tmp_path, monkeypatch):
-    """См. tests/test_app_settings.py и тот же комментарий в
-    tests/test_main_window_open_actions.py — нужно с задачи
-    "сохранение пути к папке между сессиями": load_folder() пишет
-    last_folder в QSettings, MainWindow() при создании читает его
-    обратно (_restore_last_folder)."""
-
-    from PySide6.QtCore import QSettings
-
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    monkeypatch.setenv("HOME", str(fake_home))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / ".config"))
-
-    QSettings("PromptVault", "PromptVault").clear()
-
-    yield
-
-    QSettings("PromptVault", "PromptVault").clear()
 
 
 def _write_json(folder, name, **overrides):

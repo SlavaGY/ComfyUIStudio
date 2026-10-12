@@ -16,8 +16,8 @@ stop()/start() отменяют незавершённую проверку: з�
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from ...core.comfy_api import ComfyAPIClient
 from ...core.background import BackgroundTask
+from ...core.comfy_api import ComfyAPIClient
 from ...core.comfy_process import ComfyProcess
 from ...core.constants import APP_LOG_PATH
 from ...core.logging_setup import log

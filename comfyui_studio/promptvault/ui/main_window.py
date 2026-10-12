@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from comfyui_studio.promptvault.config import APP_VERSION, ICON_PATH
+from comfyui_studio.promptvault.config import ICON_PATH
 from comfyui_studio.promptvault.core.folder_sync import FolderSync
 from comfyui_studio.promptvault.core.gallery_manager import GalleryManager
 from comfyui_studio.promptvault.core.generation import Generation
@@ -68,7 +68,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.standalone = standalone
 
-        self.setWindowTitle(f"PromptVault")
+        self.setWindowTitle("PromptVault")
         self.resize(1600, 900)
 
         # задача 3.4: drag & drop JSON-файлов генераций прямо в главное
@@ -146,7 +146,7 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout(root)
         main_layout.addWidget(self.toolbar)
 
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # ================= LEFT =================
 
@@ -423,11 +423,11 @@ class MainWindow(QMainWindow):
                 "Remove {} generations from the library?\n"
                 "Files on disk will not be touched."
             ).format(len(generation_ids)),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if answer != QMessageBox.Yes:
+        if answer != QMessageBox.StandardButton.Yes:
             return
 
         deleted = self.gallery.delete_generations(generation_ids, delete_files=False)
@@ -456,11 +456,11 @@ class MainWindow(QMainWindow):
                 "together with their files (JSON and images) from disk?\n"
                 "This action cannot be undone."
             ).format(len(generation_ids)),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if answer != QMessageBox.Yes:
+        if answer != QMessageBox.StandardButton.Yes:
             return
 
         deleted = self.gallery.delete_generations(generation_ids, delete_files=True)

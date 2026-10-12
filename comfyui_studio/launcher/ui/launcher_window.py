@@ -9,16 +9,23 @@ import sys
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QStackedWidget, QSystemTrayIcon
+from PySide6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QMessageBox,
+    QStackedWidget,
+    QSystemTrayIcon,
+)
 
-from comfyui_studio.themes.theme_manager import ThemeManager
 from comfyui_studio.i18n import LocalizationManager
+from comfyui_studio.themes.theme_manager import ThemeManager
 
 from ..core.comfy_process import ProcessLogBridge
+from ..core.config import take_load_warning
 from ..core.config_store import ConfigStore
 from ..core.constants import APP_NAME, PROJECT_ROOT
-from ..core.logging_setup import ICON_PATH, log, set_console_log_level
 from ..core.launch_mode import RVC, RVC_GRADIO, normalize_mode, rvc_process_kind
+from ..core.logging_setup import ICON_PATH, log, set_console_log_level
 from ..core.rvc_process import MODE_APP, MODE_GRADIO, rvc_settings
 from ..core.system_monitor import ResourceMonitor
 from ..integration.comfy_theme import COMFY_PALETTE_MAP
@@ -29,8 +36,8 @@ from .rvc_browser_page import RvcBrowserPage
 from .rvc_controller import FAILED as RVC_FAILED
 from .rvc_controller import RUNNING as RVC_RUNNING
 from .rvc_controller import STARTING as RVC_STARTING
-from .rvc_controller import RvcController
 from .rvc_controller import STOPPED as RVC_STOPPED
+from .rvc_controller import RvcController
 from .settings_page import SettingsPage
 from .tray import TrayIcon
 
@@ -90,6 +97,7 @@ class MainWindow(QMainWindow):
         self.remote = RemoteController(self.settings_page, parent=self, config=self.config)
         self.settings_page.remote_enable_toggled.connect(self.remote.on_enable_toggled)
         self.settings_page.remote_pairing_requested.connect(self.remote.request_pairing)
+        self.settings_page.remote_ssh_setup_requested.connect(self.remote.request_ssh_setup)
         self.settings_page.remote_refresh_devices_requested.connect(self.remote.refresh_devices)
         self.settings_page.remote_revoke_requested.connect(self.remote.revoke)
 
@@ -493,7 +501,13 @@ def create_window(app: QApplication) -> "MainWindow":
     loc.apply_language(loc.current_language())
 
     log.info("=== Запуск %s ===", APP_NAME)
-    return MainWindow(theme_manager, loc)
+    window = MainWindow(theme_manager, loc)
+    # config.json мог оказаться повреждён (см. core/config.py): не молчим,
+    # а один раз говорим об этом пользователю, когда окно уже готово.
+    warning = take_load_warning()
+    if warning:
+        QTimer.singleShot(0, lambda: QMessageBox.warning(window, APP_NAME, warning))
+    return window
 
 
 

@@ -15,9 +15,9 @@ launch_external_app() ниже по-прежнему пробует отдель
 """
 
 import os
+import subprocess
 import sys
 import threading
-import subprocess
 
 from .constants import PROJECT_ROOT, TOOLS_DIR
 from .logging_setup import log

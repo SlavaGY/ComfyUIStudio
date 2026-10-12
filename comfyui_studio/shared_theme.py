@@ -25,6 +25,7 @@ import logging
 import os
 
 from . import app_paths
+from .jsonfile import atomic_write_json
 
 SHARED_DIR = app_paths.studio_data_dir()
 SHARED_THEME_PATH = os.path.join(SHARED_DIR, "theme.json")
@@ -63,9 +64,7 @@ def write_shared_theme(theme_name):
     намеренно проглатываются — синхронизация темы не должна ронять
     приложение или мешать её локальному применению."""
     try:
-        os.makedirs(SHARED_DIR, exist_ok=True)
-        with open(SHARED_THEME_PATH, "w", encoding="utf-8") as f:
-            json.dump({"theme": theme_name}, f, ensure_ascii=False, indent=2)
+        atomic_write_json(SHARED_THEME_PATH, {"theme": theme_name})
     except OSError as e:
         log.warning("Не удалось записать общий файл темы %s: %s", SHARED_THEME_PATH, e)
 
@@ -73,9 +72,9 @@ def write_shared_theme(theme_name):
 try:
     from PySide6.QtCore import QFileSystemWatcher, QObject, Signal
 except ImportError:  # pragma: no cover - модуль остаётся полезен и без Qt
-    QFileSystemWatcher = None
-    QObject = object
-    Signal = None
+    QFileSystemWatcher = None  # type: ignore[misc, assignment]
+    QObject = object  # type: ignore[misc, assignment]
+    Signal = None  # type: ignore[misc, assignment]
 
 
 if QFileSystemWatcher is not None:

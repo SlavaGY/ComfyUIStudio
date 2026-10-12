@@ -31,7 +31,6 @@ from ..core.background import BackgroundTask
 from ..core.constants import APP_DIR, RVC_LOG_PATH
 from ..core.logging_setup import log
 from ..core.rvc_process import (
-    MODE_APP,
     MODE_GRADIO,
     RvcProcess,
     is_rvc_available,

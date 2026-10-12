@@ -19,7 +19,11 @@ import urllib.request
 from typing import TYPE_CHECKING, Optional
 
 from comfyui_studio.imagine.backend.promptgen_base import (
-    MAX_TOKENS, STREAM_TIMEOUT_S, PromptGenError, _Cancelled, _error_text,
+    MAX_TOKENS,
+    STREAM_TIMEOUT_S,
+    PromptGenError,
+    _Cancelled,
+    _error_text,
 )
 from comfyui_studio.imagine.backend.promptgen_process import _exit_message
 
@@ -37,6 +41,7 @@ _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 def stream_completion(
     job: "Job", port: int, prompt: str, image: Optional[str], proc, log_path: str
 ) -> None:
+    content: list[dict] | str
     if image:
         content = [
             {"type": "image_url", "image_url": {"url": image}},

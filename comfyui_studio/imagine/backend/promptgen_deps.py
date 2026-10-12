@@ -17,9 +17,9 @@ try:
     # показывается -- как и с shared_theme/shared_language в main.py.
     from comfyui_studio import shared_promptgen
 except ImportError:  # pragma: no cover - Imagine запущен отдельно от Studio
-    shared_promptgen = None
+    shared_promptgen = None  # type: ignore[assignment]
 
 try:
     from comfyui_studio import promptgen_history
 except ImportError:  # pragma: no cover - то же самое: история есть только внутри Studio
-    promptgen_history = None
+    promptgen_history = None  # type: ignore[assignment]

@@ -4,11 +4,13 @@
 Вынесено из comfyui_launcher.py (этап 1 дорожной карты).
 """
 
-import os
 import json
+import os
 
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
+from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -17,8 +19,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
-from PySide6.QtWebEngineWidgets import QWebEngineView
 
 from ..core.constants import WEBENGINE_PROFILE_DIR
 from .widgets.resource_bar import ResourceBar

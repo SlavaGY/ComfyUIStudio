@@ -129,7 +129,6 @@ TRANSLATIONS = {
         "Готово — откроется в этом же приложении.": "Ready — opens in this same app.",
         "{} открыт.": "{} opened.",
         "{} запущен в отдельном процессе.": "{} launched in a separate process.",
-        "Запуск ComfyUI, ожидание сервера...": "Launching ComfyUI, waiting for the server...",
         "Запуск ComfyUI, ожидание сервера... ({}с)": "Launching ComfyUI, waiting for the server... ({}s)",
         "Процесс ComfyUI неожиданно завершился (код выхода: {}). Подробности — в логе ниже.": (
             "The ComfyUI process exited unexpectedly (exit code: {}). See the log below for details."
@@ -402,7 +401,6 @@ TRANSLATIONS = {
             "design choice — see its documentation): dev mode is only "
             "enabled here, with this toggle, when launched from Studio."
         ),
-        "Запуск ComfyUI, ожидание сервера...": "Starting ComfyUI, waiting for the server...",
         "Запуск Imagine, ожидание сервера...": "Starting Imagine, waiting for the server...",
         "Imagine не поднялся за {} секунд.": "Imagine did not come up within {} seconds.",
         (
@@ -463,7 +461,6 @@ TRANSLATIONS = {
         ),
         "Не удалось получить код: {}": "Failed to get a code: {}",
         "Сопряжённые устройства": "Paired devices",
-        "Имя": "Name",
         "Создано": "Created",
         "Последний раз в сети": "Last seen",
         "Статус": "Status",
@@ -472,6 +469,63 @@ TRANSLATIONS = {
         "Обновить": "Refresh",
         "Отозвать выбранные": "Revoke selected",
         "Не удалось получить список устройств: {}": "Failed to get the device list: {}",
+        # -- SSH-доступ вне дома (этап 3 аудита), ui/settings/remote_page.py --
+        "Доступ вне дома (SSH)": "Access away from home (SSH)",
+        (
+            "Чтобы телефон подключался к Studio не только дома: Studio настроит "
+            "на этом ПК OpenSSH-сервер с урезанной учётной записью (только "
+            "проброс порта), создаст ключ и сама передаст его телефону при "
+            "следующем подключении -- вводить ничего вручную не нужно. Потребуется "
+            "подтверждение прав администратора (UAC). Проброс порта на роутере, "
+            "если ПК не доступен по IPv6, делается отдельно (см. README)."
+        ): (
+            "To connect to Studio from your phone away from home: Studio sets up an "
+            "OpenSSH server on this PC with a restricted account (port forwarding "
+            "only), creates a key and hands it to the phone on its next connection "
+            "by itself - nothing to type in manually. Administrator rights "
+            "confirmation (UAC) is required. Port forwarding on the router, if the "
+            "PC is not reachable over IPv6, is done separately (see the README)."
+        ),
+        "Порт SSH-сервера:": "SSH server port:",
+        "Настроить SSH-доступ…": "Set up SSH access…",
+        (
+            "Идёт настройка… подтвердите запрос прав администратора и "
+            "дождитесь окна PowerShell (30–60 секунд)."
+        ): (
+            "Setting up… confirm the administrator rights prompt and wait "
+            "for the PowerShell window (30-60 seconds)."
+        ),
+        "Адрес SSH-сервера": "SSH server address",
+        (
+            "Выберите адрес этого ПК, по которому телефон будет подключаться "
+            "снаружи, или введите свой (IPv6, IPv4 или доменное имя)."
+        ): (
+            "Choose the address of this PC the phone will connect to from "
+            "outside, or enter your own (IPv6, IPv4 or a domain name)."
+        ),
+        (
+            "Глобальных IPv6-адресов не найдено -- введите адрес вручную "
+            "(например, внешний IPv4 с пробросом порта на роутере)."
+        ): (
+            "No global IPv6 addresses found -- enter an address manually "
+            "(for example, an external IPv4 with a port forwarded on the router)."
+        ),
+        (
+            "Готово. Телефон получит профиль при следующем подключении "
+            "(адрес: {}, версия ключа: {})."
+        ): (
+            "Done. The phone will receive the profile on its next "
+            "connection (address: {}, key version: {})."
+        ),
+        (
+            "Адрес не задан: ключ создан, но телефон не получит профиль, "
+            "пока вы не повторите настройку и не укажете адрес."
+        ): (
+            "No address set: the key was created, but the phone will not "
+            "receive the profile until you repeat the setup and specify an address."
+        ),
+        "Предупреждения:": "Warnings:",
+        "Ошибка настройки SSH: {}": "SSH setup failed: {}",
         # -- Генератор промптов (Imagine + llama.cpp), см. ui/settings/prompt_generator_page.py --
         "Должен вмещать текст запроса, изображение и ответ (до 8192 токенов). Чем больше, тем больше видеопамяти занимает KV-кэш — а нехватка VRAM заставляет llama-server оставить часть слоёв на CPU, и генерация замедляется. 0 — взять значение из самой модели.": (
             "Must fit the request text, the image and the answer (up to 8192 tokens). The larger it is, the more VRAM the KV cache takes — and a shortage of VRAM makes llama-server keep some layers on the CPU, which slows generation down. 0 — use the value from the model itself."

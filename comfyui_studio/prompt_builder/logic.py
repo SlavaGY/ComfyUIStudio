@@ -7,6 +7,7 @@ logic.py
 """
 from __future__ import annotations
 
+import math
 import re
 import time
 from typing import Optional
@@ -70,6 +71,25 @@ def new_id(prefix: str) -> str:
 # --------------------------------------------------------------------------
 # Персонажи (characters.json)
 # --------------------------------------------------------------------------
+def _first_float(raw: dict, keys, default: float) -> float:
+    """Первое пригодное число из ``keys``, иначе ``default``.
+
+    Раньше было ``float(raw.get("strength", ...))``: ``"strength": null``
+    (или строка-мусор) в characters.json давали TypeError/ValueError при
+    загрузке всего prompt_builder_config.json."""
+    for key in keys:
+        value = raw.get(key)
+        if value is None or isinstance(value, bool):
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(number):
+            return number
+    return default
+
+
 class CharacterEntry:
     __slots__ = ("tags", "lora", "strength")
 
@@ -86,7 +106,7 @@ class CharacterEntry:
             return cls(
                 tags=str(raw.get("tags", "")),
                 lora=str(raw.get("lora", "")).strip(),
-                strength=float(raw.get("strength", raw.get("lora_strength", 1.0))),
+                strength=_first_float(raw, ("strength", "lora_strength"), 1.0),
             )
         return cls()
 

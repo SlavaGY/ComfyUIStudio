@@ -10,8 +10,15 @@ format_lora_entry).
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QAbstractItemView, QHBoxLayout, QHeaderView, QLineEdit, QPushButton,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView,
+    QHBoxLayout,
+    QHeaderView,
+    QLineEdit,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from comfyui_studio.prompt_builder.logic import format_lora_entry, parse_lora_entry

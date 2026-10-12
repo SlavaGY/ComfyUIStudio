@@ -159,10 +159,10 @@ class SystemStats:
     или структура чуть отличается между версиями ComfyUI; при первом
     реальном использовании (этап 8) стоит свериться с фактическим
     ответом на машине пользователя."""
-    os: str = None
-    python_version: str = None
-    comfyui_version: str = None
-    embedded_python: bool = None
+    os: str | None = None
+    python_version: str | None = None
+    comfyui_version: str | None = None
+    embedded_python: bool | None = None
     devices: list = field(default_factory=list)
     raw: dict = field(default_factory=dict)
 

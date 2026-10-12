@@ -37,6 +37,27 @@ datas = [
     # Imagine Pony (comfyui_studio/imagine_pony/) -- то же: статика и workflow_template.json.
     ('comfyui_studio/imagine_pony/static', 'comfyui_studio/imagine_pony/static'),
     ('comfyui_studio/imagine_pony/assets', 'comfyui_studio/imagine_pony/assets'),
+    # Ultimate RVC (comfyui_studio/rvc/): приложение запускается питоном из venv
+    # Ultimate RVC, а НЕ из этого exe, поэтому его исходники нужны на диске
+    # (внутри exe пакеты лежат в архиве, чужому процессу они недоступны).
+    # rvc_app_src -- то, что launcher/core/rvc_process.py кладёт в PYTHONPATH
+    # (rvc_app_source_root()); __init__.py -- пакет comfyui_studio для питона RVC,
+    # shared_theme/shared_language/app_paths -- общая тема и язык комплекта.
+    # Эти пять строк были только в удалённых -core/-full спеках, из-за чего
+    # собранный exe не умел режимы Ultimate RVC; страж --
+    # tests/test_build_assets.py.
+    ('comfyui_studio/rvc', 'rvc_app_src/comfyui_studio/rvc'),
+    ('comfyui_studio/__init__.py', 'rvc_app_src/comfyui_studio'),
+    ('comfyui_studio/app_paths.py', 'rvc_app_src/comfyui_studio'),
+    ('comfyui_studio/shared_theme.py', 'rvc_app_src/comfyui_studio'),
+    ('comfyui_studio/shared_language.py', 'rvc_app_src/comfyui_studio'),
+    # shared_theme/shared_language импортируют jsonfile (атомарная запись)
+    ('comfyui_studio/jsonfile.py', 'rvc_app_src/comfyui_studio'),
+    # Скрипт кнопки «Настроить SSH-доступ» (launcher/core/ssh_setup.py,
+    # find_script()): TOOLS_DIR в exe -- папка рядом с exe, куда сборка
+    # ничего не кладёт, поэтому без этой строки кнопка в собранной
+    # версии отвечала бы «Не найден скрипт настройки».
+    ('tools/ssh_setup', 'tools/ssh_setup'),
 ]
 binaries = []
 hiddenimports = [

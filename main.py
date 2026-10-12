@@ -53,7 +53,6 @@ ComfyUIStudio-core.spec / ComfyUIStudio-full.spec и build_exe.bat), без
 import os
 import sys
 
-
 # Отключаем Windows Native Window Occlusion в Chromium/QtWebEngine —
 # подтверждённая причина мигания встроенного интерфейса ComfyUI при
 # панорамировании графа (см. журнал переписки stage4_4 → stage4_5:

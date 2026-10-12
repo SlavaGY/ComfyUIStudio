@@ -15,6 +15,7 @@ import logging
 import os
 
 from . import app_paths
+from .jsonfile import atomic_write_json
 
 SHARED_DIR = app_paths.studio_data_dir()
 SHARED_LANGUAGE_PATH = os.path.join(SHARED_DIR, "language.json")
@@ -52,9 +53,7 @@ def write_shared_language(language_code):
     приложения комплекта. Ошибки записи намеренно проглатываются — как
     и в shared_theme.py, синхронизация не должна ронять приложение."""
     try:
-        os.makedirs(SHARED_DIR, exist_ok=True)
-        with open(SHARED_LANGUAGE_PATH, "w", encoding="utf-8") as f:
-            json.dump({"language": language_code}, f, ensure_ascii=False, indent=2)
+        atomic_write_json(SHARED_LANGUAGE_PATH, {"language": language_code})
     except OSError as e:
         log.warning("Не удалось записать общий файл языка %s: %s", SHARED_LANGUAGE_PATH, e)
 
@@ -62,9 +61,9 @@ def write_shared_language(language_code):
 try:
     from PySide6.QtCore import QFileSystemWatcher, QObject, Signal
 except ImportError:  # pragma: no cover - модуль остаётся полезен и без Qt
-    QFileSystemWatcher = None
-    QObject = object
-    Signal = None
+    QFileSystemWatcher = None  # type: ignore[misc, assignment]
+    QObject = object  # type: ignore[misc, assignment]
+    Signal = None  # type: ignore[misc, assignment]
 
 
 if QFileSystemWatcher is not None:

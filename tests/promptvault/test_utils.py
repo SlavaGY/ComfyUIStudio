@@ -9,7 +9,11 @@ QDesktopServices, которому нужен QApplication.
 from pathlib import Path
 
 import comfyui_studio.promptvault.utils as utils_module
-from comfyui_studio.promptvault.utils import group_paths_by_folder, open_file_externally, reveal_in_file_manager
+from comfyui_studio.promptvault.utils import (
+    group_paths_by_folder,
+    open_file_externally,
+    reveal_in_file_manager,
+)
 
 
 class TestGroupPathsByFolder:

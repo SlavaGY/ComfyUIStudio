@@ -31,14 +31,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import params as P
-from .engine import ERROR, LOADING, READY, Engine
+from .engine import ERROR, READY, Engine
 from .jobs import FINISHED, JobManager
 
 try:  # общая тема/язык комплекта -- необязательны
     from comfyui_studio import shared_language, shared_theme
 except ImportError:
-    shared_theme = None
-    shared_language = None
+    shared_theme = None  # type: ignore[assignment]
+    shared_language = None  # type: ignore[assignment]
 
 # __main__.py выставляет переменную ДО импорта этого модуля.
 DATA_DIR = Path(os.environ.get("STUDIO_RVC_DATA_DIR") or (Path.home() / ".studio_rvc"))

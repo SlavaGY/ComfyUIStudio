@@ -5,33 +5,10 @@ SettingsWindow, и обработчики, действующие на теку�
 GenerationList.
 """
 
-import pytest
 from PySide6.QtGui import QKeySequence
 
 from comfyui_studio.promptvault.core.hotkeys import HOTKEY_ACTIONS
 from comfyui_studio.promptvault.ui.main_window import MainWindow
-
-
-@pytest.fixture(autouse=True)
-def _isolated_settings(tmp_path, monkeypatch):
-    """См. tests/test_app_settings.py — та же изоляция QSettings.
-    Актуальна и здесь: HotkeyManager и (с задачи "сохранение пути к
-    папке между сессиями") MainWindow._restore_last_folder оба читают/
-    пишут QSettings("PromptVault", "PromptVault") при создании
-    MainWindow()."""
-
-    from PySide6.QtCore import QSettings
-
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    monkeypatch.setenv("HOME", str(fake_home))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / ".config"))
-
-    QSettings("PromptVault", "PromptVault").clear()
-
-    yield
-
-    QSettings("PromptVault", "PromptVault").clear()
 
 
 class _FakeSelection:

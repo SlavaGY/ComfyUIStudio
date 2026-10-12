@@ -26,11 +26,11 @@ from __future__ import annotations
 import os
 import sys
 
+from ...errors import ProcessStartError
+from ...remote.__main__ import REMOTE_CLI_FLAG
 from .constants import PROJECT_ROOT
 from .logging_setup import log
 from .managed_process import ManagedProcess, find_missing_modules
-from ...errors import ProcessStartError
-from ...remote.__main__ import REMOTE_CLI_FLAG
 
 REMOTE_MODULE_NAME = "comfyui_studio.remote"
 # Те же зависимости, что и у Imagine (см. IMAGINE_REQUIRED_MODULES в

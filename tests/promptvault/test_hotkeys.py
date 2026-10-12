@@ -2,29 +2,9 @@
 горячие клавиши (задача: настраиваемые горячие клавиши).
 """
 
-import pytest
 from PySide6.QtGui import QKeySequence
 
 from comfyui_studio.promptvault.core.hotkeys import DEFAULT_HOTKEYS, HOTKEY_ACTIONS, HotkeyManager
-
-
-@pytest.fixture(autouse=True)
-def _isolated_settings(tmp_path, monkeypatch):
-    """См. tests/test_app_settings.py — тот же паттерн изоляции
-    QSettings("PromptVault", "PromptVault") между тестовыми файлами."""
-
-    from PySide6.QtCore import QSettings
-
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    monkeypatch.setenv("HOME", str(fake_home))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / ".config"))
-
-    QSettings("PromptVault", "PromptVault").clear()
-
-    yield
-
-    QSettings("PromptVault", "PromptVault").clear()
 
 
 class TestDefaults:

@@ -4,6 +4,7 @@ dist/
 .venv-build/
 .venv-build-full/
 .venv-build-core/
+stage*.patch
 
 __pycache__/
 *.py[cod]
@@ -15,3 +16,14 @@ __pycache__/
 # Firebase / Google Cloud credentials
 *-firebase-adminsdk-*.json
 *.env
+backup.reg
+desktop.ini
+# SSH-доступ вне дома: приватные ключи и их копии (стор Remote живёт в
+# %APPDATA%\ComfyUIStudio, вне репозитория; это страховка от случайных копий)
+remote_ssh_config.json*
+remote_devices.json*
+phone_key
+phone_key.pub
+comfyui_studio_ssh_*.json
+
+*.zip

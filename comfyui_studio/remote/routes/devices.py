@@ -5,7 +5,7 @@ Bearer-токеном устройства."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from ..device_store import list_devices, revoke_device
 from ..local_guard import require_loopback
@@ -20,15 +20,15 @@ def get_devices() -> list[DeviceInfo]:
         DeviceInfo(
             device_id=d.device_id,
             name=d.name,
-            created_at=d.created_at,
-            last_seen=d.last_seen,
+            created_at=d.created_at,  # type: ignore[arg-type]
+            last_seen=d.last_seen,  # type: ignore[arg-type]
             revoked=d.revoked,
         )
         for d in list_devices()
     ]
 
 
-@router.post("/devices/{device_id}/revoke", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/devices/{device_id}/revoke", status_code=status.HTTP_204_NO_CONTENT, response_model=None, response_class=Response)
 def post_revoke_device(device_id: str) -> None:
     if not revoke_device(device_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Устройство не найдено.")

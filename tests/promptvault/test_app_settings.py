@@ -2,7 +2,6 @@
 миниатюр/логов, доступные через окно настроек (задача: SettingsWindow).
 """
 
-import pytest
 
 from comfyui_studio.promptvault.config import (
     LOG_DIR_MAX_BYTES,
@@ -11,33 +10,6 @@ from comfyui_studio.promptvault.config import (
     THUMBNAIL_MAX_AGE_DAYS,
 )
 from comfyui_studio.promptvault.settings import AppSettings
-
-
-@pytest.fixture(autouse=True)
-def _isolated_settings(tmp_path, monkeypatch):
-    """QSettings("PromptVault", "PromptVault") иначе читал/писал бы
-    настройки реального пользователя из ~/.config.
-
-    Помимо подмены HOME/XDG_CONFIG_HOME, явно чистим сам стор — Qt
-    может закешировать разрешённый путь/состояние QSettings на уровне
-    процесса и не всегда переоткрывает файл при смене этих переменных
-    окружения между тестами, так что одной подмены HOME недостаточно
-    для полной изоляции от других тестовых файлов, использующих тот же
-    org/app QSettings (см. регрессию, из-за которой это было добавлено:
-    значение, сохранённое в test_app_settings.py, "утекало" сюда)."""
-
-    from PySide6.QtCore import QSettings
-
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    monkeypatch.setenv("HOME", str(fake_home))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / ".config"))
-
-    QSettings("PromptVault", "PromptVault").clear()
-
-    yield
-
-    QSettings("PromptVault", "PromptVault").clear()
 
 
 class TestDefaults:

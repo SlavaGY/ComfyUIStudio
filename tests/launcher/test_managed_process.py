@@ -472,6 +472,7 @@ def test_comfy_process_start_builds_command_env_and_reads_log(monkeypatch, tmp_p
 def test_comfy_process_env_overrides_do_not_leak_to_os_environ(monkeypatch, tmp_path):
     pytest.importorskip("PySide6.QtCore")
     import os
+
     from comfyui_studio.launcher.core import comfy_process
 
     monkeypatch.setattr(comfy_process, "COMFY_LOG_PATH", str(tmp_path / "c.log"))
@@ -491,7 +492,10 @@ def test_comfy_process_stop_kills_whole_tree_and_resets(monkeypatch, tmp_path):
     monkeypatch.setattr(comfy_process, "COMFY_LOG_PATH", str(tmp_path / "c.log"))
     stopped = []
     monkeypatch.setattr(
-        managed_process, "terminate_process_tree", lambda proc, label, *a: stopped.append(label)
+        managed_process,
+        "terminate_process_tree",
+        # настоящая функция возвращает True, когда процесс завершился
+        lambda proc, label, *a: stopped.append(label) or True,
     )
     monkeypatch.setattr(
         managed_process.subprocess, "Popen", lambda cmd, **kw: _FakePopen(cmd, **kw)
@@ -662,3 +666,94 @@ def test_remote_process_module_does_not_reexport_net_helpers():
     remote/mdns.py) импортируют их оттуда."""
     for name in ("call_local_api", "extract_error_detail", "get_lan_ip", "is_remote_available"):
         assert not hasattr(remote_process, name)
+
+
+# -- stop(): результат остановки не выбрасывается ----------------------------
+
+
+class _StubbornProc:
+    """Popen-заглушка: сколько вызовов kill() нужно, чтобы «умереть»."""
+
+    pid = 4242
+
+    def __init__(self, dies_on_kill=True):
+        self._alive = True
+        self._dies_on_kill = dies_on_kill
+        self.kill_calls = 0
+
+    def poll(self):
+        return None if self._alive else 0
+
+    def kill(self):
+        self.kill_calls += 1
+        if self._dies_on_kill:
+            self._alive = False
+
+    def wait(self, timeout=None):
+        if self._alive:
+            raise subprocess.TimeoutExpired("fake", timeout)
+        return 0
+
+
+def test_stop_returns_true_without_process():
+    assert _Sleeper().stop() is True
+
+
+def test_stop_falls_back_to_kill_when_graceful_stop_fails(monkeypatch, caplog):
+    monkeypatch.setattr(managed_process, "terminate_process_tree", lambda proc, label, **kw: False)
+    p = _Sleeper()
+    p.proc = proc = _StubbornProc(dies_on_kill=True)
+    with caplog.at_level(logging.WARNING):
+        assert p.stop() is True
+    assert proc.kill_calls == 1
+    assert p.proc is None
+    assert _has_log(caplog, "не завершился", "kill()")
+
+
+def test_stop_keeps_reference_when_process_survives_kill(monkeypatch, caplog):
+    """Живой процесс нельзя «забывать»: иначе его уже никто не остановит."""
+    monkeypatch.setattr(managed_process, "terminate_process_tree", lambda proc, label, **kw: False)
+    monkeypatch.setattr(_StubbornProc, "wait", lambda self, timeout=None: (_ for _ in ()).throw(subprocess.TimeoutExpired("fake", timeout)))
+    p = _Sleeper()
+    p.proc = proc = _StubbornProc(dies_on_kill=False)
+    with caplog.at_level(logging.ERROR):
+        assert p.stop() is False
+    assert p.proc is proc
+    assert p.is_running() is True
+    assert _has_log(caplog, "не удалось остановить")
+
+
+def test_stop_does_not_kill_when_graceful_stop_succeeds(monkeypatch):
+    def fake_terminate(proc, label, **kw):
+        proc._alive = False
+        return True
+
+    monkeypatch.setattr(managed_process, "terminate_process_tree", fake_terminate)
+    p = _Sleeper()
+    p.proc = proc = _StubbornProc()
+    assert p.stop() is True
+    assert proc.kill_calls == 0
+    assert p.proc is None
+
+
+def test_extract_error_detail_for_validation_errors_never_echoes_input():
+    """422 FastAPI содержит "input" -- присланное значение целиком; для
+    POST /internal/ssh-config это приватный ключ."""
+    body = json.dumps(
+        {
+            "detail": [
+                {
+                    "type": "string_type",
+                    "loc": ["body", "private_key"],
+                    "msg": "Input should be a valid string",
+                    "input": {"secret": "SECRET-KEY-MATERIAL"},
+                }
+            ]
+        }
+    ).encode("utf-8")
+    err = urllib.error.HTTPError("http://x", 422, "Unprocessable", {}, io.BytesIO(body))
+
+    text = remote_net.extract_error_detail(err)
+
+    assert "private_key" in text
+    assert "SECRET-KEY-MATERIAL" not in text

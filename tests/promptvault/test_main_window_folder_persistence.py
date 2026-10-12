@@ -7,32 +7,7 @@ MainWindow._restore_last_folder/_open_folder_path.
 import json
 import shutil
 
-import pytest
-
 from comfyui_studio.promptvault.ui.main_window import MainWindow
-
-
-@pytest.fixture(autouse=True)
-def _isolated_settings(tmp_path, monkeypatch):
-    """См. tests/test_app_settings.py. Здесь изоляция особенно
-    важна — сам смысл теста в том, что ВТОРОЙ экземпляр MainWindow
-    (та же фикстура tmp_path/тот же HOME в пределах одного теста)
-    видит папку, открытую первым, так что тесты внутри этого файла
-    сами полагаются на общее QSettings-хранилище — но оно не должно
-    быть общим МЕЖДУ тестами/файлами."""
-
-    from PySide6.QtCore import QSettings
-
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    monkeypatch.setenv("HOME", str(fake_home))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / ".config"))
-
-    QSettings("PromptVault", "PromptVault").clear()
-
-    yield
-
-    QSettings("PromptVault", "PromptVault").clear()
 
 
 def _write_json(folder, name, **overrides):

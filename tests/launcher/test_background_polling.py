@@ -32,7 +32,8 @@ import pytest
 
 pytest.importorskip("PySide6.QtCore")
 
-from comfyui_studio.launcher.core import imagine_process, system_monitor as sm  # noqa: E402
+from comfyui_studio.launcher.core import imagine_process  # noqa: E402
+from comfyui_studio.launcher.core import system_monitor as sm
 from comfyui_studio.launcher.core.background import BackgroundTask  # noqa: E402
 from comfyui_studio.launcher.core.comfy_api import QueueState  # noqa: E402
 from comfyui_studio.launcher.ui import remote_controller as rc  # noqa: E402

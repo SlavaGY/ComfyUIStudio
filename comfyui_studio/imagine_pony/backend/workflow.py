@@ -57,7 +57,7 @@ def load_template() -> dict:
     return json.loads(TEMPLATE_PATH.read_text(encoding="utf-8"))
 
 
-def build_graph(template: dict, params: dict, negative_override: str = None):
+def build_graph(template: dict, params: dict, negative_override: str | None = None):
     """Возвращает (новый граф, seed). params -- model_dump() запроса
     генерации (см. main.py). negative_override -- готовый текст
     негатива с учётом исключённых тегов (см. комментарий в main.generate)."""
@@ -133,7 +133,7 @@ def _apply_loras(lora_inputs: dict, loras: list) -> None:
     """Ручные слоты MultiLoraLoader. Пустые -- явно «none»/1, чтобы
     значения из шаблона (там в lora_1 лежит слайдер со силой 0) не
     просочились в генерацию."""
-    selected = [l for l in loras if l.get("file")][:MAX_LORA_SLOTS]
+    selected = [lora for lora in loras if lora.get("file")][:MAX_LORA_SLOTS]
     for i in range(1, MAX_LORA_SLOTS + 1):
         if i <= len(selected):
             lora_inputs[f"lora_{i}"] = selected[i - 1]["file"]
