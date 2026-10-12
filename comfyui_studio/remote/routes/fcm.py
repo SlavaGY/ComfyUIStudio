@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from ..auth import require_device
 from ..device_store import update_fcm_token
@@ -16,7 +16,7 @@ from ..models import FcmTokenUpdateRequest
 router = APIRouter()
 
 
-@router.post("/fcm-token", status_code=204)
+@router.post("/fcm-token", status_code=204, response_model=None, response_class=Response)
 def post_fcm_token(
     payload: FcmTokenUpdateRequest,
     device_id: str = Depends(require_device),

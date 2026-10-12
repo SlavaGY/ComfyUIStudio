@@ -10,7 +10,7 @@ local_guard.py), а не Bearer-токеном устройства: вызыв�
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 
 from ..local_guard import require_loopback
@@ -27,7 +27,7 @@ class GenerationProgressPayload(BaseModel):
     max: int
 
 
-@router.post("/internal/generation-progress", status_code=204)
+@router.post("/internal/generation-progress", status_code=204, response_model=None, response_class=Response)
 async def post_generation_progress(payload: GenerationProgressPayload) -> None:
     await hub.broadcast(
         {
