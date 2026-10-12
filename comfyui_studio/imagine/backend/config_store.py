@@ -69,6 +69,7 @@ generation.max_loras -- см. app.js: эффективный лимит для
 import json
 import threading
 from pathlib import Path
+from typing import Any
 
 from comfyui_studio import app_paths
 
@@ -89,7 +90,7 @@ UPLOADS_DIR = DATA_DIR / "uploads"
 
 _lock = threading.Lock()
 
-DEFAULT_CONFIG = {
+DEFAULT_CONFIG: dict[str, Any] = {
     "comfyui": {
         "host": "127.0.0.1",
         "port": 8188,

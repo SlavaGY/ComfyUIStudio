@@ -50,7 +50,7 @@ class StarRatingWidget(QWidget):
 
             star = _StarLabel()
             star.setObjectName("ratingStar")
-            star.setCursor(Qt.PointingHandCursor)
+            star.setCursor(Qt.CursorShape.PointingHandCursor)
 
             star.clicked.connect(
                 lambda v=value: self._on_star_clicked(v)

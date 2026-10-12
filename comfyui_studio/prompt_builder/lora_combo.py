@@ -145,5 +145,6 @@ class LoraFileCombo(QComboBox):
         self.setCurrentText("")
 
     def setPlaceholderText(self, text: str):
-        if self.lineEdit() is not None:
-            self.lineEdit().setPlaceholderText(text)
+        line_edit = self.lineEdit()
+        if line_edit is not None:
+            line_edit.setPlaceholderText(text)

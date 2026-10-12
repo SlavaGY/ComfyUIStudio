@@ -41,6 +41,7 @@ _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 def stream_completion(
     job: "Job", port: int, prompt: str, image: Optional[str], proc, log_path: str
 ) -> None:
+    content: list[dict] | str
     if image:
         content = [
             {"type": "image_url", "image_url": {"url": image}},

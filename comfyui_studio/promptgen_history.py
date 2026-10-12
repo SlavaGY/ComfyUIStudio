@@ -31,7 +31,7 @@ import contextlib
 import os
 import sqlite3
 import time
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
 from comfyui_studio import shared_promptgen
 
@@ -150,7 +150,7 @@ def add_record(record: dict, path: Optional[str] = None) -> int:
     """Добавляет запись и возвращает её id. Неизвестные ключи игнорируются,
     отсутствующие -- заполняются значениями по умолчанию."""
     started = record.get("started_at")
-    values = {"started_at": time.time() if started is None else float(started)}
+    values: dict[str, Any] = {"started_at": time.time() if started is None else float(started)}
     for key in _TEXT_COLUMNS:
         value = record.get(key)
         values[key] = "" if value is None else str(value)

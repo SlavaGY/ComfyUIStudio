@@ -161,7 +161,7 @@ class MetadataEditor(QDialog):
         bottom_row.addStretch(1)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.Save | QDialogButtonBox.Cancel
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self._on_save_clicked)
         buttons.rejected.connect(self.reject)
@@ -261,7 +261,7 @@ class MetadataHistoryDialog(QDialog):
 
         layout.addWidget(self.list_widget)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
         # Close — единственная кнопка, но QDialogButtonBox эмитит
@@ -288,7 +288,7 @@ class MetadataHistoryDialog(QDialog):
         )
 
         field = entry.get("field")
-        field_label = self._field_labels().get(field, field)
+        field_label = self._field_labels().get(field, field)  # type: ignore[arg-type]
 
         return self.tr("[{}] {}: {!r} -> {!r}").format(
             when, field_label, entry.get("old_value"), entry.get("new_value")

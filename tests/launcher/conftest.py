@@ -51,9 +51,7 @@ class LocalWsServer:
 
         async def _handler(ws):
             self.connections.append(ws)
-            # websockets >= 14: ws.request.path; websockets 13 (минимум из
-            # pyproject): ws.path у legacy-протокола.
-            self.paths.append(getattr(getattr(ws, "request", None), "path", None) or getattr(ws, "path", None))
+            self.paths.append(getattr(getattr(ws, "request", None), "path", None))
             try:
                 async for _ in ws:
                     pass  # сервер только шлёт, входящие сообщения клиента не нужны

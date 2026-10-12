@@ -12,7 +12,7 @@ subdir не зарегистрирована (лаунчер запущен са
 отдельный процесс/exe.
 """
 
-IN_PROCESS_WINDOW_FACTORIES = {}
+IN_PROCESS_WINDOW_FACTORIES: dict = {}
 
 # Необязательный callback без аргументов на subdir -- вызывается ПОСЛЕ
 # того, как соответствующее окно уничтожено (см. _on_child_window_destroyed
@@ -26,7 +26,7 @@ IN_PROCESS_WINDOW_FACTORIES = {}
 # нужен этот словарь. Сейчас ни один зарегистрированный инструмент
 # такой callback не передаёт (register_in_process_app вызывается без
 # on_close), но сам механизм остаётся на будущее.
-ON_CLOSE_CALLBACKS = {}
+ON_CLOSE_CALLBACKS: dict = {}
 
 
 def register_in_process_app(subdir, factory, on_close=None):

@@ -30,8 +30,8 @@ from . import config_store, workflow
 try:
     from comfyui_studio import shared_language, shared_theme
 except ImportError:  # pragma: no cover - запущено отдельно от Studio
-    shared_theme = None
-    shared_language = None
+    shared_theme = None  # type: ignore[assignment]
+    shared_language = None  # type: ignore[assignment]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("imagine_pony")
@@ -222,7 +222,7 @@ def aspect_ratios():
 @app.get("/api/characters/db")
 def characters_db(refresh: bool = False):
     now = time.time()
-    if not refresh and _db_cache["data"] is not None and now - _db_cache["at"] < _DB_TTL:
+    if not refresh and _db_cache["data"] is not None and now - _db_cache["at"] < _DB_TTL:  # type: ignore[operator]
         return _db_cache["data"]
     data = _proxy_get("/character_search/db")
     _db_cache.update(at=now, data=data)

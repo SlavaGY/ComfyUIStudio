@@ -42,8 +42,8 @@ try:
     # (localStorage), см. GET/PUT /api/ui-prefs ниже.
     from comfyui_studio import shared_language, shared_theme
 except ImportError:  # pragma: no cover - инструмент запущен отдельно от Studio
-    shared_theme = None
-    shared_language = None
+    shared_theme = None  # type: ignore[assignment]
+    shared_language = None  # type: ignore[assignment]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("imagine")

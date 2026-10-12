@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.comfyuistudio.terminal.fcm.syncFcmTokenIfPaired
 import com.comfyuistudio.terminal.pairing.TokenStore
+import com.comfyuistudio.terminal.sshproxy.SshProfileSync
 import com.comfyuistudio.terminal.sshproxy.SshProxyConfigStore
 import com.comfyuistudio.terminal.sshproxy.SshProxySettingsActivity
 import com.comfyuistudio.terminal.sshproxy.SshSocksProxy
@@ -194,7 +195,11 @@ private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
     val ui = remember { TerminalUiState(openPath) }
     val sshStore = remember { SshProxyConfigStore(context) }
     val tunnelStore = remember { TunnelConfigStore(context) }
-    var accessReady by remember { mutableStateOf(!sshStore.enabled && !tunnelStore.enabled) }
+    // Всегда false на старте: перед решением, нужен ли туннель, терминал
+    // один раз спрашивает у Studio свежий SSH-профиль (см. LaunchedEffect
+    // ниже). Дома это LAN-запрос в доли секунды; вне дома без туннеля --
+    // не больше пары секунд ожидания таймаута.
+    var accessReady by remember { mutableStateOf(false) }
     var accessError by remember { mutableStateOf<String?>(null) }
     var pendingPermissionConfig by remember { mutableStateOf<com.wireguard.config.Config?>(null) }
 
@@ -221,6 +226,19 @@ private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
     }
 
     LaunchedEffect(Unit) {
+        // Этап 3 аудита: профиль SSH приходит от Studio сам (GET
+        // /ssh/config с Bearer-токеном устройства, см. SshProfileSync) --
+        // вручную вводить его в SshProxySettingsActivity больше не нужно.
+        // Сбой сети или неожиданный ответ не мешают терминалу: работаем с
+        // тем профилем, что уже сохранён, а ручной ввод остаётся запасным.
+        try {
+            withContext(Dispatchers.IO) { SshProfileSync(sshStore).sync(device) }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            accessError = "SSH: не удалось обновить профиль (${e.message})"
+        }
+
         if (sshStore.enabled) {
             // Вариант B -- см. докстринг SshSocksProxy.kt целиком.
             // Поднимаем SSH-сессию + локальный SOCKS5, ЗАТЕМ направляем
@@ -296,7 +314,10 @@ private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
             return@LaunchedEffect
         }
 
-        if (!tunnelStore.enabled) return@LaunchedEffect
+        if (!tunnelStore.enabled) {
+            accessReady = true
+            return@LaunchedEffect
+        }
         val raw = tunnelStore.loadRawConfig()
         if (raw == null) {
             // Включено, но конфиг почему-то не сохранён (не должно
@@ -360,7 +381,13 @@ private fun TerminalScreen(device: TokenStore.Device, openPath: String?) {
             ) {
                 CircularProgressIndicator()
                 androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(4.dp))
-                Text(if (sshStore.enabled) "Подключение по SSH…" else "Подключение к VPN…")
+                Text(
+                    when {
+                        sshStore.enabled -> "Подключение по SSH…"
+                        tunnelStore.enabled -> "Подключение к VPN…"
+                        else -> "Подключение…"
+                    },
+                )
             }
         } else {
             TerminalWebView(device, openPath, ui)

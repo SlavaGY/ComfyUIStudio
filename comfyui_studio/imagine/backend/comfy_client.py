@@ -54,7 +54,7 @@ class ComfyClient:
 
     # -- низкоуровневые хелперы -------------------------------------------------
 
-    def _get(self, path: str, timeout: float = None):
+    def _get(self, path: str, timeout: float | None = None):
         url = f"{self.base_url}{path}"
         try:
             with urllib.request.urlopen(url, timeout=timeout or self.timeout) as resp:
@@ -64,7 +64,7 @@ class ComfyClient:
         except (urllib.error.URLError, TimeoutError) as exc:  # HTTPError выше: он тоже URLError
             raise ComfyUIConnectionError(f"GET {path} failed: {exc}") from exc
 
-    def _post(self, path: str, payload: dict, timeout: float = None):
+    def _post(self, path: str, payload: dict, timeout: float | None = None):
         url = f"{self.base_url}{path}"
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
@@ -166,7 +166,7 @@ class ComfyClient:
         except (urllib.error.URLError, TimeoutError) as exc:
             raise ComfyUIConnectionError(f"Не удалось получить изображение: {exc}") from exc
 
-    def get_object_info(self, node_class: str = None):
+    def get_object_info(self, node_class: str | None = None):
         path = "/object_info"
         if node_class:
             path += f"/{node_class}"

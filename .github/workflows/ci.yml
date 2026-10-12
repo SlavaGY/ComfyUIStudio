@@ -81,13 +81,10 @@ jobs:
           -m comfyui_studio.errors
           -p comfyui_studio.promptvault.core
 
-      # --- МЯГКИЕ проверки: видны в логе и аннотациях, но не краснят CI ---
-      - name: ruff (мягко, пока не выполнены 4.3/4.4)
-        continue-on-error: true
+      - name: ruff
         run: python -m ruff check . --output-format=github
 
-      - name: mypy по всему пакету (мягко)
-        continue-on-error: true
+      - name: mypy
         run: python -m mypy comfyui_studio
 
   min-versions:

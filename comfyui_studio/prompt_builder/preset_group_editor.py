@@ -36,8 +36,8 @@ class PresetGroupEditor(QGroupBox):
 
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels([self._tr("Название"), self._tr("Теги")])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setVisible(False)
         self.table.itemSelectionChanged.connect(self._on_select)
         layout.addWidget(self.table)
@@ -158,5 +158,5 @@ class PresetGroupEditor(QGroupBox):
     def to_raw(self) -> dict:
         presets = {}
         for r in range(self.table.rowCount()):
-            presets[self.table.item(r, 0).text()] = self.table.item(r, 1).text()
+            presets[self.table.item(r, 0).text()] = self.table.item(r, 1).text()  # type: ignore[union-attr]
         return {"presets": presets, "default": self.default_combo.currentText()}

@@ -57,7 +57,7 @@ def load_template() -> dict:
     return json.loads(TEMPLATE_PATH.read_text(encoding="utf-8"))
 
 
-def build_graph(template: dict, params: dict, negative_override: str = None):
+def build_graph(template: dict, params: dict, negative_override: str | None = None):
     """Возвращает (новый граф, seed). params -- model_dump() запроса
     генерации (см. main.py). negative_override -- готовый текст
     негатива с учётом исключённых тегов (см. комментарий в main.generate)."""

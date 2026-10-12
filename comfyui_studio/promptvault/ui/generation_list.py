@@ -76,7 +76,7 @@ class GenerationList(QListWidget):
         # row_index -> GenerationCard (или _LoadingPlaceholder — для ещё
         # не подгруженных строк, см. _create_card), только для реально
         # созданных (видимых + буфер) виджетов
-        self._active_widgets: dict[int, QWidget] = {}
+        self._active_widgets: dict[int, GenerationCard | _LoadingPlaceholder] = {}
 
         self.setSpacing(6)
         self.setIconSize(QSize(90, 90))
@@ -310,7 +310,7 @@ class GenerationList(QListWidget):
 
                 last_visible = i
 
-        if first_visible is None:
+        if first_visible is None or last_visible is None:
             return
 
         keep_from = max(0, first_visible - BUFFER_ROWS)
@@ -355,17 +355,17 @@ class GenerationList(QListWidget):
 
         generation = self.generations[index]
 
-        widget = GenerationCard(generation)
+        card = GenerationCard(generation)
 
-        widget.favoriteToggled.connect(self.favoriteToggled.emit)
-        widget.ratingChanged.connect(self.ratingChanged.emit)
+        card.favoriteToggled.connect(self.favoriteToggled.emit)
+        card.ratingChanged.connect(self.ratingChanged.emit)
 
-        widget.set_selected(index == self.currentRow())
+        card.set_selected(index == self.currentRow())
 
-        self.setItemWidget(item, widget)
-        self._active_widgets[index] = widget
+        self.setItemWidget(item, card)
+        self._active_widgets[index] = card
 
-        widget.load_preview()
+        card.load_preview()
 
     # --------------------------------------------------
 
@@ -392,7 +392,7 @@ class GenerationList(QListWidget):
         rows = sorted({index.row() for index in self.selectedIndexes()})
 
         return [
-            self.generations[row].id
+            self.generations[row].id  # type: ignore[misc]
             for row in rows
             if row < len(self.generations)
         ]
@@ -590,7 +590,7 @@ class GenerationCard(QWidget):
         )
 
         self.preview.setAlignment(
-            Qt.AlignCenter
+            Qt.AlignmentFlag.AlignCenter
         )
 
         layout.addWidget(
@@ -609,7 +609,7 @@ class GenerationCard(QWidget):
         self.favorite_btn = QPushButton()
         self.favorite_btn.setObjectName("favoriteButton")
         self.favorite_btn.setFlat(True)
-        self.favorite_btn.setCursor(Qt.PointingHandCursor)
+        self.favorite_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.favorite_btn.setToolTip(self.tr("Favorite"))
         self.favorite_btn.clicked.connect(self._on_favorite_clicked)
 

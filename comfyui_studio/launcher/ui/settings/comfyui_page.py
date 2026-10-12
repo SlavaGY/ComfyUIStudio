@@ -65,7 +65,7 @@ class ComfyUISettingsPage(QWidget):
         outer = QVBoxLayout(self)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         outer.addWidget(scroll)
         container = QWidget()
         scroll.setWidget(container)
@@ -185,7 +185,7 @@ class ComfyUISettingsPage(QWidget):
         for d in LAUNCH_ARG_DEFS:
             row_box = QGroupBox()
             row_layout = QVBoxLayout(row_box)
-            check = QCheckBox(d["flag"])
+            check = QCheckBox(d["flag"])  # type: ignore[call-overload]
             saved_entry = saved_args.get(d["id"], {})
             check.setChecked(bool(saved_entry.get("enabled")))
             check.stateChanged.connect(self._on_field_changed)
@@ -199,7 +199,7 @@ class ComfyUISettingsPage(QWidget):
             value_edit = None
             if d.get("takes_value"):
                 value_edit = QLineEdit(str(saved_entry.get("value", "")))
-                value_edit.setPlaceholderText(d.get("placeholder", ""))
+                value_edit.setPlaceholderText(d.get("placeholder", ""))  # type: ignore[arg-type]
                 value_edit.textChanged.connect(self._on_field_changed)
                 row_layout.addWidget(value_edit)
 
@@ -231,8 +231,8 @@ class ComfyUISettingsPage(QWidget):
         self.env_table.setHorizontalHeaderLabels(
             [self._tr("Имя"), self._tr("Значение")]
         )
-        self.env_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.env_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.env_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.env_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.env_table.setMinimumHeight(120)
         for name, value in sorted(cfg.get("env_vars", {}).items()):
             self._append_env_row(name, value)
@@ -433,7 +433,7 @@ class ComfyUISettingsPage(QWidget):
             self.arg_widgets[d["id"]]["desc"].setText(self._tr(d["desc_ru"]))
             value_edit = self.arg_widgets[d["id"]]["value"]
             if value_edit is not None:
-                value_edit.setPlaceholderText(d.get("placeholder", ""))
+                value_edit.setPlaceholderText(d.get("placeholder", ""))  # type: ignore[arg-type]
         self.env_box.setTitle(self._tr("Переменные окружения"))
         self.env_hint.setText(
             self._tr(

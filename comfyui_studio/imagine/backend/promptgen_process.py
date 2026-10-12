@@ -18,7 +18,7 @@ import socket
 import subprocess
 import tempfile
 import time
-from typing import Optional
+from typing import Any, Optional
 
 from comfyui_studio.imagine.backend.promptgen_base import PromptGenError
 from comfyui_studio.imagine.backend.promptgen_deps import shared_promptgen
@@ -102,7 +102,7 @@ def _attach_kill_on_close_job(proc: subprocess.Popen) -> None:
                 raise ctypes.WinError(ctypes.get_last_error())
             _job_handle = handle
 
-        if not kernel32.AssignProcessToJobObject(_job_handle, int(proc._handle)):
+        if not kernel32.AssignProcessToJobObject(_job_handle, int(proc._handle)):  # type: ignore[attr-defined]
             raise ctypes.WinError(ctypes.get_last_error())
     except Exception:
         log.warning("Не удалось привязать llama-server к Job Object", exc_info=True)
@@ -212,7 +212,7 @@ def _spawn(cmd: list[str], cwd: str, env: dict, log_path: str):
         f"# {datetime.datetime.now().isoformat(timespec='seconds')}\n# cmd: {cmd}\n\n".encode("utf-8")
     )
     log_fh.flush()
-    kwargs = dict(
+    kwargs: dict[str, Any] = dict(
         cwd=cwd,
         env=env,
         stdin=subprocess.DEVNULL,

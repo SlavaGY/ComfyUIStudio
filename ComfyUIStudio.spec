@@ -53,6 +53,11 @@ datas = [
     ('comfyui_studio/shared_language.py', 'rvc_app_src/comfyui_studio'),
     # shared_theme/shared_language импортируют jsonfile (атомарная запись)
     ('comfyui_studio/jsonfile.py', 'rvc_app_src/comfyui_studio'),
+    # Скрипт кнопки «Настроить SSH-доступ» (launcher/core/ssh_setup.py,
+    # find_script()): TOOLS_DIR в exe -- папка рядом с exe, куда сборка
+    # ничего не кладёт, поэтому без этой строки кнопка в собранной
+    # версии отвечала бы «Не найден скрипт настройки».
+    ('tools/ssh_setup', 'tools/ssh_setup'),
 ]
 binaries = []
 hiddenimports = [

@@ -107,7 +107,7 @@ class BulkMetadataEditor(QDialog):
         layout.addStretch(1)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.Save | QDialogButtonBox.Cancel
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self._on_save_clicked)
         buttons.rejected.connect(self.reject)

@@ -55,7 +55,7 @@ TYPE_LABELS = {
     "single_select": "◉ Одиночный выбор",
     "free_text": "✎ Свободный текст",
 }
-NODE_ROLE = Qt.UserRole
+NODE_ROLE = Qt.ItemDataRole.UserRole
 
 
 class PromptBuilderTab(QWidget):
@@ -683,7 +683,7 @@ class PromptBuilderTab(QWidget):
                 "Перенести все найденные варианты на новую архитектуру сейчас?"
             ).format(count),
         )
-        if proceed != QMessageBox.Yes:
+        if proceed != QMessageBox.StandardButton.Yes:
             return
 
         migrated = sum(1 for opt in legacy_options if migrate_legacy_lora_option(opt))

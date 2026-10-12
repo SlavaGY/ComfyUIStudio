@@ -189,9 +189,9 @@ def stop_comfyui() -> None:
         # который Remote и так уже знает (runtime.comfy_port, тот же,
         # которым пользуется is_comfyui_running() выше).
         if runtime.comfy_port:
-            pid = find_pid_listening_on_port(runtime.comfy_port)
-            if pid is not None:
-                kill_pid_tree(pid, "ComfyUI")
+            port_pid = find_pid_listening_on_port(runtime.comfy_port)
+            if port_pid is not None:
+                kill_pid_tree(port_pid, "ComfyUI")
         _last_error = None
 
 

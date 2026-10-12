@@ -3,6 +3,7 @@
 import logging
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 from PySide6.QtCore import QUrl
@@ -49,7 +50,7 @@ def group_paths_by_folder(paths: list[Path]) -> dict[Path, list[Path]]:
     return groups
 
 
-def reveal_in_file_manager(paths: list[Path | str]) -> None:
+def reveal_in_file_manager(paths: Sequence[Path | str]) -> None:
     """Открывает файловый менеджер ОС с выделенными файлами.
 
     paths может ссылаться на файлы в РАЗНЫХ папках — для каждой

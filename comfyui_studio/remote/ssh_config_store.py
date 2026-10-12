@@ -89,9 +89,24 @@ def _load_raw() -> Optional[dict]:
 def _save_raw(data: dict) -> None:
     os.makedirs(SHARED_DIR, exist_ok=True)
     tmp_path = SSH_CONFIG_STORE_PATH + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, SSH_CONFIG_STORE_PATH)
+    # Файл с приватным ключом: на POSIX создаём сразу с правами 0600 (на
+    # Windows mode игнорируется -- там защита это ACL профиля пользователя
+    # в %APPDATA%, куда другие учётные записи не имеют доступа по
+    # умолчанию).
+    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    replaced = False
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, SSH_CONFIG_STORE_PATH)
+        replaced = True
+    finally:
+        if not replaced:
+            # Не оставляем на диске недописанный временный файл с ключом.
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 class SshConfigStore:
@@ -105,7 +120,10 @@ class SshConfigStore:
         становится нерабочим, значит версия обязана вырасти)."""
         with _lock:
             current = _load_raw()
-            version = (current.get("key_version", 0) if current else 0) + 1
+            previous = current.get("key_version", 0) if current else 0
+            if not isinstance(previous, int) or isinstance(previous, bool):
+                previous = 0  # файл правили руками -- начинаем счёт заново
+            version = previous + 1
             data = {
                 "username": username,
                 "ssh_port": ssh_port,
@@ -122,13 +140,26 @@ class SshConfigStore:
         if not data:
             return None
         try:
-            return SshConfig(**data)
+            config = SshConfig(**data)
         except TypeError:
             # Формат файла из более старой/новой версии не совпадает с
             # текущим SshConfig -- тот же принцип, что и у битого файла
             # в _load_raw: ведём себя как будто конфигурации нет, а не
             # падаем с 500 на GET /ssh/config.
             return None
+        # Типы полей из файла не проверялись -- файл могли править руками.
+        # Неверный тип дал бы 500 на сериализации ответа.
+        if not (
+            isinstance(config.username, str)
+            and isinstance(config.host, str)
+            and isinstance(config.private_key, str)
+            and isinstance(config.ssh_port, int)
+            and not isinstance(config.ssh_port, bool)
+            and isinstance(config.key_version, int)
+            and not isinstance(config.key_version, bool)
+        ):
+            return None
+        return config
 
 
 # Один экземпляр на процесс Remote -- см. докстринг модуля.

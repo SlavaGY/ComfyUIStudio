@@ -52,7 +52,7 @@ class WorkflowValidationError(Exception):
     pass
 
 
-def build_graph(template: dict, params: dict) -> dict:
+def build_graph(template: dict, params: dict) -> tuple[dict, int]:
     """Возвращает НОВЫЙ граф (глубокая копия шаблона) с подставленными
     значениями. params -- уже провалидированный словарь из
     GenerationRequest (см. main.py)."""

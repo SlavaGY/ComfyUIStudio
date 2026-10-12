@@ -451,3 +451,177 @@ def test_error_from_real_thread_is_delivered(qtbot, monkeypatch):
     ctl.refresh_devices()
     qtbot.waitUntil(lambda: bool(got), timeout=5000)
     assert "refused" in got[0]
+
+
+# -- SSH-доступ вне дома (этап 3 аудита) --------------------------------------
+
+from PySide6.QtCore import QObject, Signal  # noqa: E402
+
+SSH_KEY = "-----BEGIN OPENSSH PRIVATE KEY-----\nSECRET-KEY-MATERIAL\n-----END OPENSSH PRIVATE KEY-----\n"
+
+
+class FakeSshWorker(QObject):
+    succeeded = Signal(dict)
+    failed = Signal(str)
+
+
+def _ssh_result(**over):
+    result = {
+        "error": None,
+        "username": "comfyui-ssh",
+        "ssh_port": 2222,
+        "private_key": SSH_KEY,
+        "public_key": "ssh-ed25519 AAAA",
+        "ipv6_candidates": ["fd00::1", "2001:db8::5"],
+        "warnings": ["предупреждение"],
+    }
+    result.update(over)
+    return result
+
+
+@pytest.fixture
+def ssh(env, monkeypatch):
+    """env + запущенный Remote + подмена запуска PS1 и вызовов Remote API."""
+    env.proc()
+    env.ssh_starts = []
+    env.worker = FakeSshWorker()
+
+    def starter(username, ssh_port, permit_open_host, permit_open_port):
+        env.ssh_starts.append((username, ssh_port, permit_open_host, permit_open_port))
+        return env.worker
+
+    env.ctl._start_ssh_setup = starter
+    env.pushes = []
+    env.push_result = {"key_version": 3}
+    env.push_error = None
+
+    def call_local_api(port, method, path, json_body=None, **k):
+        env.pushes.append((port, method, path, json_body))
+        if env.push_error is not None:
+            raise env.push_error
+        return env.push_result
+
+    monkeypatch.setattr(rc, "call_local_api", call_local_api)
+    env.view.choose_remote_ssh_host.return_value = "2001:db8::5"
+    return env
+
+
+def test_ssh_setup_requires_running_remote(env):
+    starts = []
+    env.ctl._start_ssh_setup = lambda *a: starts.append(a)
+
+    env.ctl.request_ssh_setup()
+
+    env.view.show_remote_ssh_error.assert_called_once_with(rc.NOT_RUNNING_MESSAGE)
+    assert starts == []
+
+
+def test_ssh_setup_starts_script_with_default_port_and_remote_port(ssh):
+    ssh.ctl.request_ssh_setup()
+
+    assert ssh.ssh_starts == [("comfyui-ssh", 2222, "127.0.0.1", 7861)]
+    ssh.view.set_remote_ssh_busy.assert_called_with(True)
+
+
+def test_ssh_setup_uses_ssh_port_from_config(ssh, monkeypatch):
+    monkeypatch.setattr(rc, "load_config", lambda: {"remote": {"ssh_port": 2300}})
+
+    ssh.ctl.request_ssh_setup()
+
+    assert ssh.ssh_starts[0][1] == 2300
+
+
+def test_ssh_setup_ignores_garbage_ssh_port_in_config(ssh, monkeypatch):
+    monkeypatch.setattr(rc, "load_config", lambda: {"remote": {"ssh_port": "abc"}})
+
+    ssh.ctl.request_ssh_setup()
+
+    assert ssh.ssh_starts[0][1] == 2222
+
+
+def test_ssh_setup_double_click_starts_one_script(ssh):
+    ssh.ctl.request_ssh_setup()
+    ssh.ctl.request_ssh_setup()
+
+    assert len(ssh.ssh_starts) == 1
+
+
+def test_ssh_success_pushes_chosen_host_and_reports(ssh):
+    ssh.ctl.request_ssh_setup()
+
+    ssh.worker.succeeded.emit(_ssh_result())
+
+    # глобальный адрес предлагается первым, ULA -- после него
+    ssh.view.choose_remote_ssh_host.assert_called_once_with(["2001:db8::5", "fd00::1"])
+    assert ssh.pushes == [
+        (
+            7861,
+            "POST",
+            "/api/v1/remote/internal/ssh-config",
+            {
+                "username": "comfyui-ssh",
+                "ssh_port": 2222,
+                "host": "2001:db8::5",
+                "private_key": SSH_KEY,
+            },
+        )
+    ]
+    ssh.view.show_remote_ssh_result.assert_called_once_with(
+        "2001:db8::5", 3, ["предупреждение"]
+    )
+
+
+def test_ssh_cancelled_host_choice_still_pushes_key_with_empty_host(ssh):
+    """Скрипт уже заменил ключ на сервере -- не доставить его совсем
+    хуже, чем доставить без адреса (телефон такой профиль не получит)."""
+    ssh.view.choose_remote_ssh_host.return_value = None
+    ssh.ctl.request_ssh_setup()
+
+    ssh.worker.succeeded.emit(_ssh_result())
+
+    assert ssh.pushes[0][3]["host"] == ""
+    ssh.view.show_remote_ssh_result.assert_called_once_with("", 3, ["предупреждение"])
+
+
+def test_ssh_script_failure_is_shown_and_clears_busy_state(ssh):
+    ssh.ctl.request_ssh_setup()
+
+    ssh.worker.failed.emit("Отменено -- запрос прав администратора был отклонён.")
+
+    ssh.view.show_remote_ssh_error.assert_called_once_with(
+        "Отменено -- запрос прав администратора был отклонён."
+    )
+    assert ssh.pushes == []
+    ssh.ctl.request_ssh_setup()  # после ошибки можно запустить снова
+    assert len(ssh.ssh_starts) == 2
+
+
+def test_ssh_push_http_error_is_shown_without_key(ssh):
+    ssh.push_error = _http_error(422)
+    ssh.ctl.request_ssh_setup()
+
+    ssh.worker.succeeded.emit(_ssh_result())
+
+    ssh.view.show_remote_ssh_error.assert_called_once_with("detail-from-http")
+    ssh.view.show_remote_ssh_result.assert_not_called()
+
+
+def test_ssh_result_without_private_key_is_rejected_and_not_pushed(ssh):
+    ssh.ctl.request_ssh_setup()
+
+    ssh.worker.succeeded.emit(_ssh_result(private_key=""))
+
+    assert ssh.pushes == []
+    ssh.view.choose_remote_ssh_host.assert_not_called()
+    ssh.view.show_remote_ssh_error.assert_called_once()
+
+
+def test_ssh_result_after_remote_stopped_is_dropped(ssh):
+    ssh.ctl.request_ssh_setup()
+    ssh.ctl.stop()
+
+    ssh.worker.succeeded.emit(_ssh_result())
+
+    ssh.view.choose_remote_ssh_host.assert_not_called()
+    assert ssh.pushes == []
+    ssh.view.set_remote_ssh_busy.assert_called_with(False)

@@ -21,6 +21,8 @@ set_lora_folder НЕ продублированы здесь — импорти�
 
 from __future__ import annotations
 
+from typing import Any
+
 from PySide6.QtCore import QSettings
 
 _EXTENSION_FOLDER_KEY = "last_folder"
@@ -65,7 +67,7 @@ def get_backup_keep() -> int:
     этой настройки применяется сразу же, без перезапуска Prompt
     Builder."""
 
-    value = _settings().value(_BACKUP_KEEP_KEY, DEFAULT_BACKUP_KEEP, type=int)
+    value: Any = _settings().value(_BACKUP_KEEP_KEY, DEFAULT_BACKUP_KEEP, type=int)
     try:
         value = int(value)
     except (TypeError, ValueError):

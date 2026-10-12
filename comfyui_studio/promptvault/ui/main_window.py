@@ -146,7 +146,7 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout(root)
         main_layout.addWidget(self.toolbar)
 
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # ================= LEFT =================
 
@@ -423,11 +423,11 @@ class MainWindow(QMainWindow):
                 "Remove {} generations from the library?\n"
                 "Files on disk will not be touched."
             ).format(len(generation_ids)),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if answer != QMessageBox.Yes:
+        if answer != QMessageBox.StandardButton.Yes:
             return
 
         deleted = self.gallery.delete_generations(generation_ids, delete_files=False)
@@ -456,11 +456,11 @@ class MainWindow(QMainWindow):
                 "together with their files (JSON and images) from disk?\n"
                 "This action cannot be undone."
             ).format(len(generation_ids)),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if answer != QMessageBox.Yes:
+        if answer != QMessageBox.StandardButton.Yes:
             return
 
         deleted = self.gallery.delete_generations(generation_ids, delete_files=True)
