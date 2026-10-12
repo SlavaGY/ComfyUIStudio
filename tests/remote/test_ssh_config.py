@@ -51,10 +51,22 @@ def isolated(tmp_path, monkeypatch):
     return tmp_path
 
 
+def _from_loopback(asgi_app):
+    """TestClient(client=...) есть не во всех Starlette (fastapi 0.110 его не
+    знает), поэтому подменяем адрес клиента обёрткой над ASGI-приложением."""
+
+    async def wrapper(scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            scope = {**scope, "client": ("127.0.0.1", 50000)}
+        await asgi_app(scope, receive, send)
+
+    return wrapper
+
+
 @pytest.fixture
 def studio():
     """Клиент "с самого ПК" -- 127.0.0.1, как Studio UI."""
-    return TestClient(app, client=("127.0.0.1", 50000))
+    return TestClient(_from_loopback(app))
 
 
 @pytest.fixture
