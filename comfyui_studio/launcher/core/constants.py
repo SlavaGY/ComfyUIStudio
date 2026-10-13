@@ -96,7 +96,7 @@ DEFAULT_CONFIG = {
     # реальный LAN-адрес ("0.0.0.0") появится в UI на этапе 8 ("LAN
     # Release"), когда сценарий "мобильный браузер без приложения"
     # станет частью критерия готовности, а не только внутренним curl.
-    # НОВОЕ (этап RVC-1, см. docs/RVC_APPLY.md и core/rvc_process.py):
+    # НОВОЕ (этап RVC-1, см. docs/history/RVC_APPLY.md и core/rvc_process.py):
     # Ultimate RVC как независимый от ComfyUI сервис. Секция читается через
     # rvc_settings(cfg), которая дополняет недостающие ключи значениями по
     # умолчанию (старый config.json секции не содержит). 7860 -- Imagine,

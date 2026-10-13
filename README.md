@@ -8,13 +8,17 @@
 
 ```
 ComfyUIStudio/
-├── main.py                        ← ЕДИНАЯ точка входа монолита (запускайте её)
-├── pyproject.toml                 ← зависимости (base/[promptvault]/[dev]) + конфигурация
+├── main.py                        ← точка входа монолита (запускайте её); тонкая обёртка
+│                                     над comfyui_studio/app.py (тот же запуск:
+│                                     `python -m comfyui_studio` или команда `comfyui-studio`)
+├── pyproject.toml                 ← зависимости (base/[imagine]/[dev]) + конфигурация
 │                                     pytest/ruff/mypy — единственный источник правды
-│                                     (requirements.txt слит сюда и удалён на этапе 5)
-├── ComfyUIStudio-core.spec,       ← профили сборки PyInstaller (см. "Сборка в один exe")
-│   ComfyUIStudio-full.spec
-├── build_exe.bat                   одна сборка/один venv на весь комплект (core|full)
+│                                     (requirements.txt слит сюда и удалён на этапе 5);
+│                                     версия Python-части берётся из comfyui_studio/__init__.py
+├── ComfyUIStudio.spec             ← единственный профиль сборки PyInstaller
+│                                     (см. "Сборка в один exe")
+├── build_exe.bat                   одна сборка/один venv на весь комплект
+├── .gitattributes, .gitignore      окончания строк (LF; .bat/.ps1 — CRLF при checkout) и игнор-список
 ├── assets/                         icon.ico/icon.png Studio; assets/branding/ — источник
 │                                     всех иконок комплекта (см. "Иконки комплекта")
 ├── comfyui_studio/                 общее пространство имён комплекта
@@ -23,11 +27,15 @@ ComfyUIStudio/
 │   ├── launcher/                   ComfyUI Launcher (core/ui/integration)
 │   ├── prompt_builder/             Character / Prompt Builder Config Editor
 │   └── promptvault/                PromptVault
-└── tools/                          ЛЕГАСИ: только служебные файлы сборки
-    ├── prompt_builder/              отдельных standalone-exe (build_windows.bat/build.spec,
-    └── promptvault/                 build.bat/PromptVault.spec) —   
-                                      исходники самих инструментов здесь больше не лежат,
-                                      см. предупреждение в конце этого README
+├── docs/history/                   ARCHIVE: инструкции уже применённых этапов рефакторинга
+│                                     (R*_APPLY.md, baseline_R0.md) — не выполнять повторно
+└── tools/
+    ├── ssh_setup/                   Setup-SshAccess.ps1 — кнопка «Настроить SSH-доступ» (входит в exe)
+    ├── prompt_builder/              ЛЕГАСИ: служебные файлы сборки отдельных standalone-exe
+    └── promptvault/                 (build_windows.bat/build.spec, build.bat/PromptVault.spec),
+                                      плюс CONTRIBUTING.md и tools/update_translations.py
+                                      (переводы PromptVault) — исходники самих инструментов
+                                      здесь больше не лежат, см. предупреждение в конце этого README
 ```
 
 Лаунчер (`comfyui_studio/launcher/`) — главное окно комплекта: запускает
@@ -667,9 +675,13 @@ Remote целиком, из-за чего страница со стилями �
 Полный прогон (Remote, Imagine, push) — и через `python -m`, и через
 собранный `.exe` — на реальном Android-устройстве в реальной домашней
 сети. Заодно проактивно добавлены `hiddenimports` для `google-auth`
-(push, §6.5) в оба профиля сборки (`core`/`full`) — namespace-пакет с
-условными импортами, тот же паттерн, что раньше уже ловился на
-`fastapi`/`uvicorn`/`httpx`.
+(push, §6.5) в сборку — пакет с условными импортами, тот же паттерн, что
+раньше уже ловился на `fastapi`/`uvicorn`/`httpx`. Сейчас в
+`ComfyUIStudio.spec` это `collect_all("google.auth")`,
+`collect_all("google.oauth2")` и `copy_metadata("google-auth")`; Remote при
+запуске проверяет наличие `google.auth` и `requests`
+(`REMOTE_REQUIRED_MODULES`), чтобы нехватка зависимости push была видна
+сразу, а не в логе FCM.
 
 ### Доступ вне домашней сети (этап 9 дорожной карты) — два независимых механизма
 
@@ -778,30 +790,36 @@ ComfyUI portable — тот только для самого ComfyUI). Зави�
 `requirements.txt` в репозитории больше нет, см. ниже):
 
 ```
-pip install .
+pip install ".[imagine]"
 python main.py
 ```
 
-`pyproject.toml` объединяет все зависимости комплекта в одном списке —
-никаких опциональных groups больше нет (семантический поиск в
-PromptVault, ранее самая тяжёлая опциональная зависимость всего
-комплекта — torch/sentence-transformers, — полностью удалён из
-PromptVault): `pip install .` ставит весь комплект целиком, `pip
-install .[dev]` — плюс pytest/ruff/mypy для разработки (см.
-`tools/promptvault/CONTRIBUTING.md` — конфигурация этих инструментов
-живёт в этом же корневом `pyproject.toml`, слита туда из отдельного
-`tools/promptvault/pyproject.toml` на этапе 5 дорожной карты
-рефакторинга). Прежний корневой `requirements.txt` дублировал этот же
-набор зависимостей отдельным источником правды и был слит в
-`pyproject.toml`/удалён; `build_exe.bat` уже ставил зависимости через
-`pip install .` и не менялся.
+Зависимости объявлены в корневом `pyproject.toml` (единственный источник
+правды, `requirements.txt` нет). Группы:
 
-`main.py` — единая точка входа монолита: поднимает один `QApplication`
-и показывает окно лаунчера; Prompt Builder и PromptVault открываются из
-него же (см. выше). Обычный сценарий — именно `python main.py`; запуск
-окна лаунчера отдельно, в обход `main.py` (см. выше про запасной
-вариант через subprocess), тоже возможен, но не является основным
-способом использования комплекта.
+- базовая (`pip install .`) — Launcher, Prompt Builder, PromptVault (PySide6,
+  psutil, nvidia-ml-py);
+- `[imagine]` — FastAPI/uvicorn и остальное для Imagine, Imagine Pony и
+  **Remote API** (отдельной группы `remote` нет:
+  у них один набор зависимостей, включая `google-auth[requests]` для push).
+  Именно её ставит `build_exe.bat`, поэтому для полного комплекта нужна она;
+- `[dev]` — pytest, pytest-cov, pytest-qt, ruff, mypy, websockets. Для
+  разработки: `pip install -e ".[dev,imagine]"` (так ставит и CI). Правила
+  работы с тестами и линтингом — `tools/promptvault/CONTRIBUTING.md`.
+
+Семантический поиск PromptVault (torch/sentence-transformers) полностью
+удалён, опциональных «тяжёлых» групп не осталось.
+
+Версия Python-части живёт в одном месте — `comfyui_studio/__version__`
+(`pyproject.toml` читает её динамически, PromptVault использует ту же).
+
+Запуск: `main.py` в корне — точка входа монолита, тонкая обёртка над
+`comfyui_studio/app.py`; поднимает один `QApplication` и показывает окно
+лаунчера, Prompt Builder и PromptVault открываются из него же (см. выше).
+Равнозначные способы: `python -m comfyui_studio` и, после
+`pip install .`, команда `comfyui-studio`. Запуск окна лаунчера отдельно, в
+обход `main.py` (см. выше про запасной вариант через subprocess), тоже
+возможен, но не является основным способом использования комплекта.
 
 `PySide6` уже включает Qt WebEngine и QtCharts (нужен для графиков в
 PromptVault). `nvidia-ml-py` даёт метрики GPU только на системах с
@@ -812,26 +830,44 @@ NVIDIA-картой и установленными драйверами — н�
 ## Сборка в один exe
 
 `build_exe.bat` в корне репозитория собирает **весь монолит одним
-exe**: свой отдельный venv для сборки, one-folder (не `--onefile` —
-PySide6 + QtWebEngine + (в full-профиле) torch + sentence-transformers
-в сумме дают сотни МБ, распаковывать это заново при каждом запуске не
-нужно), упаковка результата в `.zip` в конце.
-
-Есть ДВА профиля сборки (каждый — свой `.spec`-файл,
-`ComfyUIStudio-core.spec` / `ComfyUIStudio-full.spec`):
+exe**: свой отдельный venv (`.venv-build`), one-folder (не `--onefile` —
+PySide6 + QtWebEngine дают сотни МБ, распаковывать это заново при каждом
+запуске не нужно), упаковка результата в `.zip` в конце. Профиль сборки
+один — `ComfyUIStudio.spec` (раньше были `-core`/`-full`; после удаления
+семантического поиска, а с ним torch/sentence-transformers, делить
+нечего), аргументов у скрипта нет:
 
 ```
-build_exe.bat core   :: без семантического поиска — без torch/sentence-transformers, заметно легче и быстрее собирается
-build_exe.bat full   :: полный комплект, как было раньше (аргумент можно не указывать — full по умолчанию)
+build_exe.bat
 ```
 
-Результат — `dist\ComfyUIStudio\ComfyUIStudio.exe` и вся папка рядом
-(плюс `dist\ComfyUIStudio-win64-core.zip` или `-full.zip` для
-распространения — распаковывать нужно ВСЮ папку, не только `.exe`).
-Запуск открывает окно лаунчера; кнопки «Запустить» на странице «Другие
-инструменты» открывают Prompt Builder и PromptVault окнами этого же
-процесса — отдельных exe для них внутри сборки нет и распространять их
-отдельно не нужно.
+Что делает скрипт: создаёт `.venv-build`, ставит зависимости командой
+`pip install .[imagine]` (группа `[imagine]` нужна, потому что Imagine,
+Imagine Pony и Remote API входят в тот же exe), доустанавливает PyInstaller и запускает
+`pyinstaller --noconfirm --clean ComfyUIStudio.spec`.
+
+Результат:
+
+- `dist\ComfyUIStudio\ComfyUIStudio.exe` и вся папка рядом — запуск на
+  месте для проверки;
+- `dist\ComfyUIStudio-win64.zip` — для распространения; распаковывать
+  нужно ВСЮ папку, не только `.exe`.
+
+В `ComfyUIStudio.spec` кроме самого кода собираются данные, которые
+PyInstaller сам не подхватит: темы и иконки, статика и шаблоны Imagine /
+Imagine Pony, `rvc_app_src` (исходники приложения Ultimate RVC — его
+запускает питон из venv RVC, а не этот exe), скрипт
+`tools/ssh_setup` для кнопки «Настроить SSH-доступ» и пакеты с ленивыми
+импортами (`collect_all` для fastapi/uvicorn/httpx/zeroconf/…, а также
+для `google.auth`/`google.oauth2` с `copy_metadata("google-auth")`).
+Соответствие файлов в пакете, `datas` спека и `package-data` в
+`pyproject.toml` проверяет тест `tests/test_build_assets.py` — он падает,
+если новый не-`.py` файл забыли упаковать.
+
+Запуск собранного exe открывает окно лаунчера; кнопки «Запустить» на
+странице «Другие инструменты» открывают Prompt Builder и PromptVault окнами
+этого же процесса — отдельных exe для них внутри сборки нет и
+распространять их отдельно не нужно.
 
 **Про отдельные standalone-сборки каждого инструмента**
 (`tools/prompt_builder/build_windows.bat`/`build.spec` и
@@ -847,7 +883,7 @@ build_exe.bat full   :: полный комплект, как было рань�
 два уровня вверх до корня репозитория), ставят зависимости из
 корневого `pyproject.toml` вместо собственных `requirements.txt`, а
 `datas`/`--add-data` зеркалят ту же раскладку, что уже использует
-`ComfyUIStudio-core.spec`/`-full.spec` для монолита. Пересборка руками
+`ComfyUIStudio.spec` для монолита. Пересборка руками
 на реальной Windows-машине пока не проводилась (нет Windows/Qt-окружения
 в песочнице, где вносились правки) — рекомендуется проверить перед тем,
 как полагаться на эти скрипты в продакшене.
@@ -901,8 +937,9 @@ build_exe.bat full   :: полный комплект, как было рань�
   (`tools/prompt_builder/build_windows.bat`, `tools/promptvault/build.bat`)
   обновлены под раскладку `comfyui_studio/`, но не проверены пересборкой
   на реальной Windows-машине — см. предупреждение в разделе "Сборка в
-  один exe" выше. Профили `ComfyUIStudio-core.spec`/`-full.spec` для
-  монолитной сборки актуальны и обновляются вместе с остальным кодом.
+  один exe" выше. Профиль `ComfyUIStudio.spec` для монолитной сборки
+  актуален и обновляется вместе с остальным кодом (его соответствие пакету
+  проверяет `tests/test_build_assets.py`).
 - Remote API (см. «Удалённый доступ» выше) — реализованы этапы 1–9
   дорожной карты (`ComfyUIStudio_Remote_Roadmap.md`) и подтверждены
   живым тестированием на реальной машине и реальном Android-устройстве,
@@ -919,3 +956,7 @@ build_exe.bat full   :: полный комплект, как было рань�
   до конца — работает по Wi-Fi и вне домашней сети через оба варианта
   (WireGuard и SSH).
 
+## Лицензия
+
+Apache License 2.0 — полный текст в файле `LICENSE`. Сторонние библиотеки
+(PySide6 и др.) распространяются под собственными лицензиями.

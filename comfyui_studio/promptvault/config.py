@@ -7,7 +7,11 @@
 import sys
 from pathlib import Path
 
-APP_VERSION = "0.11.1"
+from comfyui_studio import __version__ as _STUDIO_VERSION
+
+# Отдельной версии у PromptVault больше нет (раньше здесь было "0.11.1" при
+# 0.1.0 у остального комплекта): единый источник -- comfyui_studio.__version__.
+APP_VERSION = _STUDIO_VERSION
 
 # базовая директория пакета app/ — и в обычном запуске (python -m
 # app.main), и внутри сборки PyInstaller (build.bat, задача: батник

@@ -1,10 +1,30 @@
+# Сборка (build_exe.bat / PyInstaller / pip)
 build/
-comfyui_studio.egg-info/
 dist/
-.venv-build/
-.venv-build-full/
-.venv-build-core/
+comfyui_studio.egg-info/
+
+# Виртуальные окружения (.venv, .venv-build, .venv-build-full и т.п.)
+.venv*/
+venv/
+
+# Патчи этапов аудита, которые отдаёт ассистент (применяются и не хранятся)
 stage*.patch
+
+# Логи и дампы
+*.log
+*.dmp
+
+# Покрытие тестов
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Локальные файлы Windows и бэкапы реестра (попадали в историю случайно)
+backup.reg
+*.reg
+desktop.ini
+Thumbs.db
 
 __pycache__/
 *.py[cod]
@@ -16,8 +36,6 @@ __pycache__/
 # Firebase / Google Cloud credentials
 *-firebase-adminsdk-*.json
 *.env
-backup.reg
-desktop.ini
 # SSH-доступ вне дома: приватные ключи и их копии (стор Remote живёт в
 # %APPDATA%\ComfyUIStudio, вне репозитория; это страховка от случайных копий)
 remote_ssh_config.json*

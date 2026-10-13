@@ -1,11 +1,9 @@
-# Версия всего комплекта ComfyUI Studio (Launcher + Prompt Builder +
-# PromptVault) -- держится в одном месте, а не по одной в каждом
-# инструменте (у PromptVault, впрочем, остаётся собственная APP_VERSION
-# в comfyui_studio/promptvault/config.py -- это версия самого
-# PromptVault как отдельно когда-то распространявшегося инструмента,
-# менять её смысл в объём этого этапа не входит).
-#
-# Используется в ui/settings/general_page.py (раздел "Updates") и
-# должна совпадать с version в корневом pyproject.toml -- пока нет
-# автоматической синхронизации между ними (см. этап 5 дорожной карты).
+# Версия Python-части ComfyUI Studio (Launcher + Prompt Builder +
+# PromptVault + Remote) -- ЕДИНСТВЕННЫЙ источник. Остальные места читают
+# её отсюда: pyproject.toml (dynamic version, attr -- setuptools разбирает
+# эту строку статически, не импортируя пакет, поэтому ниже должен остаться
+# простой строковый литерал), окно настроек (ui/settings/general_page.py),
+# Remote API и promptvault/config.py (APP_VERSION). Правится только здесь;
+# страж -- tests/test_version_single_source.py. Android версионируется
+# отдельно.
 __version__ = "0.1.0"

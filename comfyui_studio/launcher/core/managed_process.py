@@ -15,7 +15,7 @@ ProcessLogBridge/_LogReaderThread) и только наследуется отс
 
 Публичный интерфейс потомков не менялся: конструкторы, start(),
 is_running(), exit_code(), stop(), атрибуты proc/host/port/...
-(см. docs/baseline_R0.md §3 и tests/launcher/test_main_window_flow.py).
+(см. docs/history/baseline_R0.md §3 и tests/launcher/test_main_window_flow.py).
 """
 
 from __future__ import annotations
@@ -44,7 +44,17 @@ def find_missing_modules(names):
     remote_process.py, чтобы не запускать процесс, который заведомо
     упадёт на ImportError с голым «кодом выхода 1».
     """
-    return [m for m in names if importlib.util.find_spec(m) is None]
+    return [m for m in names if not _module_exists(m)]
+
+
+def _module_exists(name):
+    """find_spec() для точечного имени (`google.auth`) сначала импортирует
+    родителя и бросает ModuleNotFoundError, если родителя нет вовсе, --
+    для проверки «есть ли модуль» это значит «нет», а не падение."""
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
 
 
 def _taskkill_tree(pid, label):

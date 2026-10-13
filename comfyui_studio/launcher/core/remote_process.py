@@ -38,7 +38,22 @@ REMOTE_MODULE_NAME = "comfyui_studio.remote"
 # (см. pyproject.toml, комментарий у группы `imagine`): Remote --
 # FastAPI/uvicorn-процесс ровно так же, как Imagine, и появился позже
 # него, когда эти зависимости уже были в проекте.
-REMOTE_REQUIRED_MODULES = ("fastapi", "uvicorn", "pydantic", "multipart", "httpx", "zeroconf")
+# google.auth и requests -- push-уведомления (remote/fcm.py, extras
+# `google-auth[requests]` группы imagine): без них прежде Remote стартовал, а
+# push молча не работал (живой баг 2026-09-08 -- «requests library is not
+# installed» маскировался под «google-auth не установлен»). Теперь отсутствие
+# любого из них видно сразу при запуске, в том числе в собранном exe, если
+# PyInstaller что-то не положил (см. google-auth в ComfyUIStudio.spec).
+REMOTE_REQUIRED_MODULES = (
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "multipart",
+    "httpx",
+    "zeroconf",
+    "google.auth",
+    "requests",
+)
 
 
 def _missing_remote_dependencies():

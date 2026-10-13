@@ -1,0 +1,32 @@
+# Локальные проверки перед коммитом (те же, что гоняет CI, см.
+# .github/workflows/ci.yml). Установка: `pip install -e ".[dev,imagine]"`,
+# затем один раз `pre-commit install`.
+#
+# ruff и mypy -- `repo: local`: берутся из dev-окружения проекта, а не из
+# отдельного окружения pre-commit, поэтому их версии совпадают с CI, а mypy
+# видит PySide6 и остальные зависимости.
+#
+# ruff format намеренно не подключён (см. [tool.ruff.format] в pyproject.toml).
+# trailing-whitespace / end-of-file-fixer тоже не включены: они переписали бы
+# десятки существующих файлов.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff
+        entry: python -m ruff check
+        language: system
+        types: [python]
+      - id: mypy
+        name: mypy (comfyui_studio)
+        entry: python -m mypy comfyui_studio
+        language: system
+        pass_filenames: false
+        types: [python]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=2000]

@@ -10,7 +10,7 @@ test_background_polling.py.
 WebSocket-канал и его сосуществование с feed_log_line; здесь -- HTTP-
 ветка _poll (очередь, \"готово за сессию\", смена задания, сброс при
 остановке ComfyUI) и набор ключей словаря stats_updated (контракт для
-R6, см. docs/baseline_R0.md).
+R6, см. docs/history/baseline_R0.md).
 
 Железо и сеть подменены:
   * psutil / pynvml -- фейками, чтобы тест не зависел от машины и не

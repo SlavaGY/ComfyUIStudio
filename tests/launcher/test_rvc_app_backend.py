@@ -1,6 +1,6 @@
 """Чистые модули приложения RVC: params, jobs, engine (с подменённым загрузчиком).
 FastAPI-слой (main.py) здесь не запускается -- fastapi может не быть в окружении
-тестов; его проверяют на машине с venv Ultimate RVC (см. docs/RVC_APPLY.md)."""
+тестов; его проверяют на машине с venv Ultimate RVC (см. docs/history/RVC_APPLY.md)."""
 
 import enum
 import threading

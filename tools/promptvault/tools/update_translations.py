@@ -3,8 +3,9 @@ self.tr()) — тонкая обёртка над pyside6-lupdate/pyside6-lrelea
 которые ставятся вместе с самим PySide6 через pip (Windows включая
 Scripts/pyside6-lupdate.exe) — отдельно ставить не нужно.
 
-Использование:
+Использование (из папки tools/promptvault/, иначе пакет `tools` не найдётся):
 
+    cd tools/promptvault
     python -m tools.update_translations update    # .py -> .ts (после
                                                     # добавления/правки
                                                     # self.tr(...) в
@@ -15,8 +16,8 @@ Scripts/pyside6-lupdate.exe) — отдельно ставить не нужно
     python -m tools.update_translations check      # update без записи
                                                     # + падает, если
                                                     # найдены строки без
-                                                    # перевода — см.
-                                                    # .github/workflows/ci.yml
+                                                    # перевода (в CI этот
+                                                    # шаг сейчас не запускается)
 
 Рабочий процесс при добавлении новой self.tr("...") строки в код:
   1. python -m tools.update_translations update — добавит новую
@@ -97,7 +98,7 @@ def compile_qm() -> None:
 
 
 def check() -> None:
-    """Для CI (см. .github/workflows/ci.yml) — проверяет, что
+    """Ручная проверка (в CI не запускается) — проверяет, что
     закоммиченный .ts уже содержит перевод для каждой self.tr(...)
     строки в comfyui_studio/promptvault/ui/, не изменяя сам файл. Падает с ненулевым кодом,
     если lupdate находит новые (ещё не в .ts) строки — сигнал, что

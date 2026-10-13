@@ -1,2 +1,17 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Единые окончания строк: в репозитории всегда LF, при checkout на Windows
+# .bat/.cmd/.ps1 получают CRLF (cmd.exe с LF в .bat ломает метки и goto).
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Shell-скрипты (в т.ч. android/gradlew без расширения) всегда LF.
+*.sh text eol=lf
+android/gradlew text eol=lf
+
+# Бинарные файлы: не трогать, не показывать построчный diff.
+*.qm binary
+*.ico binary
+*.png binary
+*.jar binary

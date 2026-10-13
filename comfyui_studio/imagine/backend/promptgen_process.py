@@ -5,7 +5,7 @@ promptgen_process.py
 запущенных процессов для уборки «осиротевших» после аварии Imagine.
 
 Вынесено из promptgen.py на этапе R10 плана рефакторинга без изменения
-кода функций, кроме сужения ``except`` (см. docs/R10_APPLY.md).
+кода функций, кроме сужения ``except`` (см. docs/history/R10_APPLY.md).
 """
 
 from __future__ import annotations

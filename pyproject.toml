@@ -4,9 +4,28 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "comfyui-studio"
-version = "0.1.0"
+# Версия Python-части — в ОДНОМ месте: comfyui_studio/__init__.py (__version__);
+# её же читают окно настроек, Remote API и PromptVault (config.APP_VERSION).
+# Здесь она не дублируется: см. [tool.setuptools.dynamic] ниже и
+# tests/test_version_single_source.py. Android-приложение версионируется отдельно
+# (android/app/build.gradle.kts).
+dynamic = ["version"]
 description = "ComfyUI Studio — лаунчер ComfyUI + Prompt Builder + PromptVault в одном приложении"
+readme = "README.md"
 requires-python = ">=3.11"
+# Лицензия -- Apache-2.0, полный текст в LICENSE (пункт 5.4 роадмапа аудита).
+# Табличная форма выбрана сознательно: SPDX-строка `license = "Apache-2.0"`
+# требует setuptools>=77 и запрещает license-классификаторы, а проект
+# собирается и со старым setuptools (build-system requires >=68).
+license = { text = "Apache-2.0" }
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Private :: Do Not Upload",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Multimedia :: Graphics",
+]
 dependencies = [
     "PySide6==6.11.1",
     "psutil>=5.9",
@@ -100,6 +119,7 @@ imagine = [
 # progress_forwarder.py), а не только тестам.
 dev = [
     "pytest>=8.0",
+    "pre-commit>=3.7",
     "pytest-cov>=5.0",
     "pytest-qt>=4.4",
     "ruff>=0.6",
@@ -110,6 +130,19 @@ dev = [
 # Установка:
 #   pip install .              — Launcher + Prompt Builder + PromptVault
 #   pip install .[dev]         — плюс инструменты разработки (тесты/линт/типы)
+
+[project.urls]
+Repository = "https://github.com/SlavaGY/ComfyUIStudio"
+
+# Запуск после `pip install .`: команда `comfyui-studio` (без консольного окна
+# на Windows). Из исходников по-прежнему работает `python main.py` и
+# `python -m comfyui_studio` -- все три пути ведут в comfyui_studio.app.run.
+# Собранный exe использует корневой main.py (см. ComfyUIStudio.spec).
+[project.gui-scripts]
+comfyui-studio = "comfyui_studio.app:run"
+
+[tool.setuptools.dynamic]
+version = { attr = "comfyui_studio.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["comfyui_studio*"]

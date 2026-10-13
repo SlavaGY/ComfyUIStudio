@@ -91,6 +91,21 @@ def test_find_missing_modules():
     assert find_missing_modules(["os", "no_such_module_r3_xyz"]) == ["no_such_module_r3_xyz"]
 
 
+def test_find_missing_modules_dotted_name_with_missing_parent():
+    """`google.auth` при отсутствии родителя `google` не должен ронять проверку
+    ModuleNotFoundError'ом из find_spec -- это просто «модуля нет»."""
+    assert find_missing_modules(["json.decoder"]) == []
+    assert find_missing_modules(["no_such_pkg_r5_xyz.sub"]) == ["no_such_pkg_r5_xyz.sub"]
+    assert find_missing_modules(["json.no_such_submodule_r5"]) == ["json.no_such_submodule_r5"]
+
+
+def test_remote_requires_push_dependencies():
+    """Без google.auth/requests push (remote/fcm.py) молча не работает --
+    это должно быть видно при запуске Remote, а не в логе FCM."""
+    assert "google.auth" in remote_process.REMOTE_REQUIRED_MODULES
+    assert "requests" in remote_process.REMOTE_REQUIRED_MODULES
+
+
 def test_missing_dependency_wrappers_use_shared_helper(monkeypatch):
     seen = []
     monkeypatch.setattr(

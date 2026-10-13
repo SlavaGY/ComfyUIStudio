@@ -18,7 +18,7 @@
 # _MEIPASS/comfyui_studio/promptvault/... — см. комментарии в этих
 # файлах; datas ниже зеркалят именно эту раскладку.
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 datas = [
     ('assets', 'assets'),
@@ -103,35 +103,29 @@ for _pkg in ("fastapi", "starlette", "uvicorn", "multipart", "websockets", "http
 # `google-auth[requests]` (fcm.py, §Этап 6.5, push-уведомления) сам по
 # себе уже один раз давал живой баг именно на уровне зависимостей (см.
 # pyproject.toml -- забыли extras "[requests]"), и есть все основания
-# ожидать второго раунда той же болезни уже на уровне PyInstaller:
-# "google.auth"/"google.oauth2" -- PEP 420 namespace-пакеты, а сами
-# модули (`transport.requests`, `crypt.rsa` и т.п.) импортируются
-# ВНУТРИ google-auth условно/лениво в зависимости от доступных
-# бэкендов -- то есть ровно тот же паттерн "обычный AST-анализ
-# PyInstaller не найдёт сам", что и у fastapi/uvicorn/httpx выше.
-# `collect_all("google.auth")` для namespace-пакета ненадёжен (в
-# отличие от обычных пакетов в цикле выше) -- поэтому явные
-# hiddenimports вместо него; "cryptography" -- обычный (не namespace)
-# пакет со своими бинарными расширениями (hazmat backend), под него
-# collect_all уместен и безопасен, как и для остальных пакетов цикла
-# выше.
+# ожидать второго раунда той же болезни на уровне PyInstaller: бэкенды
+# (`transport.requests`, `crypt.rsa` и т.п.) google-auth импортирует
+# условно/лениво, обычный AST-анализ их не находит.
+#
+# `google` -- PEP 420 namespace-пакет, поэтому collect_all("google") не
+# годится, но `google.auth` и `google.oauth2` -- обычные пакеты со своим
+# __init__.py, и collect_all для каждого из них собирает все субмодули и
+# data-файлы. Транзитивные зависимости (rsa, pyasn1, cachetools, requests)
+# PyInstaller находит сам по импортам этих субмодулей, поэтому явные
+# hiddenimports для них (cachetools/pyasn1/rsa/six) убраны: `six` google-auth
+# давно не использует, остальные -- дубль автоматического анализа.
+# copy_metadata("google-auth") -- dist-info нужен, если библиотека (или её
+# зависимость) читает версию через importlib.metadata.
+for _pkg in ("google.auth", "google.oauth2"):
+    _datas, _binaries, _hiddenimports = collect_all(_pkg)
+    datas += _datas
+    binaries += _binaries
+    hiddenimports += _hiddenimports
+datas += copy_metadata("google-auth")
 hiddenimports += [
-    "google.auth",
-    "google.auth.transport.requests",
-    "google.auth._helpers",
-    "google.auth.jwt",
-    "google.auth.crypt",
-    "google.auth.crypt.rsa",
-    "google.auth.crypt._cryptography_rsa",
-    "google.oauth2",
-    "google.oauth2.service_account",
-    "google.oauth2._client",
-    "google.oauth2.credentials",
-    "cachetools",
-    "pyasn1",
+    # Оставлено явно: прямая зависимость google-auth; убирать её без
+    # проверки сборки на Windows нет смысла.
     "pyasn1_modules",
-    "rsa",
-    "six",
 ]
 for _pkg in ("cryptography",):
     _datas, _binaries, _hiddenimports = collect_all(_pkg)

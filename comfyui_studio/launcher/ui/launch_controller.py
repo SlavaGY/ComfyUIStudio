@@ -4,7 +4,7 @@
 Вынесено из MainWindow (launcher_window.py): создание и остановка
 процессов ComfyUI/Imagine, два watcher'а готовности, откат при сбоях,
 отмена запуска. Поведение сохранено один в один (контракт зафиксирован в
-docs/baseline_R0.md §3 и перенесённых тестах tests/launcher/
+docs/history/baseline_R0.md §3 и перенесённых тестах tests/launcher/
 test_launch_controller.py), включая прежние «странности»:
 
   * ошибка ComfyUI (on_server_failed) гасит только ComfyUI и не обнуляет

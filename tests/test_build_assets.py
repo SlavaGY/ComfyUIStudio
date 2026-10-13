@@ -187,3 +187,40 @@ def test_rvc_payload_modules_import_only_bundled_modules():
                 if (PKG / f"{top}.py").exists() and top not in shipped:
                     missing.append(f"{stem}.py -> {top}.py")
     assert not missing, f"не попадут в rvc_app_src: {missing}"
+
+
+def test_spec_has_no_phantom_hiddenimports():
+    """cachetools/pyasn1/rsa/six -- транзитивные зависимости google-auth:
+    PyInstaller находит их сам (а ``six`` google-auth давно не использует),
+    явные строки были мусором, который прикрывал реальную проблему."""
+    phantom = {"cachetools", "pyasn1", "rsa", "six"}
+    assert not phantom & set(_spec_hiddenimports())
+
+
+def test_spec_collects_google_auth_with_metadata():
+    """google-auth (push, remote/fcm.py) собирается целиком: collect_all для
+    обычных пакетов google.auth/google.oauth2 (сам ``google`` -- namespace,
+    для него collect_all не годится) + dist-info через copy_metadata."""
+    tree = _spec_tree()
+    collected: set[str] = set()
+    metadata: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.For) and isinstance(node.iter, ast.Tuple):
+            uses_collect_all = any(
+                isinstance(n, ast.Call) and getattr(n.func, "id", "") == "collect_all"
+                for n in ast.walk(node)
+            )
+            if uses_collect_all:
+                collected |= {
+                    e.value for e in node.iter.elts if isinstance(e, ast.Constant)
+                }
+        if (
+            isinstance(node, ast.Call)
+            and getattr(node.func, "id", "") == "copy_metadata"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+        ):
+            metadata.add(node.args[0].value)
+    assert {"google.auth", "google.oauth2"} <= collected, collected
+    assert "google-auth" in metadata, metadata
+    assert "google" not in collected, "collect_all('google') для namespace-пакета ненадёжен"

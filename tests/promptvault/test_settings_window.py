@@ -312,7 +312,7 @@ class TestMainWindowRestartAndQuit:
         что закрытие окна доходит до этой точки с правильными
         аргументами. Регрессия: раньше здесь переиспользовался
         "сырой" sys.argv, что ломало перезапуск при запуске через
-        `python -m comfyui_studio.promptvault.main` (см. TODO.md) — теперь
+        `python -m comfyui_studio.promptvault.main` (см. git-историю удалённого TODO.md) — теперь
         всегда явно `-m comfyui_studio.promptvault.main`."""
 
         import os
