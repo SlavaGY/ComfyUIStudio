@@ -20,6 +20,7 @@ import threading
 from pathlib import Path
 
 from comfyui_studio import app_paths
+from comfyui_studio.jsonfile import atomic_write_json
 
 DATA_ENV = "IMAGINE_PONY_DATA_DIR"
 
@@ -74,9 +75,7 @@ def load_config() -> dict:
     with _lock:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         if not CONFIG_PATH.exists():
-            CONFIG_PATH.write_text(
-                json.dumps(DEFAULT_CONFIG, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
+            atomic_write_json(CONFIG_PATH, DEFAULT_CONFIG)
         try:
             raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
@@ -105,7 +104,4 @@ def load_state() -> dict:
 
 def save_state(state: dict) -> None:
     with _lock:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = STATE_PATH.with_suffix(".tmp")
-        tmp.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
-        tmp.replace(STATE_PATH)
+        atomic_write_json(STATE_PATH, state, indent=1)

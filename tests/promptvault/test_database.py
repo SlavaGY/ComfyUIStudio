@@ -477,23 +477,22 @@ class TestForeignKeyRepair:
         conn2.close()
 
 
-class TestEmbeddingColumnMigration:
-    """Тесты для задачи 3.1 — добавления колонки embedding к БД,
-    оставшейся от версии приложения до этой задачи."""
+class TestEmbeddingColumnRemoval:
+    """Семантический поиск удалён, колонку embedding никто не читает:
+    новые БД создаются без неё, у старых она убирается при открытии."""
 
-    def test_new_database_has_embedding_column(self, db_path):
+    def test_new_database_has_no_embedding_column(self, db_path):
 
         conn = connect(db_path)
 
         columns = {row[1] for row in conn.execute("PRAGMA table_info(generations)")}
-        assert "embedding" in columns
+        assert "embedding" not in columns
 
         conn.close()
 
-    def test_old_database_without_embedding_gets_column_added(self, db_path):
+    def test_old_database_with_embedding_loses_column_but_keeps_data(self, db_path):
 
-        # эмулируем БД версии до задачи 3.1: полная актуальная схема
-        # (identity уже на timestamp+generation_time), но без embedding
+        # БД версии с семантическим поиском: актуальная схема + embedding
         conn = sqlite3.connect(str(db_path))
         conn.executescript("""
             CREATE TABLE generations (
@@ -503,13 +502,14 @@ class TestEmbeddingColumnMigration:
                 timestamp TEXT, generation_time REAL,
                 positive TEXT, negative TEXT, extra_data TEXT,
                 mtime REAL NOT NULL,
+                embedding BLOB,
                 UNIQUE(timestamp, generation_time)
             );
         """)
         conn.execute(
             """INSERT INTO generations
-                (folder, path, timestamp, generation_time, mtime)
-               VALUES ('f', 'p.json', 'ts1', 1.0, 100.0)"""
+                (folder, path, timestamp, generation_time, mtime, embedding)
+               VALUES ('f', 'p.json', 'ts1', 1.0, 100.0, x'0102030405')"""
         )
         conn.commit()
         conn.close()
@@ -517,26 +517,37 @@ class TestEmbeddingColumnMigration:
         conn = connect(db_path)
 
         columns = {row[1] for row in conn.execute("PRAGMA table_info(generations)")}
-        assert "embedding" in columns
+        assert "embedding" not in columns
 
-        # существующая строка должна пережить миграцию без потерь,
-        # embedding для неё — NULL (ещё не посчитан)
+        # существующая строка пережила удаление колонки без потерь
         row = conn.execute(
-            "SELECT path, embedding FROM generations WHERE timestamp = 'ts1'"
+            "SELECT path, mtime FROM generations WHERE timestamp = 'ts1'"
         ).fetchone()
-        assert row[0] == "p.json"
-        assert row[1] is None
+        assert row == ("p.json", 100.0)
 
         conn.close()
 
-    def test_reopening_already_migrated_db_is_a_noop(self, db_path):
-        """Повторное открытие уже смигрированной БД не должно падать
-        (ALTER TABLE ADD COLUMN на уже существующую колонку упал бы)."""
+    def test_reopening_cleaned_db_is_a_noop(self, db_path):
+        """Повторное открытие не пытается удалять уже удалённую колонку."""
 
         connect(db_path).close()
         conn = connect(db_path)  # второе открытие — не должно бросить исключение
 
         columns = {row[1] for row in conn.execute("PRAGMA table_info(generations)")}
-        assert "embedding" in columns
+        assert "embedding" not in columns
 
         conn.close()
+
+    def test_drop_failure_is_only_a_warning(self):
+        """Старая SQLite без DROP COLUMN не должна ронять открытие БД."""
+
+        class OldSqlite:
+            def execute(self, sql):
+                raise sqlite3.OperationalError('near "DROP": syntax error')
+
+            def commit(self):
+                raise AssertionError("commit не должен вызываться после ошибки")
+
+        from comfyui_studio.promptvault.core import database
+
+        database._drop_embedding_column(OldSqlite())  # не бросает

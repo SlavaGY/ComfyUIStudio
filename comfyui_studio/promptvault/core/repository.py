@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from comfyui_studio.jsonfile import atomic_write_json
 from comfyui_studio.promptvault.config import (
     MAX_RATING,
     MIN_RATING,
@@ -667,25 +668,15 @@ class GenerationRepository:
             )
             return False
 
-        # запись через временный файл + атомарное переименование —
+        # запись через временный файл + атомарное переименование (jsonfile) —
         # если процесс упадёт или будет прерван посередине записи,
         # исходный JSON останется целым файлом (либо старым, либо уже
-        # полностью новым), а не окажется наполовину перезаписанным
-        tmp_path = path.with_suffix(path.suffix + ".tmp")
-
+        # полностью новым), а не окажется наполовину перезаписанным;
+        # временный файл при ошибке jsonfile убирает сам
         try:
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(raw, f, ensure_ascii=False, indent=2)
-
-            os.replace(tmp_path, path)
+            atomic_write_json(path, raw)
         except OSError as e:
             logger.error("Не удалось сохранить %s: %s", path, e)
-
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-
             return False
 
         # перечитываем то, что реально оказалось на диске (а не просто

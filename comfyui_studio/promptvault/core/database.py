@@ -22,7 +22,6 @@ CREATE TABLE IF NOT EXISTS generations (
     negative TEXT,
     extra_data TEXT,
     mtime REAL NOT NULL,
-    embedding BLOB,
     UNIQUE(timestamp, generation_time)
 );
 
@@ -113,10 +112,9 @@ CREATE TABLE IF NOT EXISTS metadata_history (
 CREATE INDEX IF NOT EXISTS idx_metadata_history_generation ON metadata_history(generation_id);
 """
 
-# embedding — кэш семантического (векторного) представления промпта
-# (см. app/core/embedding.py), NULL для генераций, для которых он ещё
-# не посчитан (либо библиотека эмбеддингов не установлена) — такие
-# генерации просто не участвуют в семантическом поиске, это не ошибка.
+# (Колонка embedding -- кэш векторов семантического поиска -- убрана вместе
+# с самим поиском: её никто не читал и не писал. У старых БД она удаляется
+# при открытии, см. _drop_embedding_column.)
 #
 # ВАЖНО: генерация идентифицируется парой (timestamp, generation_time),
 # а не path. Путь к файлу может меняться (пользователь переносит/переименовывает
@@ -185,9 +183,9 @@ def connect(db_path: str | Path | None = None) -> sqlite3.Connection:
         _repair_dangling_foreign_keys(conn)
         logger.info("Восстановление внешних ключей завершено")
 
-    if _needs_embedding_column(conn):
-        logger.info("Добавление колонки embedding в generations (миграция для 3.1)")
-        _migrate_add_embedding_column(conn)
+    if _has_embedding_column(conn):
+        logger.info("Удаление неиспользуемой колонки embedding из generations")
+        _drop_embedding_column(conn)
 
     conn.execute("PRAGMA foreign_keys = ON")
 
@@ -360,14 +358,12 @@ def _migrate_path_identity_to_timestamp_identity(conn: sqlite3.Connection) -> No
     conn.commit()
 
 
-def _needs_embedding_column(conn: sqlite3.Connection) -> bool:
-    """True, если таблица generations уже существует (БД от версии
-    приложения до задачи 3.1), но в ней ещё нет колонки embedding.
+def _has_embedding_column(conn: sqlite3.Connection) -> bool:
+    """True, если в уже существующей таблице generations осталась колонка
+    embedding (БД от версий приложения с семантическим поиском).
 
-    Для полностью новой БД таблицы ещё нет — она будет создана уже с
-    колонкой embedding самим SCHEMA/CREATE_GENERATIONS, отдельная
-    миграция ей не нужна.
-    """
+    Для полностью новой БД таблицы ещё нет, а создаётся она уже без этой
+    колонки -- тогда False."""
 
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='generations'"
@@ -378,20 +374,26 @@ def _needs_embedding_column(conn: sqlite3.Connection) -> bool:
 
     columns = {info[1] for info in conn.execute("PRAGMA table_info(generations)")}
 
-    return "embedding" not in columns
+    return "embedding" in columns
 
 
-def _migrate_add_embedding_column(conn: sqlite3.Connection) -> None:
-    """Добавляет колонку embedding к уже существующей таблице
-    generations, оставшейся от версии приложения до задачи 3.1.
+def _drop_embedding_column(conn: sqlite3.Connection) -> None:
+    """Удаляет колонку embedding: семантический поиск удалён, код её не
+    читает и не пишет, а BLOB-векторы только раздували файл БД.
 
-    Простой ALTER TABLE ... ADD COLUMN — SQLite добавляет новую колонку
-    со значением NULL для всех существующих строк без переписывания
-    таблицы, данные (включая избранное/рейтинг в других таблицах) не
-    затрагиваются. Сами эмбеддинги досчитываются лениво: при следующем
-    sync_folder/update_generation для каждой генерации, у которой их
-    ещё нет.
+    ALTER TABLE ... DROP COLUMN есть в SQLite с 3.35 (в Python 3.11 для
+    Windows -- 3.45). Остальные данные (избранное, рейтинг, история) не
+    затрагиваются. Если по какой-то причине удалить не вышло (старая
+    библиотека SQLite), это не ошибка: колонка просто остаётся лишней, а
+    приложение работает как прежде -- поэтому исключение глушится
+    предупреждением, а не пробрасывается.
     """
 
-    conn.execute("ALTER TABLE generations ADD COLUMN embedding BLOB")
-    conn.commit()
+    try:
+        conn.execute("ALTER TABLE generations DROP COLUMN embedding")
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        logger.warning(
+            "Не удалось удалить неиспользуемую колонку embedding (SQLite %s): %s -- оставляем как есть",
+            sqlite3.sqlite_version, e,
+        )

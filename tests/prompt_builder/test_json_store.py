@@ -79,7 +79,7 @@ def test_save_json_leaves_no_temp_files(tmp_path):
     p = tmp_path / "cfg.json"
     save_json(str(p), {"a": 1})
     save_json(str(p), {"a": 2})
-    assert not [f for f in tmp_path.iterdir() if ".tmp-" in f.name]
+    assert not [f for f in tmp_path.iterdir() if f.name.endswith(".tmp")]
 
 
 def test_save_json_no_backup_for_new_file(tmp_path):
@@ -137,5 +137,5 @@ def test_save_json_replace_failure_raises_and_cleans_temp(tmp_path, monkeypatch)
     monkeypatch.setattr(json_store.os, "replace", boom)
     with pytest.raises(JsonStoreError, match="Не удалось сохранить"):
         save_json(str(p), {"a": 1}, make_backup=False)
-    assert not [f for f in tmp_path.iterdir() if ".tmp-" in f.name]
+    assert not [f for f in tmp_path.iterdir() if f.name.endswith(".tmp")]
     assert not p.exists()

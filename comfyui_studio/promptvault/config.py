@@ -138,6 +138,6 @@ MAX_RATING = 5
 
 # Семантический (векторный) поиск полностью удалён из PromptVault —
 # см. историю git, если понадобится восстановить (модуль
-# app/core/embedding.py и связанные SEMANTIC_SIMILARITY_THRESHOLD/
+# embedding.py и связанные SEMANTIC_SIMILARITY_THRESHOLD/
 # EMBEDDING_MODELS/DEFAULT_EMBEDDING_MODEL, ранее жившие в этом
-# месте файла).
+# месте файла; колонку embedding в БД убирает core/database.py).

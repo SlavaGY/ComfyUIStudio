@@ -26,7 +26,6 @@ device_id), чтобы файл оставался человекочитаем�
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import secrets
 import threading
@@ -36,6 +35,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from comfyui_studio import app_paths
+from comfyui_studio.jsonfile import atomic_write_json, load_json_or_default
 
 SHARED_DIR = app_paths.studio_data_dir()
 DEVICE_STORE_PATH = os.path.join(SHARED_DIR, "remote_devices.json")
@@ -74,27 +74,17 @@ def _hash_token(token: str) -> str:
 
 
 def _load_raw() -> list:
-    if not os.path.isfile(DEVICE_STORE_PATH):
-        return []
-    try:
-        with open(DEVICE_STORE_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
-    except Exception:
-        # Повреждённый/нечитаемый файл — тот же принцип, что и у
-        # shared_theme.read_shared_theme(): не роняем процесс, просто
-        # ведём себя так, будто устройств пока нет. Следующая успешная
-        # запись (create_device/revoke_device) перезапишет файл целиком
-        # корректным содержимым.
-        return []
+    # Повреждённый/нечитаемый файл — тот же принцип, что и у
+    # shared_theme.read_shared_theme(): не роняем процесс, просто ведём себя
+    # так, будто устройств пока нет. Но битый файл не затираем молча: при
+    # quarantine=True он переименовывается в remote_devices.json.corrupt-<время>,
+    # и хеши токенов спаренных телефонов можно вытащить оттуда, а не терять
+    # при ближайшей записи (create_device/revoke_device).
+    return load_json_or_default(DEVICE_STORE_PATH, [], expected_type=list, quarantine=True)
 
 
 def _save_raw(devices: list) -> None:
-    os.makedirs(SHARED_DIR, exist_ok=True)
-    tmp_path = DEVICE_STORE_PATH + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(devices, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, DEVICE_STORE_PATH)
+    atomic_write_json(DEVICE_STORE_PATH, devices)
 
 
 def create_device(name: str, fcm_token: Optional[str] = None) -> tuple[str, str]:

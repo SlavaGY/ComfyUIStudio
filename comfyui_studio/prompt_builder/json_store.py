@@ -21,6 +21,7 @@ import shutil
 import time
 from typing import Any
 
+from comfyui_studio.jsonfile import atomic_write_json
 from comfyui_studio.prompt_builder.pb_settings import get_backup_keep
 
 
@@ -73,22 +74,13 @@ def _make_backup(path: str) -> str | None:
 def save_json(path: str, data: Any, make_backup: bool = True) -> None:
     """Атомарно сохраняет JSON: пишет во временный файл рядом, затем заменяет целевой.
     Перед заменой создаёт резервную копию исходного файла (если он существовал)."""
-    directory = os.path.dirname(os.path.abspath(path)) or "."
-    os.makedirs(directory, exist_ok=True)
-
     if make_backup:
         _make_backup(path)
 
-    tmp_path = f"{path}.tmp-{os.getpid()}"
+    # LF и перевод строки в конце файла -- как раньше: эти файлы читает и
+    # расширение ComfyUI, и пользователь руками (jsonfile создаёт каталог,
+    # пишет через временный файл рядом и убирает его при любой ошибке).
     try:
-        with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-            f.write("\n")
-        os.replace(tmp_path, path)
+        atomic_write_json(path, data, newline="\n", trailing_newline=True)
     except OSError as e:
-        if os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
         raise JsonStoreError(f"Не удалось сохранить {path}: {e}") from e

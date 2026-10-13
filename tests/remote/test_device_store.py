@@ -92,6 +92,37 @@ def test_load_raw_survives_corrupted_file():
     with open(device_store.DEVICE_STORE_PATH, "w", encoding="utf-8") as f:
         f.write("это не json{{{")
 
-    # Не должно бросать исключение -- см. докстринг _load_raw про
+    # Не должно бросать исключение -- см. комментарий в _load_raw про
     # повреждённый файл: ведём себя так, будто устройств пока нет.
     assert device_store.list_devices() == []
+
+
+def test_corrupted_file_is_quarantined_not_overwritten():
+    """Битый remote_devices.json откладывается в *.corrupt-<время>: иначе
+    ближайший create_device затёр бы его и хеши токенов спаренных
+    телефонов пропали бы без следа."""
+    with open(device_store.DEVICE_STORE_PATH, "w", encoding="utf-8") as f:
+        f.write("это не json{{{")
+
+    device_id, _ = device_store.create_device("Телефон")
+
+    assert [d.device_id for d in device_store.list_devices()] == [device_id]
+    directory = os.path.dirname(device_store.DEVICE_STORE_PATH)
+    kept = [n for n in os.listdir(directory) if ".corrupt-" in n]
+    assert len(kept) == 1
+    with open(os.path.join(directory, kept[0]), encoding="utf-8") as f:
+        assert f.read() == "это не json{{{"
+
+
+def test_root_that_is_not_a_list_is_treated_as_corrupt():
+    with open(device_store.DEVICE_STORE_PATH, "w", encoding="utf-8") as f:
+        f.write('{"devices": []}')
+    assert device_store.list_devices() == []
+    directory = os.path.dirname(device_store.DEVICE_STORE_PATH)
+    assert [n for n in os.listdir(directory) if ".corrupt-" in n]
+
+
+def test_save_leaves_no_temp_files():
+    device_store.create_device("Телефон")
+    directory = os.path.dirname(device_store.DEVICE_STORE_PATH)
+    assert not [n for n in os.listdir(directory) if n.endswith(".tmp")]

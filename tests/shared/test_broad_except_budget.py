@@ -45,7 +45,6 @@ BASELINE = {
     "comfyui_studio/promptvault/utils.py": 1,
     "comfyui_studio/remote/app_launcher.py": 1,
     "comfyui_studio/remote/comfy_launcher.py": 2,
-    "comfyui_studio/remote/device_store.py": 1,
     "comfyui_studio/remote/fcm.py": 2,
     "comfyui_studio/remote/generation_watcher.py": 1,
     "comfyui_studio/remote/gpu_stats.py": 3,
@@ -54,7 +53,6 @@ BASELINE = {
     "comfyui_studio/remote/ssh_config_store.py": 1,
     "comfyui_studio/remote/ws_hub.py": 1,
     "comfyui_studio/rvc/backend/jobs.py": 1,
-    "comfyui_studio/shared_promptgen.py": 3,
 }
 
 _BROAD = {"Exception", "BaseException"}

@@ -61,11 +61,24 @@ def _replace_with_retry(src: str, dst: str) -> None:
             time.sleep(0.05 * (attempt + 1))
 
 
-def atomic_write_json(path, data, *, indent: int | None = 2, ensure_ascii: bool = False) -> None:
+def atomic_write_json(
+    path,
+    data,
+    *,
+    indent: int | None = 2,
+    ensure_ascii: bool = False,
+    newline: str | None = None,
+    trailing_newline: bool = False,
+) -> None:
     """Записывает ``data`` в ``path`` атомарно. Каталог создаётся при
     необходимости. Исключения (OSError, TypeError при несериализуемых
     данных) пробрасываются, целевой файл при этом остаётся прежним, а
-    временный файл удаляется."""
+    временный файл удаляется.
+
+    ``newline`` -- как у ``open()`` (``"\n"`` отключает перевод строк в CRLF
+    на Windows: нужно файлам, которые читает и правит кто-то ещё, например
+    JSON Prompt Builder'а); ``trailing_newline`` дописывает перевод строки
+    в конец файла."""
     path = os.fspath(path)
     directory = os.path.dirname(os.path.abspath(path))
     os.makedirs(directory, exist_ok=True)
@@ -74,8 +87,10 @@ def atomic_write_json(path, data, *, indent: int | None = 2, ensure_ascii: bool 
     )
     replaced = False
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as f:
             json.dump(data, f, ensure_ascii=ensure_ascii, indent=indent)
+            if trailing_newline:
+                f.write("\n")
             f.flush()
             os.fsync(f.fileno())
         _replace_with_retry(tmp_path, path)

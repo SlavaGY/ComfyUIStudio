@@ -188,8 +188,8 @@ class TestUpdateGeneration:
 
         repository.update_generation(gen_id, {"cfg": 3.0})
 
-        tmp_path = json_path.with_suffix(json_path.suffix + ".tmp")
-        assert not tmp_path.exists(), "временный файл должен быть переименован, не оставлен"
+        leftovers = [p.name for p in json_path.parent.iterdir() if p.name.endswith(".tmp")]
+        assert not leftovers, f"временный файл должен быть переименован, не оставлен: {leftovers}"
         assert json_path.exists()
 
         with open(json_path, "r", encoding="utf-8") as f:
@@ -213,8 +213,11 @@ class TestUpdateGeneration:
         ok = repository.update_generation(gen_id, {"cfg": 3.0})
         assert ok is False
 
-        tmp_path = json_path.with_suffix(json_path.suffix + ".tmp")
-        assert not tmp_path.exists()
+        leftovers = [p.name for p in json_path.parent.iterdir() if p.name.endswith(".tmp")]
+        assert not leftovers, leftovers
+        # исходный файл при неудачной записи остался прежним
+        with open(json_path, "r", encoding="utf-8") as f:
+            assert json.load(f)["cfg"] != 3.0
 
 
 class TestMetadataHistory:

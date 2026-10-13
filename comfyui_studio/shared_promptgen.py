@@ -23,12 +23,11 @@ Qt-страница (для живой проверки путей), и веб-�
 from __future__ import annotations
 
 import glob
-import json
 import os
-import tempfile
 from typing import Any
 
 from . import app_paths
+from .jsonfile import atomic_write_json, load_json_or_default
 
 SHARED_DIR = app_paths.studio_data_dir()
 SHARED_PROMPTGEN_PATH = os.path.join(SHARED_DIR, "prompt_generator.json")
@@ -181,10 +180,14 @@ def _coerce(data: dict) -> dict:
 def read_settings() -> dict:
     """Всегда возвращает полный набор ключей (DEFAULTS + то, что лежит в
     файле); отсутствующий/повреждённый файл — просто DEFAULTS."""
+    data = load_json_or_default(SHARED_PROMPTGEN_PATH, None)
+    if data is None:
+        return dict(DEFAULTS)
     try:
-        with open(SHARED_PROMPTGEN_PATH, "r", encoding="utf-8") as f:
-            return _coerce(json.load(f))
-    except Exception:
+        return _coerce(data)
+    except (TypeError, ValueError):
+        # руками отредактированный файл с неподходящим типом значения
+        # (например, "settings_version": "2") -- как повреждённый
         return dict(DEFAULTS)
 
 
@@ -196,23 +199,10 @@ def write_settings(settings: dict) -> bool:
     # свежесохранённое значение за «старое» и применил к нему миграцию
     cfg = _coerce({**settings, "settings_version": SETTINGS_VERSION})
     try:
-        os.makedirs(SHARED_DIR, exist_ok=True)
-        fd, tmp_path = tempfile.mkstemp(
-            prefix="prompt_generator.", suffix=".tmp", dir=SHARED_DIR
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, ensure_ascii=False, indent=2)
-            os.replace(tmp_path, SHARED_PROMPTGEN_PATH)
-        except Exception:
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
-            raise
-        return True
-    except Exception:
+        atomic_write_json(SHARED_PROMPTGEN_PATH, cfg)
+    except (OSError, TypeError, ValueError):
         return False
+    return True
 
 
 # ---------------------------------------------------------------------------

@@ -144,3 +144,15 @@ def test_load_json_or_default(tmp_path):
     atomic_write_json(path, {"a": 1})
     assert load_json_or_default(path, {"d": 1}) == {"a": 1}
     assert load_json(path).status == OK
+
+
+def test_trailing_newline_and_forced_lf(tmp_path):
+    path = tmp_path / "a.json"
+    atomic_write_json(path, {"a": 1}, newline="\n", trailing_newline=True)
+    assert path.read_bytes() == b'{\n  "a": 1\n}\n'  # LF на любой платформе
+
+
+def test_defaults_do_not_add_trailing_newline(tmp_path):
+    path = tmp_path / "a.json"
+    atomic_write_json(path, {"a": 1})
+    assert not path.read_text(encoding="utf-8").endswith("\n")

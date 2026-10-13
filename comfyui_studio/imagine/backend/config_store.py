@@ -72,6 +72,7 @@ from pathlib import Path
 from typing import Any
 
 from comfyui_studio import app_paths
+from comfyui_studio.jsonfile import OK, atomic_write_json, load_json
 
 # ИЗМЕНЕНО при встраивании в ComfyUIStudio: раньше DATA_DIR лежала прямо
 # рядом с исходниками (data/ на уровень выше backend/), что подходило,
@@ -270,24 +271,23 @@ def _ensure_file():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     if not CONFIG_PATH.exists():
-        CONFIG_PATH.write_text(
-            json.dumps(DEFAULT_CONFIG, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        atomic_write_json(CONFIG_PATH, DEFAULT_CONFIG)
 
 
 def load_config() -> dict:
     with _lock:
         _ensure_file()
-        try:
-            raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+        # битый файл (не JSON / корень не объект) откладывается в
+        # config.json.corrupt-<время>, а не затирается ближайшим save_config:
+        # в нём стили и категории пользователя
+        loaded = load_json(CONFIG_PATH, quarantine=True)
+        if loaded.status != OK:
             return json.loads(json.dumps(DEFAULT_CONFIG))
-        return _migrate_legacy(raw)
+        return _migrate_legacy(loaded.data)
 
 
 def save_config(config: dict) -> None:
     with _lock:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        CONFIG_PATH.write_text(
-            json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        # раньше write_text поверх файла: сбой посреди записи оставлял
+        # обрезанный config.json (и все стили пропадали); теперь атомарно
+        atomic_write_json(CONFIG_PATH, config)
