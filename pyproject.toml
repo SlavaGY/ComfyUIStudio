@@ -241,7 +241,6 @@ ignore = [
 "comfyui_studio/promptvault/main.py" = ["BLE001"]  # 2
 "comfyui_studio/promptvault/utils.py" = ["BLE001"]  # 1
 "comfyui_studio/remote/app_launcher.py" = ["BLE001"]  # 1
-"comfyui_studio/remote/comfy_launcher.py" = ["BLE001"]  # 2
 "comfyui_studio/remote/fcm.py" = ["BLE001"]  # 2
 "comfyui_studio/remote/generation_watcher.py" = ["BLE001"]  # 1
 "comfyui_studio/remote/gpu_stats.py" = ["BLE001"]  # 3

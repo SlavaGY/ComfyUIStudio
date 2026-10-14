@@ -44,7 +44,6 @@ BASELINE = {
     "comfyui_studio/promptvault/main.py": 2,
     "comfyui_studio/promptvault/utils.py": 1,
     "comfyui_studio/remote/app_launcher.py": 1,
-    "comfyui_studio/remote/comfy_launcher.py": 2,
     "comfyui_studio/remote/fcm.py": 2,
     "comfyui_studio/remote/generation_watcher.py": 1,
     "comfyui_studio/remote/gpu_stats.py": 3,

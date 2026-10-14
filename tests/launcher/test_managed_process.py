@@ -12,6 +12,7 @@ Qt нужен только тестам ComfyProcess (importorskip внутри 
 import io
 import json
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -302,6 +303,51 @@ def test_captured_exit_still_logged_when_stopped_immediately(caplog):
     p._spawn_captured(SLEEP_CMD)
     p.stop()
     assert _wait_for(lambda: _has_log(caplog, "Sleeper", "завершился"))
+
+
+class _Recorder(ManagedProcess):
+    """Запоминает коды, с которыми сработал хук _on_failed_exit."""
+
+    label = "Recorder"
+
+    def __init__(self):
+        super().__init__()
+        self.failed = []
+
+    def _on_failed_exit(self, proc, code):
+        self.failed.append((proc.pid, code))
+
+
+def test_failed_exit_hook_called_for_crash():
+    p = _Recorder()
+    proc = p._spawn_captured([sys.executable, "-c", "import sys; sys.exit(3)"])
+    assert _wait_for(lambda: p.failed == [(proc.pid, 3)])
+
+
+def test_failed_exit_hook_not_called_for_clean_exit(caplog):
+    p = _Recorder()
+    p._spawn_captured([sys.executable, "-c", "print('fine')"])
+    assert _wait_for(lambda: _has_log(caplog, "Recorder", "код выхода 0"))
+    assert p.failed == []
+
+
+def test_failed_exit_hook_not_called_after_stop(caplog):
+    """Остановка лаунчером даёт ненулевой код (taskkill/SIGTERM) -- это не
+    авария процесса, и хук не должен выставлять «ошибку запуска»."""
+    p = _Recorder()
+    p._spawn_captured(SLEEP_CMD)
+    p.stop()
+    assert _wait_for(lambda: _has_log(caplog, "Recorder", "завершился"))
+    time.sleep(0.3)  # хук вызывается сразу после лога, дать потоку закончить
+    assert p.failed == []
+
+
+def test_spawn_captured_passes_env():
+    p = _Sleeper()
+    env = {**os.environ, "STUDIO_TEST_ENV": "42"}
+    code = "import os, sys; sys.exit(0 if os.environ.get('STUDIO_TEST_ENV') == '42' else 5)"
+    proc = p._spawn_captured([sys.executable, "-c", code], env=env)
+    assert proc.wait(15) == 0
 
 
 def test_captured_uses_text_pipe_and_devnull_stdin(monkeypatch):

@@ -138,8 +138,6 @@ class TestUpdateGeneration:
 
         gen_id = _sync_and_get_id(repository, folder)
 
-        from comfyui_studio.promptvault.core import repository as repository_module
-
         real_stat = os.stat
         call_count = {"n": 0}
 
@@ -164,7 +162,7 @@ class TestUpdateGeneration:
 
             return result
 
-        monkeypatch.setattr(repository_module.os, "stat", flaky_stat)
+        monkeypatch.setattr(os, "stat", flaky_stat)
 
         ok = repository.update_generation(gen_id, {"cfg": 42.0})
 
@@ -203,12 +201,10 @@ class TestUpdateGeneration:
 
         gen_id = _sync_and_get_id(repository, folder)
 
-        from comfyui_studio.promptvault.core import repository as repository_module
-
         def failing_replace(src, dst):
             raise OSError("simulated disk error")
 
-        monkeypatch.setattr(repository_module.os, "replace", failing_replace)
+        monkeypatch.setattr(os, "replace", failing_replace)
 
         ok = repository.update_generation(gen_id, {"cfg": 3.0})
         assert ok is False

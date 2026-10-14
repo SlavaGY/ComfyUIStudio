@@ -23,7 +23,13 @@ comfyui_studio/promptvault/
 │   └── translations/    # promptvault_ru.ts (исходник) + promptvault_ru.qm
 ├── core/                # бизнес-логика, про Qt-виджеты не знает
 │   ├── database.py      # схема SQLite, миграции, самовосстановление
-│   ├── repository.py    # GenerationRepository — синхронизация БД с диском, CRUD
+│   ├── repository.py    # GenerationRepository (публичный класс): синхронизация БД с диском;
+│   │                    # собран из миксинов ниже — импортировать нужно именно его
+│   ├── repository_query.py     # чтение: выборки, подсчёты, фильтры, списки значений
+│   ├── repository_edit.py      # метаданные + история, избранное, рейтинг, теги, удаление
+│   ├── repository_transfer.py  # экспорт в ZIP, импорт пользовательских данных
+│   ├── repository_stats.py     # статистика для окна статистики
+│   ├── repository_base.py      # общая основа (соединение с БД) для миксинов
 │   ├── gallery_manager.py   # состояние галереи, фильтры, сортировка, массовые операции
 │   ├── generation_filter.py / generation_sorter.py / sort_options.py
 │   ├── generation.py    # доменные модели
@@ -35,6 +41,11 @@ comfyui_studio/promptvault/
 
 Точный состав файлов смотрите в репозитории: список выше — карта
 ответственности, а не перечень.
+
+Новый метод репозитория кладите в миксин по смыслу (запрос / редактирование /
+перенос / статистика), а не в `repository.py`; публичная поверхность класса
+зафиксирована в `tests/promptvault/test_repository_contract.py` — добавьте метод
+и в его таблицу `SURFACE`.
 
 ## Архитектурное правило
 

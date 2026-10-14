@@ -125,6 +125,12 @@ class ManagedProcess:
 
     label = "process"
 
+    # PID процессов, которые остановил сам лаунчер (stop()): их ненулевой
+    # код выхода -- не авария, и _on_failed_exit() для них не зовётся.
+    # Атрибут класса с неизменяемым значением по умолчанию, чтобы потомок,
+    # не вызвавший super().__init__(), не получил AttributeError в потоке.
+    _stopped_pids: frozenset[int] = frozenset()
+
     def __init__(self):
         self.proc = None
 
@@ -140,7 +146,7 @@ class ManagedProcess:
         self.proc = subprocess.Popen(cmd, **popen_kwargs)
         return self.proc
 
-    def _spawn_captured(self, cmd, cwd=None):
+    def _spawn_captured(self, cmd, cwd=None, env=None):
         """Popen с захватом stdout+stderr (текст, UTF-8) и фоновым
         потоком, который по завершении пишет код выхода и — при
         ненулевом — хвост вывода в лог (см. _watch_exit).
@@ -151,6 +157,7 @@ class ManagedProcess:
         proc = self._spawn(
             cmd,
             cwd=cwd,
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
@@ -189,6 +196,14 @@ class ManagedProcess:
                 "%s (PID %s) завершился с кодом %s. Вывод процесса:\n%s",
                 self.label, proc.pid, code, tail,
             )
+            if proc.pid not in self._stopped_pids:
+                self._on_failed_exit(proc, code)
+
+    def _on_failed_exit(self, proc, code):
+        """Хук: процесс сам завершился с ненулевым кодом (не из-за stop()).
+        Вызывается из фонового потока _watch_exit после записи в лог. По
+        умолчанию ничего не делает; потомок может, например, запомнить
+        короткое сообщение об ошибке для показа пользователю."""
 
     # -- состояние -------------------------------------------------------
 
@@ -216,6 +231,7 @@ class ManagedProcess:
         if proc is None:
             return True
         log.info("Остановка %s (PID %s)", self.label, proc.pid)
+        self._stopped_pids = self._stopped_pids | {proc.pid}
         if not terminate_process_tree(proc, self.label):
             log.warning(
                 "%s (PID %s) не завершился за отведённое время -- kill()",

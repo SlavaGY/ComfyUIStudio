@@ -15,29 +15,32 @@ prepare_launch_script`) на поверку Qt-независима -- Qt-зав
 всё равно не может использовать (у него нет Qt-окна, куда приземлять
 сигналы). Здесь -- Qt-независимый аналог: та же подготовка конфига и
 временного .bat, что и в `_on_launch()`
-(`launcher/ui/launcher_window.py`), тот же `subprocess.Popen`, что и в
+(`launcher/ui/launcher_window.py`), тот же запуск, что и в
 `ComfyProcess.start()`, просто без `ProcessLogBridge`/`_LogReaderThread`
--- вывод процесса логируется в файл напрямую, тем же приёмом, что
-`ImagineProcess._log_exit()` в imagine_process.py (см. его докстринг).
+-- вывод процесса логируется в файл напрямую.
+
+Сам процесс -- потомок `managed_process.ManagedProcess` (как ComfyProcess,
+ImagineProcess, RemoteProcess): общий запуск без консольного окна, лог
+завершения с хвостом вывода и остановка `taskkill /F /T` с запасным
+`kill()`. Раньше здесь был голый Popen с копией `_log_exit()` и остановкой
+без проверки результата: процесс, переживший остановку, терял единственную
+ссылку («фантомный процесс»).
 """
 
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
 import threading
 from typing import Optional
 
 from ..launcher.core.comfy_api import ComfyAPIClient
 from ..launcher.core.config import build_extra_launch_args, load_config, prepare_launch_script
 from ..launcher.core.logging_setup import log
-from ..launcher.core.managed_process import terminate_process_tree
+from ..launcher.core.managed_process import ManagedProcess
 from .process_by_port import find_pid_listening_on_port, kill_pid_tree
 from .state import runtime
 
 _lock = threading.Lock()
-_process: Optional[subprocess.Popen] = None
 # Сообщение о ПОСЛЕДНЕЙ неудаче автозапуска (напр. ComfyUI сразу упал
 # после старта) -- POST /start к этому моменту уже давно ответил 202,
 # так что единственный способ показать это на телефоне -- отдавать
@@ -46,6 +49,30 @@ _last_error: Optional[str] = None
 
 # Один инстанс на процесс -- по тому же принципу, что и в app_launcher.py.
 _comfy_client = ComfyAPIClient()
+
+
+class _RemoteComfyProcess(ManagedProcess):
+    """`cmd.exe /c <launch_script>`, запущенный из Remote (см. докстринг
+    модуля). Ненулевой код выхода, не вызванный stop(), превращается в
+    короткое сообщение для телефона (`_last_error`); полный вывод процесса
+    пишет в лог-файл Studio сам ManagedProcess."""
+
+    label = "ComfyUI"
+
+    def start(self, launch_script, cwd, env):
+        self._spawn_captured(["cmd.exe", "/c", launch_script], cwd=cwd, env=env)
+
+    def _on_failed_exit(self, proc, code):
+        global _last_error
+        # Короткая версия для телефона -- полный вывод только в лог-файл
+        # Studio на ПК, как и у обычного запуска через UI.
+        _last_error = (
+            f"ComfyUI завершился с кодом {code} сразу после запуска -- "
+            "проверьте лог ComfyUI на ПК (вкладка настроек в Studio)."
+        )
+
+
+_process: Optional[_RemoteComfyProcess] = None
 
 
 def is_comfyui_running(port: Optional[int] = None) -> bool:
@@ -61,7 +88,7 @@ def comfyui_status(port: Optional[int] = None) -> str:
     `runtime.comfy_port`, а не полагается на cfg["port"] по умолчанию."""
     if is_comfyui_running(port):
         return "running"
-    if _process is not None and _process.poll() is None:
+    if _process is not None and _process.is_running():
         return "starting"
     return "stopped"
 
@@ -120,22 +147,11 @@ def start_comfyui(port: Optional[int] = None) -> None:
         if env_overrides:
             env.update(env_overrides)
 
-        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         log.info("Запуск ComfyUI через Remote: %s (cwd=%s)", launch_script, root_path)
         _last_error = None
+        proc = _RemoteComfyProcess()
         try:
-            proc = subprocess.Popen(
-                ["cmd.exe", "/c", launch_script],
-                cwd=root_path,
-                creationflags=creationflags,
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.DEVNULL,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
+            proc.start(launch_script, root_path, env)
         except OSError as e:
             # НОВОЕ по сравнению с ComfyProcess/ImagineProcess (те не
             # оборачивают Popen) -- здесь ошибка иначе улетела бы наружу
@@ -144,8 +160,6 @@ def start_comfyui(port: Optional[int] = None) -> None:
             # до телефона как безликий 500 без текста.
             raise RuntimeError(f"Не удалось запустить ComfyUI: {e}")
         _process = proc
-        watcher = threading.Thread(target=_log_exit, args=(proc,), daemon=True)
-        watcher.start()
 
 
 def stop_comfyui() -> None:
@@ -174,12 +188,16 @@ def stop_comfyui() -> None:
     global _process, _last_error
     with _lock:
         if _process is not None:
-            pid = _process.pid
-            log.info("Остановка ComfyUI (PID %s, запущен через Remote)", pid)
-            terminate_process_tree(_process, "ComfyUI")
-            _process = None
-            _last_error = None
-            return
+            # ManagedProcess.stop(): taskkill по дереву, затем kill(), если
+            # процесс пережил штатную остановку. Ссылка сбрасывается только
+            # когда процесса действительно больше нет.
+            if _process.stop():
+                _process = None
+                _last_error = None
+                return
+            log.warning(
+                "ComfyUI, запущенный через Remote, не остановился -- пробуем найти процесс по порту"
+            )
 
         # НОВОЕ (живой отчёт: "кнопка может выключить только то, что
         # запущено с телефона") -- см. докстринг process_by_port.py про
@@ -193,36 +211,6 @@ def stop_comfyui() -> None:
             if port_pid is not None:
                 kill_pid_tree(port_pid, "ComfyUI")
         _last_error = None
-
-
-def _log_exit(proc: subprocess.Popen) -> None:
-    global _last_error
-    output = ""
-    try:
-        output = proc.stdout.read() if proc.stdout else ""
-    except Exception:
-        log.exception("Не удалось прочитать вывод процесса ComfyUI (запущен через Remote)")
-    finally:
-        if proc.stdout:
-            try:
-                proc.stdout.close()
-            except Exception:
-                pass
-    code = proc.wait()
-    if code == 0:
-        log.info("ComfyUI (PID %s, запущен через Remote) завершился, код выхода 0", proc.pid)
-    else:
-        tail = output[-4000:] if output else "(процесс не вывел ничего в stdout/stderr)"
-        log.error(
-            "ComfyUI (PID %s, запущен через Remote) завершился с кодом %s. Вывод:\n%s",
-            proc.pid, code, tail,
-        )
-        # Короткая версия для телефона -- полный вывод только в лог-файл
-        # Studio на ПК, как и у обычного запуска через UI.
-        _last_error = (
-            f"ComfyUI завершился с кодом {code} сразу после запуска -- "
-            "проверьте лог ComfyUI на ПК (вкладка настроек в Studio)."
-        )
 
 
 def clear_state() -> None:
