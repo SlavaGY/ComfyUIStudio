@@ -18,7 +18,6 @@ IMAGINE_DEV_MODE, которую выставляет run.bat) -- в интер�
 import asyncio
 import logging
 import os
-import sys
 import uuid
 from contextlib import suppress
 from pathlib import Path
@@ -28,58 +27,29 @@ from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from starlette.middleware.base import BaseHTTPMiddleware
+
+from comfyui_studio.web_common import (
+    NoCacheMiddleware,
+    mount_common_static,
+    register_ui_prefs,
+    static_dir,
+)
 
 from . import config_store, launcher, lora_scan, progress_forwarder, promptgen, workflow
 from .comfy_client import ComfyClient, ComfyUIError
-
-try:
-    # Необязательно: доступно только внутри ComfyUIStudio (см.
-    # shared_theme.py/shared_language.py) -- если Imagine запущен как
-    # самостоятельный инструмент (venv без остального комплекта), эти
-    # эндпоинты просто отдают {"theme": null, "language": null}, а
-    # переключатели темы/языка в интерфейсе остаются чисто локальными
-    # (localStorage), см. GET/PUT /api/ui-prefs ниже.
-    from comfyui_studio import shared_language, shared_theme
-except ImportError:  # pragma: no cover - инструмент запущен отдельно от Studio
-    shared_theme = None  # type: ignore[assignment]
-    shared_language = None  # type: ignore[assignment]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("imagine")
 
 DEV_MODE = os.environ.get("IMAGINE_DEV_MODE") == "1"
 
-# ИЗМЕНЕНО при встраивании в ComfyUIStudio: раньше статика раздавалась
-# по относительному пути "static" (см. app.mount ниже), что работало
-# только потому, что run.bat всегда делал cd в папку самого инструмента
-# перед запуском uvicorn. Запущенный из ComfyUIStudio (`python -m
-# comfyui_studio.imagine`, cwd = корень проекта Studio, как и остальные
-# инструменты комплекта -- см. core/comfy_process.py) с тем же
-# относительным путём Imagine отдавал бы 404 на всё. Резолвим от
-# расположения самого пакета, с тем же приёмом на sys._MEIPASS для
-# собранного варианта, что и у TEMPLATE_PATH в workflow.py.
-if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-    _STATIC_DIR = Path(sys._MEIPASS) / "comfyui_studio" / "imagine" / "static"
-else:
-    _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+# Каталог статики резолвится от расположения пакета (и от sys._MEIPASS в
+# собранном exe), а не от cwd: Studio запускает Imagine из корня проекта
+# (`python -m comfyui_studio.imagine`, см. core/comfy_process.py), и
+# относительный путь "static" отдавал бы 404 на всё. См. web_common.static_dir.
+_STATIC_DIR = static_dir("imagine")
 
 app = FastAPI(title="Imagine — локальный генератор на ComfyUI")
-
-
-class NoCacheMiddleware(BaseHTTPMiddleware):
-    """Инструмент локальный, файлы меняются между запусками dev-сессии
-    чаще, чем у любого обычного сайта -- кэш браузера здесь только
-    вредит (см. как рассинхронизировались index.html и app.js после
-    обновления: браузер получил 304 и продолжил использовать старый
-    app.js). Отключаем кэш статики целиком, а не разбираемся с
-    ETag/Last-Modified вручную."""
-
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        return response
 
 
 app.add_middleware(NoCacheMiddleware)
@@ -207,22 +177,7 @@ def get_mode():
 # так что подхватываются лаунчером, Prompt Config Editor и PromptVault
 # так же, как если бы их поменяли в любом из них.
 
-@app.get("/api/ui-prefs")
-def get_ui_prefs():
-    theme = shared_theme.read_shared_theme() if shared_theme else None
-    language = shared_language.read_shared_language() if shared_language else None
-    return {"theme": theme, "language": language}
-
-
-@app.put("/api/ui-prefs")
-def put_ui_prefs(prefs: dict):
-    theme = prefs.get("theme")
-    language = prefs.get("language")
-    if theme and shared_theme:
-        shared_theme.write_shared_theme(theme)
-    if language and shared_language:
-        shared_language.write_shared_language(language)
-    return {"ok": True}
+register_ui_prefs(app)
 
 
 # ---------------------------------------------------------------------------
@@ -570,4 +525,5 @@ config_store.DATA_DIR.mkdir(parents=True, exist_ok=True)
 config_store.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 app.mount("/media", StaticFiles(directory=str(config_store.UPLOADS_DIR)), name="media")
+mount_common_static(app)  # /common -- общий JS движок переводов; ДО корневого "/"
 app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="static")

@@ -11,48 +11,34 @@
 """
 
 import logging
-import sys
 import time
-from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from comfyui_studio.imagine.backend.comfy_client import ComfyClient, ComfyUIError
 from comfyui_studio.imagine.backend.workflow import find_output_images
+from comfyui_studio.web_common import (
+    NoCacheMiddleware,
+    mount_common_static,
+    register_ui_prefs,
+    static_dir,
+)
 
 from . import config_store, workflow
-
-try:
-    from comfyui_studio import shared_language, shared_theme
-except ImportError:  # pragma: no cover - запущено отдельно от Studio
-    shared_theme = None  # type: ignore[assignment]
-    shared_language = None  # type: ignore[assignment]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("imagine_pony")
 
-if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-    _STATIC_DIR = Path(sys._MEIPASS) / "comfyui_studio" / "imagine_pony" / "static"
-else:
-    _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+_STATIC_DIR = static_dir("imagine_pony")
 
 app = FastAPI(title="Imagine Pony — генератор PonyXL на ComfyUI")
 
 # Узлы, без которых приложение не работает (см. /api/nodes).
 REQUIRED_NODES = ("CharacterSearchUI", "PromptBuilderNode", "MultiLoraLoader")
-
-
-class NoCacheMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        return response
 
 
 app.add_middleware(NoCacheMiddleware)
@@ -123,20 +109,7 @@ def _combo(client: ComfyClient, node_class: str, input_name: str) -> list:
 # Тема / язык / конфиг / состояние
 # ---------------------------------------------------------------------------
 
-@app.get("/api/ui-prefs")
-def get_ui_prefs():
-    theme = shared_theme.read_shared_theme() if shared_theme else None
-    language = shared_language.read_shared_language() if shared_language else None
-    return {"theme": theme, "language": language}
-
-
-@app.put("/api/ui-prefs")
-def put_ui_prefs(prefs: dict):
-    if prefs.get("theme") and shared_theme:
-        shared_theme.write_shared_theme(prefs["theme"])
-    if prefs.get("language") and shared_language:
-        shared_language.write_shared_language(prefs["language"])
-    return {"ok": True}
+register_ui_prefs(app)
 
 
 @app.get("/api/config")
@@ -415,4 +388,5 @@ def get_image(filename: str, subfolder: str = "", type: str = "output"):
 # ---------------------------------------------------------------------------
 
 config_store.DATA_DIR.mkdir(parents=True, exist_ok=True)
+mount_common_static(app)  # /common -- общий JS движок переводов; ДО корневого "/"
 app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="static")

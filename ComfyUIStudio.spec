@@ -37,6 +37,8 @@ datas = [
     # Imagine Pony (comfyui_studio/imagine_pony/) -- то же: статика и workflow_template.json.
     ('comfyui_studio/imagine_pony/static', 'comfyui_studio/imagine_pony/static'),
     ('comfyui_studio/imagine_pony/assets', 'comfyui_studio/imagine_pony/assets'),
+    # Общая статика Imagine и Imagine Pony (js/i18n_engine.js, раздаётся по /common).
+    ('comfyui_studio/web_common/static', 'comfyui_studio/web_common/static'),
     # Ultimate RVC (comfyui_studio/rvc/): приложение запускается питоном из venv
     # Ultimate RVC, а НЕ из этого exe, поэтому его исходники нужны на диске
     # (внутри exe пакеты лежат в архиве, чужому процессу они недоступны).
@@ -70,6 +72,10 @@ hiddenimports = [
     # Imagine Pony -- та же двухуровневая лень (IMAGINE_PONY_CLI_FLAG в main.py).
     "comfyui_studio.imagine_pony.__main__",
     "comfyui_studio.imagine_pony.backend.main",
+    # Общий слой веб-приложений (middleware, /api/ui-prefs, раздача /common).
+    # Backend.main обоих приложений его и так импортирует, но явная строка
+    # страхует от потери при будущей перестройке импортов.
+    "comfyui_studio.web_common",
     # comfyui_studio.remote.__main__ -- та же двухуровневая лень, что и у
     # Imagine выше (диспетчеризация REMOTE_CLI_FLAG в main.py, а изнутри
     # __main__.main() лениво импортирует uvicorn/.app), см.

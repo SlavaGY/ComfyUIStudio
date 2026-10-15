@@ -1,10 +1,11 @@
 /* ============================================================
    Imagine Pony — i18n + синхронизация темы/языка с ComfyUIStudio
    ============================================================
-   Тот же механизм, что в imagine/static/js/i18n.js: RU — исходный текст и
-   он же ключ словаря, EN — перевод; строки без перевода показываются как
-   есть. Тема и язык ТОЛЬКО читаются из общих файлов Studio через
-   GET/PUT api/ui-prefs (своего переключателя у приложения нет).
+   Здесь только СЛОВАРЬ; движок общий с Imagine (comfyui_studio/web_common/
+   static/js/i18n_engine.js). RU — исходный текст и он же ключ словаря,
+   EN — перевод; строки без перевода показываются как есть. Тема и язык
+   ТОЛЬКО читаются из общих файлов Studio через GET/PUT api/ui-prefs
+   (своего переключателя у приложения нет).
    Событие смены языка называется так же, как в Imagine
    ("imagine:languagechange"), чтобы не плодить второе имя.
    ============================================================ */
@@ -51,7 +52,6 @@
     "Не удалось загрузить конфиг билдера:": "Failed to load the builder config:",
     "Негативный промпт": "Negative prompt",
     "Негативный промпт:": "Negative prompt:",
-    "Ничего не найдено": "Nothing found",
     "Останавливает то, что ComfyUI выполняет прямо сейчас (не только эту генерацию, если их несколько в очереди)": "Stops whatever ComfyUI is running right now (not only this generation if several are queued)",
     "Остановить": "Stop",
     "Очистить слот": "Clear slot",
@@ -118,153 +118,17 @@
     "⤓ выгрузить модели": "⤓ unload models"
 };
 
-  let CURRENT_LANG = "ru";
-
-  function t(key, params) {
-    let str = (CURRENT_LANG === "en" && Object.prototype.hasOwnProperty.call(EN, key))
-      ? EN[key]
-      : key;
-    if (params) {
-      for (const k in params) {
-        if (Object.prototype.hasOwnProperty.call(params, k)) {
-          str = str.split("{" + k + "}").join(params[k]);
-        }
-      }
-    }
-    return str;
-  }
-
-  function applyStaticTranslations() {
-    document.querySelectorAll("[data-i18n]").forEach((el) => {
-      el.textContent = t(el.getAttribute("data-i18n"));
-    });
-    document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
-      el.setAttribute("placeholder", t(el.getAttribute("data-i18n-placeholder")));
-    });
-    document.querySelectorAll("[data-i18n-title]").forEach((el) => {
-      el.setAttribute("title", t(el.getAttribute("data-i18n-title")));
-    });
-    document.documentElement.lang = CURRENT_LANG;
-  }
-
-  // -- Темы -------------------------------------------------------------
-  // Тот же порядок и те же названия, что AVAILABLE_THEMES в
-  // comfyui_studio/themes/theme_manager.py -- строки идут напрямую в
-  // data-theme (см. css/themes.css) и в %APPDATA%\ComfyUIStudio\theme.json.
-  const THEMES = ["Dark", "Light", "Nord", "Catppuccin Mocha", "Dracula", "GitHub Dark"];
-  const DEFAULT_THEME = "GitHub Dark";
-
-  function applyTheme(name) {
-    if (!THEMES.includes(name)) name = DEFAULT_THEME;
-    document.documentElement.setAttribute("data-theme", name);
-  }
-
-  // -- Публичный интерфейс ----------------------------------------------
-
-  const I18N = {
-    THEMES,
-    t,
-
-    getLanguage() {
-      return CURRENT_LANG;
-    },
-
-    setLanguage(lang, opts) {
-      CURRENT_LANG = lang === "en" ? "en" : "ru";
-      applyStaticTranslations();
-      try {
-        localStorage.setItem("imaginepony.language", CURRENT_LANG);
-      } catch (e) { /* localStorage недоступен (приватный режим) -- не критично */ }
-      if (!opts || !opts.skipSync) {
-        fetch("api/ui-prefs", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ language: CURRENT_LANG }),
-        }).catch(() => {});
-      }
-      document.dispatchEvent(new CustomEvent("imagine:languagechange", { detail: { language: CURRENT_LANG } }));
-    },
-
-    getTheme() {
-      return document.documentElement.getAttribute("data-theme") || DEFAULT_THEME;
-    },
-
-    setTheme(name, opts) {
-      applyTheme(name);
-      try {
-        localStorage.setItem("imaginepony.theme", name);
-      } catch (e) { /* см. выше */ }
-      if (!opts || !opts.skipSync) {
-        fetch("api/ui-prefs", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ theme: name }),
-        }).catch(() => {});
-      }
-    },
-
-    // Вызывается один раз при загрузке страницы (см. app.js, начало
-    // init()). Сначала — то, что уже лежит в localStorage (мгновенно,
-    // без ожидания сети, минимизирует "мигание" темой/языком по
-    // умолчанию), затем сверяемся с общим для комплекта источником —
-    // если там задано другое значение, оно и побеждает (тот же принцип
-    // "shared-файл важнее локального", что и у Qt-приложений комплекта).
-    // ИЗМЕНЕНО: убран ручной переключатель темы/языка в топбаре Imagine
-    // (см. index.html/app.js) -- это дублировало то, что уже настраивается
-    // централизованно в основных настройках ComfyUIStudio (см. "Общие" /
-    // General page). Imagine теперь ТОЛЬКО читает то, что выбрано там
-    // (через /api/ui-prefs), не предлагая собственного переключателя.
-    // Не только при загрузке страницы, но и периодически, пока страница
-    // открыта (см. startPolling() ниже) -- чтобы смена темы/языка в
-    // Studio "живьём" подхватывалась и здесь, тем же принципом, что и
-    // QFileSystemWatcher у shared_theme.py для Qt-приложений комплекта
-    // (у веб-страницы такого watcher'а нет, поэтому вместо него — редкий
-    // поллинг, раз в 5 секунд, той же периодичности, что и опрос статуса
-    // ComfyUI в app.js).
-    async init() {
-      let lang = "ru";
-      let theme = DEFAULT_THEME;
-      try {
-        lang = localStorage.getItem("imaginepony.language") || lang;
-        theme = localStorage.getItem("imaginepony.theme") || theme;
-      } catch (e) { /* см. выше */ }
-      CURRENT_LANG = lang === "en" ? "en" : "ru";
-      applyTheme(theme);
-      applyStaticTranslations();
-
-      await this._syncFromServer();
-      setInterval(() => this._syncFromServer(), 5000);
-    },
-
-    async _syncFromServer() {
-      try {
-        const resp = await fetch("api/ui-prefs");
-        if (resp.ok) {
-          const prefs = await resp.json();
-          if (prefs.language && prefs.language !== CURRENT_LANG) {
-            I18N.setLanguage(prefs.language, { skipSync: true });
-          }
-          if (prefs.theme && prefs.theme !== I18N.getTheme()) {
-            I18N.setTheme(prefs.theme, { skipSync: true });
-          }
-        }
-      } catch (e) {
-        // Studio не смогла ответить (или Imagine запущен отдельно от
-        // неё, без /api/ui-prefs вообще) -- остаёмся на том, что уже
-        // применили из localStorage/умолчаний, ничего страшного.
-      }
-    },
-  };
+  // Движок (t(), переключение языка, темы, синхронизация с api/ui-prefs) --
+  // общий для Imagine и Imagine Pony: comfyui_studio/web_common/static/js/
+  // i18n_engine.js. index.html подключает его ПЕРЕД этим файлом.
+  const I18N = window.createI18n({ storagePrefix: "imaginepony", EN });
 
   window.I18N = I18N;
   // ВАЖНО: app.js вызывает переводы как глобальную функцию t('...'),
-  // а не I18N.t('...') -- см. i18n.js.EN и все ~40 мест вызова в app.js.
-  // Раньше этой строки не было, и КАЖДЫЙ вызов t() в app.js падал с
-  // "ReferenceError: t is not defined": исключение обрывало ту функцию
-  // на середине, а значит, например, wireStaticHandlers() (навешивает
-  // обработчик клика на кнопку дев-режима) могла вообще не успеть
-  // выполниться, если t() бросал исключение раньше неё в той же
-  // цепочке init() -- отсюда и "кнопка дев-режима не работает", и
-  // статус ComfyUI, зависший на "checking...".
-  window.t = t;
+  // а не I18N.t('...') -- см. EN выше и все места вызова в app.js.
+  // Без этой строки КАЖДЫЙ вызов t() падал бы с "ReferenceError: t is not
+  // defined": исключение обрывало функцию на середине (например,
+  // wireStaticHandlers() могла не успеть навесить обработчики кнопок), и
+  // статус ComfyUI зависал на "checking...".
+  window.t = I18N.t;
 })();
