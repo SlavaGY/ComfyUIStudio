@@ -1,7 +1,7 @@
 # ComfyUI Studio — дорожная карта по итогам ревью (сверено с кодом)
 
 Составлено: 16.10.2026. Источник: разбор ChatGPT (`Разбор и рефакторинг приложения (1).md`) + выборочная сверка каждого утверждения с реальным кодом в `D:\AI\ComfyUIStudio-main`.
-**Статус: Этапы 1–3 выполнены. Этап 1 — потоковое чтение stdout (`_spawn_streamed`). Этап 2 — README/документация. Этап 3 — workflow `android.yml` (прогон сработает на PR/merge в `main`; шаг 3.4 по Ruleset — ручной на GitHub). Остальные этапы 4–6 — план.**
+**Статус: Этапы 1–3 выполнены. Этап 1 — потоковое чтение stdout (`_spawn_streamed`). Этап 2 — README/документация. Этап 3 — workflow `android.yml`, проверен на GitHub: `Android CI` и `CI` (Python) оба зелёные на `audit/refact` (шаг 3.4 по Ruleset — ручной на GitHub). Остальные этапы 4–6 — план.**
 
 > Отличие этого документа от `ComfyUIStudio_Audit_Roadmap (1).md`: тот описывает **уже сделанные** этапы 0–6 (разрез repository, CI, SSH, упаковка). Этот документ — **новый список** того, что ChatGPT подсветил как оставшиеся риски, плюс отдельный пункт про единую стратегию ассетов (по просьбе пользователя).
 
@@ -96,23 +96,24 @@ ChatGPT оценил проект на 7/10 и не рекомендовал г�
 
 **Готово, когда:** ✅ README показывает реальный состав комплекта, а не историю трёх инструментов. Проверка — документационная, без запуска тестов.
 
-### Этап 3. Android-сборка и Kotlin unit-тесты в CI — ВЫПОЛНЕНО (workflow; прогон — на GitHub)
+### Этап 3. Android-сборка и Kotlin unit-тесты в CI — ВЫПОЛНЕНО (проверено на GitHub)
 
 **Проблема (подтверждена):** `.github/workflows/ci.yml` проверял только Python; Gradle-сборка и Kotlin unit-тесты (`SshConfigParserTest.kt`) в CI не запускались.
 
 **Что сделано (16.10.2026):**
-- Создан отдельный workflow `.github/workflows/android.yml` (`name: Android CI`, `ubuntu-latest`): `actions/setup-java@v4` (temurin JDK 17 — под AGP 8.5.2 + Gradle 9.3.0) → `android-actions/setup-android@v3` (SDK + лицензии, compileSdk 34) → `gradle/actions/setup-gradle@v4` (кэш, `build-root-directory: android`) → `bash ./gradlew test` + `bash ./gradlew assembleDebug`.
-- `test` — только JVM unit-тесты (`src/test`), эмулятор не нужен; `assembleDebug` дополнительно проверяет компиляцию и упаковку всего app-модуля в APK (androidTest не запускается).
-- Найден нюанс: `android/gradlew` в git с mode `100644` (без exec-бита), поэтому в workflow запуск через `bash ./gradlew`, а не `./gradlew` (иначе «Permission denied» на Ubuntu).
-- Синтаксис YAML проверен (`yaml.safe_load`).
+- Создан workflow `.github/workflows/android.yml` (`name: Android CI`, `ubuntu-latest`): JDK 17 (`setup-java`, под AGP 8.5.2 + Gradle 9.3.0) → Android SDK → `gradle/actions/setup-gradle@v4` (кэш) → `bash ./gradlew test` + `bash ./gradlew assembleDebug`.
+- Первый прогон упал на шаге `android-actions/setup-android@v3` — заменён на ручную установку SDK (cmdline-tools + лицензии + `platforms;android-34` + `build-tools;34.0.0`), после чего **Android CI прошёл (success)**.
+- `test` — только JVM unit-тесты (`src/test`), эмулятор не нужен; `assembleDebug` проверяет компиляцию и упаковку APK.
+- `android/gradlew` в git с mode `100644` (без exec-бита) → запуск через `bash ./gradlew`.
+- В оба workflow (`ci.yml`, `android.yml`) добавлен `audit/refact` в `on.push.branches` (убрать после слияния ветки).
 
 Задачи:
 - [x] 3.1. Добавлен workflow `android.yml` с `test` + `assembleDebug`.
 - [x] 3.2. JDK 17 + `gradle/actions/setup-gradle` (кэш).
-- [x] 3.3. Подтверждено: `test` не требует эмулятора (только SDK — ставит `setup-android`).
-- [ ] 3.4. **Ручной шаг (на GitHub, не в репозитории):** добавить проверку «Android build + unit tests (Ubuntu, JDK 17)» в Ruleset защиты `main`, если она должна быть обязательной (существующие Python-проверки остаются как были).
+- [x] 3.3. Подтверждено: `test` не требует эмулятора (SDK ставится вручную).
+- [ ] 3.4. **Ручной шаг (на GitHub):** добавить проверку «Android build + unit tests (Ubuntu, JDK 17)» в Ruleset защиты `main`, если она должна быть обязательной.
 
-**Готово, когда:** при PR в `main` появляется зелёная/красная галочка «Android CI». Прогон сработает на push в `main`/`audit/refact`, на PR и по `workflow_dispatch` — в оба workflow (`ci.yml`, `android.yml`) добавлен `audit/refact` в `on.push.branches` (убрать после слияния ветки).
+**Готово, когда:** ✅ `Android CI` и `CI` (Python) зелёные на `audit/refact` (проверено по GitHub API: Android run 38963813082, CI run 38963813156 — оба `success`).
 
 ### Этап 4. Единая стратегия ассетов (скрипт vs единая папка) — см. §5
 
