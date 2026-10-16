@@ -18,7 +18,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # audit/refact — временная рабочая ветка аудита: её пуши тоже гоняют CI.
+    # Убрать из списка после слияния ветки в main.
+    branches: [main, audit/refact]
   pull_request:
   workflow_dispatch:
 

@@ -112,7 +112,7 @@ ChatGPT оценил проект на 7/10 и не рекомендовал г�
 - [x] 3.3. Подтверждено: `test` не требует эмулятора (только SDK — ставит `setup-android`).
 - [ ] 3.4. **Ручной шаг (на GitHub, не в репозитории):** добавить проверку «Android build + unit tests (Ubuntu, JDK 17)» в Ruleset защиты `main`, если она должна быть обязательной (существующие Python-проверки остаются как были).
 
-**Готово, когда:** при PR в `main` появляется зелёная/красная галочка «Android CI». Прогон сработает на PR/merge в `main` или `workflow_dispatch` (push в `audit/refact` workflow не триггерит — как и у `ci.yml`).
+**Готово, когда:** при PR в `main` появляется зелёная/красная галочка «Android CI». Прогон сработает на push в `main`/`audit/refact`, на PR и по `workflow_dispatch` — в оба workflow (`ci.yml`, `android.yml`) добавлен `audit/refact` в `on.push.branches` (убрать после слияния ветки).
 
 ### Этап 4. Единая стратегия ассетов (скрипт vs единая папка) — см. §5
 
