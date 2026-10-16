@@ -1,10 +1,11 @@
 # ComfyUI Studio (PySide6 / Qt)
 
-Единый комплект из трёх инструментов, поставляемых в одном архиве и
-работающих **в одном процессе** (один `main.py` в корне, один
-`QApplication` на всех). Актуальная структура репозитория (после
-этапов 1–5 дорожной карты рефакторинга — см.
-`ComfyUIStudio_Refactoring_Roadmap.md`):
+Единый комплект для работы с ComfyUI, поставляемый в одном архиве. Три
+нативных Qt-приложения — Launcher, Prompt Builder и PromptVault — работают
+**в одном процессе** (один `main.py` в корне, один `QApplication` на всех).
+Кроме них лаунчер управляет отдельными веб-сервисами как дочерними
+процессами: Imagine, Imagine Pony, Ultimate RVC и Remote API. Актуальная
+структура репозитория:
 
 ```
 ComfyUIStudio/
@@ -24,9 +25,14 @@ ComfyUIStudio/
 ├── comfyui_studio/                 общее пространство имён комплекта
 │   ├── i18n.py, shared_theme.py, shared_language.py   ← общие на весь комплект
 │   ├── themes/                     6 .qss тем + theme_manager.py
-│   ├── launcher/                   ComfyUI Launcher (core/ui/integration)
-│   ├── prompt_builder/             Character / Prompt Builder Config Editor
-│   └── promptvault/                PromptVault
+│   ├── launcher/                   ComfyUI Launcher (core/ui/integration) — главное окно
+│   ├── prompt_builder/             Character / Prompt Builder Config Editor (окно того же процесса)
+│   ├── promptvault/                PromptVault (окно того же процесса)
+│   ├── imagine/                    Imagine — карточный веб-генератор поверх ComfyUI (отдельный процесс)
+│   ├── imagine_pony/               Imagine Pony — второй веб-генератор под API-граф PonyXL (отдельный процесс)
+│   ├── rvc/                        Ultimate RVC — собственное веб-приложение (питон из venv RVC)
+│   ├── remote/                     Remote API — REST/WebSocket для доступа с телефона (отдельный процесс)
+│   └── web_common/                 общий слой статики/i18n веб-приложений
 ├── docs/history/                   ARCHIVE: инструкции уже применённых этапов рефакторинга
 │                                     (R*_APPLY.md, baseline_R0.md) — не выполнять повторно
 └── tools/
@@ -37,6 +43,12 @@ ComfyUIStudio/
                                       (переводы PromptVault) — исходники самих инструментов
                                       здесь больше не лежат, см. предупреждение в конце этого README
 ```
+
+Помимо трёх Qt-окон комплект управляет отдельными веб-сервисами (каждый —
+свой дочерний процесс лаунчера): **Imagine** и **Imagine Pony** (карточные
+веб-генераторы поверх ComfyUI — см. «Генератор промптов» и `IMAGINE_PONY.md`),
+**Ultimate RVC** (вокал/аудио, свой питон и venv — см. `launcher/core/rvc_process.py`)
+и **Remote API** (`comfyui_studio/remote/` — см. «Удалённый доступ» ниже).
 
 Лаунчер (`comfyui_studio/launcher/`) — главное окно комплекта: запускает
 ComfyUI в своей вкладке (см. ниже), а в настройках (единое дерево
