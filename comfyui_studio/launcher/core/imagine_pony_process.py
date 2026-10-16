@@ -85,4 +85,4 @@ class ImaginePonyProcess(ManagedProcess):
             "Запуск Imagine Pony: %s (cwd=%s, comfyui=%s:%s)",
             cmd, cwd, self.comfy_host, self.comfy_port,
         )
-        return self._spawn_captured(cmd, cwd)
+        return self._spawn_streamed(cmd, cwd)
