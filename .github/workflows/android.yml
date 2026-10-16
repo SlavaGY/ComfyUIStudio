@@ -30,6 +30,9 @@ jobs:
     name: Android build + unit tests (Ubuntu, JDK 17)
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      ANDROID_HOME: ${{ github.workspace }}/android-sdk
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
     steps:
       - uses: actions/checkout@v4
 
@@ -40,11 +43,20 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # compileSdk = 34 (app/build.gradle.kts); hosted-раннер не гарантирует
-      # готовый Android SDK, поэтому ставим его явно и принимаем лицензии
-      # (AGP сам докачает недостающие platform/build-tools).
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
+      # Ручная установка SDK (вместо стороннего android-actions/setup-android,
+      # который падал): качаем cmdline-tools, принимаем лицензии и ставим
+      # platform/build-tools под compileSdk=34 (app/build.gradle.kts, AGP 8.5.2).
+      # Структура cmdline-tools/latest обязательна для sdkmanager/AGP.
+      - name: Setup Android SDK
+        run: |
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          curl -fL -o "$RUNNER_TEMP/cmdtools.zip" \
+            "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          unzip -q "$RUNNER_TEMP/cmdtools.zip" -d "$ANDROID_HOME/cmdline-tools"
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
       - name: Настройка Gradle (кэш + валидация wrapper)
         uses: gradle/actions/setup-gradle@v4
