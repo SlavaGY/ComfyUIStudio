@@ -196,11 +196,11 @@ pythonpath = ["."]
 qt_api = "pyside6"
 
 [tool.coverage.run]
-source = ["comfyui_studio.promptvault"]
-omit = [
-    "comfyui_studio/promptvault/ui/*",
-    "comfyui_studio/promptvault/main.py",
-]
+# Весь пакет (этап 5 роадмапа аудита): покрытие считается по всему
+# comfyui_studio, как и в CI (`--cov=comfyui_studio`). Раньше здесь был
+# только promptvault — рассинхрон с ci.yml, из-за которого цифра покрытия
+# была неоднозначна (72 % «только promptvault» vs «весь пакет»).
+source = ["comfyui_studio"]
 
 [tool.ruff]
 line-length = 100
