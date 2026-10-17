@@ -21,7 +21,11 @@
 from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 datas = [
-    ('assets', 'assets'),
+    # Только рантайм-иконки Studio; assets/branding/ (generate_icons.py +
+    # app_icon_master.png) — build-time файлы генерации, в exe им не место
+    # (этап 4 аудита). Страж — tests/test_build_assets.py.
+    ('assets/icon.ico', 'assets'),
+    ('assets/icon.png', 'assets'),
     # Общая папка тем: её используют все три приложения (themes/base.py);
     # отдельных themes у Prompt Builder и PromptVault больше нет (этап R8).
     ('comfyui_studio/themes', 'comfyui_studio/themes'),

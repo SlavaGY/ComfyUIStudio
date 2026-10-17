@@ -403,9 +403,9 @@ python assets/branding/generate_icons.py
   (см. комментарий в начале `generate_icons.py`).
 
 У `prompt_builder/generate_icon.py` (было — программно рисовал старую
-иконку) остались две копии-redirect (`assets/` и на уровень выше) на
-случай, если что-то запустит его по старой памяти — они находят и
-вызывают `assets/branding/generate_icons.py`.
+иконку) осталась одна копия-redirect (`comfyui_studio/prompt_builder/assets/`)
+на случай, если что-то запустит его по старой памяти — она находит и
+вызывает `assets/branding/generate_icons.py`.
 
 ## Про синхронизацию темы с интерфейсом ComfyUI
 

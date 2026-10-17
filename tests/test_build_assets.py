@@ -102,6 +102,16 @@ def test_every_datas_source_exists():
     assert not missing, f"datas ссылаются на несуществующие пути: {missing}"
 
 
+def test_assets_datas_bundle_only_runtime_icons():
+    """Корневой assets/ в exe — только рантайм-иконки (icon.ico/icon.png).
+    build-time файлы генерации (assets/branding/generate_icons.py +
+    app_icon_master.png) в собранный exe попадать не должны (этап 4 аудита)."""
+    assets_datas = [(src, dst) for src, dst in _spec_datas() if src.startswith("assets")]
+    assert ("assets/icon.ico", "assets") in assets_datas
+    assert ("assets/icon.png", "assets") in assets_datas
+    assert not any("branding" in src for src, _ in assets_datas)
+
+
 def test_every_asset_is_in_spec_datas():
     sources = [(ROOT / src).resolve() for src, _ in _spec_datas()]
 
