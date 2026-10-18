@@ -1,0 +1,77 @@
+# Автоматическая сборка Android-приложения и JVM unit-тесты (этап 3
+# роадмапа аудита ChatGPT). Раньше .github/workflows/ci.yml проверял
+# только Python-часть; изменения в TerminalActivity.kt / sshproxy /
+# tunnel / gallery оставались без автоматической проверки.
+#
+# Отдельный workflow (не ci.yml): Python и Android — разные экосистемы
+# (Windows vs Ubuntu, pip vs Gradle), их удобнее держать раздельно и
+# запускать параллельно.
+
+name: Android CI
+
+on:
+  push:
+    # audit/refact — временная рабочая ветка аудита: её пуши тоже гоняют CI.
+    # Убрать из списка после слияния ветки в main.
+    branches: [main, audit/refact]
+  pull_request:
+  workflow_dispatch:
+
+# Новый push в ту же ветку отменяет ещё идущий прогон.
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Android build + unit tests (Ubuntu, JDK 17)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: ${{ github.workspace }}/android-sdk
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+    steps:
+      - uses: actions/checkout@v4
+
+      # AGP 8.5.2 (android/build.gradle.kts) и Gradle 9.3.0 требуют JDK 17.
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Ручная установка SDK (вместо стороннего android-actions/setup-android,
+      # который падал): качаем cmdline-tools, принимаем лицензии и ставим
+      # platform/build-tools под compileSdk=34 (app/build.gradle.kts, AGP 8.5.2).
+      # Структура cmdline-tools/latest обязательна для sdkmanager/AGP.
+      - name: Setup Android SDK
+        run: |
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          curl -fL -o "$RUNNER_TEMP/cmdtools.zip" \
+            "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          unzip -q "$RUNNER_TEMP/cmdtools.zip" -d "$ANDROID_HOME/cmdline-tools"
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
+      - name: Настройка Gradle (кэш + валидация wrapper)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: android
+
+      # gradlew лежит в git без exec-бита (mode 100644), поэтому запускаем
+      # через `bash ./gradlew`, а не `./gradlew` — иначе на Ubuntu «Permission
+      # denied». `test` — только JVM unit-тесты (src/test), эмулятор не нужен;
+      # assembleDebug дополнительно проверяет, что весь app-модуль компилируется
+      # и пакуется в APK (с ресурсами и декингом), но не запускает androidTest.
+      - name: JVM unit-тесты
+        working-directory: android
+        run: bash ./gradlew test --stacktrace
+
+      - name: Сборка debug APK
+        working-directory: android
+        run: bash ./gradlew assembleDebug --stacktrace

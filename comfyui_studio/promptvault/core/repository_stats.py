@@ -1,7 +1,4 @@
-"""Статистика галереи для окна статистики: счётчики, топы, гистограммы (SQL).
-
-Миксин GenerationRepository (этап 6.1 -- разрез repository.py).
-"""
+"""Агрегированная статистика галереи: счётчики, топы и SQL-гистограммы."""
 
 from __future__ import annotations
 
@@ -12,7 +9,7 @@ from comfyui_studio.promptvault.core.statistics import HistogramBucket, Statisti
 
 class StatisticsMixin(RepositoryBase):
     # ------------------------------------------------------------
-    # статистика (задача 3.2)
+    # статистика
 
     def get_statistics(self) -> Statistics:
         """Считает агрегированную статистику по всей библиотеке

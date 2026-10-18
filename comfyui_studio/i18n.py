@@ -35,6 +35,10 @@ DEFAULT_LANGUAGE = "ru"
 # ru -> en, только для строк, реально обёрнутых в tr() ниже по коду
 TRANSLATIONS = {
     "en": {
+        "Загрузка интерфейса...": "Loading interface...",
+        "Не удалось загрузить интерфейс. Остановите сервер и запустите его снова.": (
+            "Could not load the interface. Stop the server and start it again."
+        ),
         "Лог последнего запуска ComfyUI": "Last ComfyUI launch log",
         "Тема оформления:": "Theme:",
         "Язык интерфейса:": "Language:",

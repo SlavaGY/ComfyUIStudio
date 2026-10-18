@@ -34,6 +34,7 @@ pytest.importorskip("PySide6.QtCore")
 
 from comfyui_studio.launcher.core import imagine_process  # noqa: E402
 from comfyui_studio.launcher.core import system_monitor as sm
+from comfyui_studio.launcher.core import system_monitor_hardware as hardware
 from comfyui_studio.launcher.core.background import BackgroundTask  # noqa: E402
 from comfyui_studio.launcher.core.comfy_api import QueueState  # noqa: E402
 from comfyui_studio.launcher.ui import remote_controller as rc  # noqa: E402
@@ -374,8 +375,8 @@ def _queue(running_ids=(), pending=0):
 
 class Mon:
     def __init__(self, monkeypatch, spawn):
-        monkeypatch.setattr(sm, "psutil", FakePsutil)
-        monkeypatch.setattr(sm, "pynvml", None)
+        monkeypatch.setattr(hardware, "psutil", FakePsutil)
+        monkeypatch.setattr(hardware, "pynvml", None)
         self.port = 8188
         self.monitor = sm.ResourceMonitor(lambda: self.port, spawn=spawn)
         self.monitor._api = FakeAPI()
@@ -618,8 +619,8 @@ def test_real_threads_comfy_watcher_tick_does_not_block(qtbot):
 
 
 def test_real_threads_resource_monitor_poll_does_not_block(qtbot, monkeypatch):
-    monkeypatch.setattr(sm, "psutil", FakePsutil)
-    monkeypatch.setattr(sm, "pynvml", None)
+    monkeypatch.setattr(hardware, "psutil", FakePsutil)
+    monkeypatch.setattr(hardware, "pynvml", None)
     release = threading.Event()
     got = []
 

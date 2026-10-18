@@ -130,7 +130,7 @@ class ImagineProcess(ManagedProcess):
     (core/comfy_process.py), но без парсинга/трансляции stdout в лог-
     панель лаунчера (Imagine — не ComfyUI, отдельного лог-протокола под
     него пока нет). Вывод перехватывается и при аварийном завершении
-    его хвост пишется в лог (ManagedProcess._watch_exit) — раньше он
+    его хвост пишется в лог (ManagedProcess._stream_output) — раньше он
     уходил в DEVNULL, и ошибка запуска сводилась к «код выхода: 1».
     Общая часть (is_running/exit_code/stop) — в ManagedProcess."""
 
@@ -157,7 +157,7 @@ class ImagineProcess(ManagedProcess):
             "Запуск Imagine: %s (cwd=%s, comfyui=%s:%s, dev=%s)",
             cmd, cwd, self.comfy_host, self.comfy_port, self.dev_mode,
         )
-        return self._spawn_captured(cmd, cwd)
+        return self._spawn_streamed(cmd, cwd)
 
 
 def is_imagine_available(port, timeout=1.0):

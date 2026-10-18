@@ -152,4 +152,4 @@ class RemoteProcess(ManagedProcess):
             "Запуск Remote: %s (cwd=%s, comfyui=%s:%s, imagine_port=%s)",
             cmd, cwd, self.comfy_host, self.comfy_port, self.imagine_port,
         )
-        return self._spawn_captured(cmd, cwd)
+        return self._spawn_streamed(cmd, cwd)

@@ -373,6 +373,106 @@ def test_captured_uses_text_pipe_and_devnull_stdin(monkeypatch):
 
 
 # --------------------------------------------------------------------------
+# _spawn_streamed: построчное чтение с ограниченным хвостом (этап 1 аудита)
+# --------------------------------------------------------------------------
+
+
+def test_streamed_nonzero_exit_logs_output_tail(caplog):
+    p = _Sleeper()
+    code = "import sys; print('boom-stream-line'); sys.exit(3)"
+    p._spawn_streamed([sys.executable, "-c", code])
+    assert _wait_for(lambda: _has_log(caplog, "Sleeper", "завершился с кодом 3"))
+    assert _has_log(caplog, "boom-stream-line")
+
+
+def test_streamed_zero_exit_logs_info_only(caplog):
+    p = _Sleeper()
+    p._spawn_streamed([sys.executable, "-c", "print('fine')"])
+    assert _wait_for(lambda: _has_log(caplog, "Sleeper", "код выхода 0"))
+    assert not any(r.levelno >= logging.ERROR for r in caplog.records)
+
+
+def test_streamed_silent_failure_has_placeholder(caplog):
+    p = _Sleeper()
+    p._spawn_streamed([sys.executable, "-c", "import sys; sys.exit(1)"])
+    assert _wait_for(lambda: _has_log(caplog, "процесс не вывел ничего"))
+
+
+def test_streamed_keeps_only_tail_lines(caplog):
+    """Потоковый читатель не накапливает вывод: ранние строки отбрасываются,
+    в лог аварии попадает только ограниченный хвост."""
+    p = _Sleeper()
+    code = (
+        "import sys; "
+        "print('FIRST-MARKER'); "
+        "[print('filler-%d' % i) for i in range(500)]; "
+        "print('LAST-MARKER'); "
+        "sys.exit(2)"
+    )
+    p._spawn_streamed([sys.executable, "-c", code], tail_lines=50)
+    assert _wait_for(lambda: _has_log(caplog, "завершился с кодом 2"))
+    msg = next(r.getMessage() for r in caplog.records if "завершился с кодом 2" in r.getMessage())
+    assert "LAST-MARKER" in msg
+    assert "FIRST-MARKER" not in msg
+
+
+def test_streamed_output_tail_is_truncated(caplog):
+    p = _Sleeper()
+    code = "import sys; print('B' * 9000 + 'END'); sys.exit(2)"
+    p._spawn_streamed([sys.executable, "-c", code])
+    assert _wait_for(lambda: _has_log(caplog, "завершился с кодом 2"))
+    msg = next(r.getMessage() for r in caplog.records if "завершился с кодом 2" in r.getMessage())
+    assert msg.count("B") <= managed_process.EXIT_TAIL_CHARS
+    assert "END" in msg
+
+
+def test_streamed_failed_exit_hook_called_for_crash():
+    p = _Recorder()
+    proc = p._spawn_streamed([sys.executable, "-c", "import sys; sys.exit(3)"])
+    assert _wait_for(lambda: p.failed == [(proc.pid, 3)])
+
+
+def test_streamed_failed_exit_hook_not_called_after_stop(caplog):
+    p = _Recorder()
+    p._spawn_streamed(SLEEP_CMD)
+    p.stop()
+    assert _wait_for(lambda: _has_log(caplog, "Recorder", "завершился"))
+    time.sleep(0.3)  # хук вызывается сразу после лога, дать потоку закончить
+    assert p.failed == []
+
+
+def test_streamed_passes_env():
+    p = _Sleeper()
+    env = {**os.environ, "STUDIO_TEST_ENV2": "42"}
+    code = "import os, sys; sys.exit(0 if os.environ.get('STUDIO_TEST_ENV2') == '42' else 5)"
+    proc = p._spawn_streamed([sys.executable, "-c", code], env=env)
+    assert proc.wait(15) == 0
+
+
+def test_streamed_uses_line_buffered_pipe_and_devnull_stdin(monkeypatch):
+    captured = {}
+
+    class P:
+        pid = 1
+        stdout = None
+
+        def __init__(self, cmd, **kw):
+            captured.update(kw)
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(managed_process.subprocess, "Popen", P)
+    _Sleeper()._spawn_streamed(["x"], cwd="/w")
+    assert captured["stdout"] == subprocess.PIPE
+    assert captured["stderr"] == subprocess.STDOUT
+    assert captured["stdin"] == subprocess.DEVNULL
+    assert captured["text"] is True and captured["encoding"] == "utf-8"
+    assert captured["errors"] == "replace" and captured["cwd"] == "/w"
+    assert captured["bufsize"] == 1
+
+
+# --------------------------------------------------------------------------
 # ImagineProcess / RemoteProcess
 # --------------------------------------------------------------------------
 

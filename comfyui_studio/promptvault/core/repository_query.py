@@ -1,8 +1,6 @@
-"""Чтение из БД: выборки, подсчёты, фильтрация, списки значений для фильтров.
+"""Выборки, подсчёты и списки значений для фильтров GenerationRepository.
 
-Миксин GenerationRepository (этап 6.1 -- разрез repository.py). Вся работа
-идёт через `self._conn`; ничего не пишет ни в БД, ни на диск.
-"""
+Операции чтения используют self._conn, не изменяя БД или файлы."""
 
 from __future__ import annotations
 
@@ -21,23 +19,9 @@ class QueryMixin(RepositoryBase):
     # ------------------------------------------------------------
     # загрузка
 
-    # соответствует SELECT-списку, разделяемому load_generations,
-    # load_generations_page и get_generation — вынесен один раз, чтобы
-    # три места не могли рассинхронизироваться по набору колонок
-    #
-    # ВАЖНО: g.extra_data сюда НЕ включён (задача: память). Это все
-    # "незнакомые" верхнеуровневые ключи исходного JSON (см.
-    # KNOWN_KEYS в app/core/parser.py) — для генераторов вроде ComfyUI
-    # там обычно лежит целиком workflow/граф нод, который может весить
-    # сотни КБ — единицы МБ НА ФАЙЛ. При этом extra_data нигде в
-    # приложении не читается (см. get_generation_extra_data ниже —
-    # единственная точка доступа, вызывается по требованию). Раньше
-    # это поле парсилось и висело в памяти для КАЖДОЙ генерации в
-    # каждом объекте Generation, включая держащиеся месяцами
-    # self.generations/self.filtered_generations в GalleryManager —
-    # на библиотеке из тысяч генераций именно это было основным
-    # источником "жрёт гигабайты ОЗУ", а не сам список Generation
-    # (без extra_data один объект — единицы КБ).
+    # Общий список колонок не даёт разойтись схемам трёх методов чтения.
+    # extra_data может содержать большой workflow, поэтому загружается
+    # отдельно через get_generation_extra_data, только по запросу.
     _GENERATION_SELECT = """
         SELECT g.id, g.path, g.model, g.sampler, g.cfg, g.steps,
                g.timestamp, g.generation_time, g.positive, g.negative,
@@ -73,19 +57,11 @@ class QueryMixin(RepositoryBase):
         return cls._like_escape(prefix) + "%"
 
     def load_generations(self, folder: str | Path) -> list[Generation]:
-        """Загружает все генерации, реально лежащие внутри указанной
-        папки (включая вложенные), одним пакетом запросов (без N+1 —
-        отдельные bulk-запросы для loras/images).
+        """Загружает генерации внутри папки и её подпапок.
 
-        Фильтрация идёт по фактическому текущему path каждой записи
-        (SQL LIKE по индексированной колонке path, а не построчным
-        разбором в Python — см. «Известные ограничения» в удалённом
-        tools/promptvault/TODO.md, git-история, в версиях приложения до задачи 3.3), а не по тому, под какой
-        папкой её когда-то просканировали — так открытие вложенной
-        подпапки корректно показывает только её содержимое, даже если
-        родительская папка уже была просканирована раньше (а path мог
-        с тех пор переехать).
-        """
+        Фильтрация по текущему path через SQL LIKE позволяет независимо открывать
+        вложенные папки и сохранять корректность после перемещения файлов.
+        Связанные LoRA и изображения читаются пакетами, без N+1-запросов."""
 
         pattern = self._folder_like_pattern(folder)
 
@@ -116,12 +92,10 @@ class QueryMixin(RepositoryBase):
         offset: int,
         limit: int,
     ) -> list[Generation]:
-        """Загружает одну "страницу" генераций внутри папки (SQL
-        LIMIT/OFFSET), отсортированную так же, как и load_generations
-        (по timestamp DESC) — используется для ленивой/постраничной
-        загрузки больших библиотек (см. GalleryManager._load_next_page),
-        чтобы открытие папки не блокировало UI одним огромным запросом.
-        """
+        """Загружает страницу генераций папки через SQL LIMIT/OFFSET.
+
+        Порядок совпадает с load_generations: timestamp DESC. Запрос не загружает
+        остальную библиотеку в память."""
 
         pattern = self._folder_like_pattern(folder)
 
@@ -134,16 +108,7 @@ class QueryMixin(RepositoryBase):
         return self._build_generations(rows)
 
     # ------------------------------------------------------------
-    # фильтрация/сортировка на стороне SQL (задача: перенос
-    # GenerationFilter/GenerationSorter на SQL — Этап 1)
-    #
-    # В отличие от load_generations/load_generations_page (фильтруют
-    # только по пути), эти методы дополнительно применяют FilterOptions
-    # и SortMode ЦЕЛИКОМ в самом SQL-запросе (см. GenerationFilterSQL/
-    # GenerationSorterSQL) — раньше это делалось построчным разбором в
-    # Python над уже загруженным в память полным списком генераций
-    # папки (см. GenerationFilter.apply/GenerationSorter.sort), даже
-    # если сама загрузка из БД уже была постраничной.
+    # Фильтрация по пути, FilterOptions и SortMode выполняется в SQL.
 
     def count_filtered(self, folder: str | Path, options: FilterOptions) -> int:
         """Считает генерации папки, проходящие все условия options, без
@@ -171,12 +136,10 @@ class QueryMixin(RepositoryBase):
         offset: int = 0,
         limit: int = 500,
     ) -> list[Generation]:
-        """Основной метод виртуальной пагинации (задача: настоящая
-        виртуальная пагинация — Этап 2): возвращает уже отфильтрованную
-        (по всем условиям options) и отсортированную (sort_mode,
-        избранные первыми) страницу генераций папки — SQL WHERE +
-        ORDER BY + LIMIT/OFFSET одним запросом, без разбора в Python и
-        без загрузки остальных страниц."""
+        """Возвращает отфильтрованную и отсортированную страницу папки.
+
+        WHERE, ORDER BY и LIMIT/OFFSET выполняются одним SQL-запросом; избранные
+        идут первыми. Остальные страницы не загружаются."""
 
         pattern = self._folder_like_pattern(folder)
         extra_where, extra_params = GenerationFilterSQL.build_where(options)

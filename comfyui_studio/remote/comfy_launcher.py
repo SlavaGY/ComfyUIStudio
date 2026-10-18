@@ -54,13 +54,13 @@ _comfy_client = ComfyAPIClient()
 class _RemoteComfyProcess(ManagedProcess):
     """`cmd.exe /c <launch_script>`, запущенный из Remote (см. докстринг
     модуля). Ненулевой код выхода, не вызванный stop(), превращается в
-    короткое сообщение для телефона (`_last_error`); полный вывод процесса
-    пишет в лог-файл Studio сам ManagedProcess."""
+    короткое сообщение для телефона (`_last_error`); хвост вывода при
+    аварии пишет в лог Studio сам ManagedProcess."""
 
     label = "ComfyUI"
 
     def start(self, launch_script, cwd, env):
-        self._spawn_captured(["cmd.exe", "/c", launch_script], cwd=cwd, env=env)
+        self._spawn_streamed(["cmd.exe", "/c", launch_script], cwd=cwd, env=env)
 
     def _on_failed_exit(self, proc, code):
         global _last_error

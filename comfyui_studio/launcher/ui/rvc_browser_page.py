@@ -50,8 +50,14 @@ class RvcBrowserPage(BrowserPage):
         # находило свой API. Кэш чистим и отключаем: страницы локальные,
         # выигрыша от кэша нет.
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.NoCache)
-        profile.clearHttpCache()
         profile.downloadRequested.connect(self._on_download_requested)
+        self._profile_ready = False
+        profile.clearHttpCacheCompleted.connect(self._on_cache_cleared)
+        profile.clearHttpCache()
+
+    def _on_cache_cleared(self):
+        self._profile_ready = True
+        self._load_pending_page()
 
     def _on_download_requested(self, download):
         downloads = QStandardPaths.writableLocation(QStandardPaths.DownloadLocation)

@@ -24,6 +24,7 @@ import importlib.util
 import subprocess
 import sys
 import threading
+from collections import deque
 
 from .logging_setup import log
 
@@ -31,6 +32,10 @@ from .logging_setup import log
 # аварийном завершении: хватает на traceback обычной длины и не
 # раздувает лог-файл при зацикленных ошибках запуска.
 EXIT_TAIL_CHARS = 4000
+
+# Сколько последних строк вывода долгоживущего сервиса держать в памяти
+# (_spawn_streamed): хвост для лога при аварии, без накопления всего stdout.
+STREAM_TAIL_LINES = 200
 
 
 def find_missing_modules(names):
@@ -153,6 +158,10 @@ class ManagedProcess:
 
         Раньше вывод уходил в DEVNULL, и любая ошибка запуска сводилась
         к «код выхода: 1» без единой подсказки.
+
+        ВАЖНО: читает ВЕСЬ stdout одним read() до завершения процесса,
+        поэтому годится только для короткоживущих утилит. Долгоживущие
+        сервисы (Imagine/Remote/...) должны использовать _spawn_streamed().
         """
         proc = self._spawn(
             cmd,
@@ -204,6 +213,66 @@ class ManagedProcess:
         Вызывается из фонового потока _watch_exit после записи в лог. По
         умолчанию ничего не делает; потомок может, например, запомнить
         короткое сообщение об ошибке для показа пользователю."""
+
+    def _spawn_streamed(self, cmd, cwd=None, env=None, tail_lines=STREAM_TAIL_LINES):
+        """Popen с ПОСТРОЧНЫМ чтением вывода (текст, UTF-8) вместо
+        _spawn_captured(): в памяти держится только ограниченный хвост из
+        `tail_lines` строк, а не весь stdout. Для долгоживущих сервисов
+        (Imagine, Imagine Pony, Remote, Remote-запуск ComfyUI), чей вывод
+        иначе копится всю сессию. По завершении хвост при аварии пишется
+        в лог -- тот же контракт, что у _watch_exit (см. _stream_output)."""
+        proc = self._spawn(
+            cmd,
+            cwd=cwd,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+        threading.Thread(
+            target=self._stream_output, args=(proc, tail_lines), daemon=True
+        ).start()
+        return proc
+
+    def _stream_output(self, proc, tail_lines):
+        """Построчный читатель вывода _spawn_streamed(): как _watch_exit,
+        но не накапливает stdout -- держит только `deque` из последних
+        `tail_lines` строк, по завершении пишет код выхода и (при
+        ненулевом) хвост в лог, затем зовёт _on_failed_exit для аварий,
+        не вызванных stop()."""
+        tail = deque(maxlen=tail_lines)
+        try:
+            if proc.stdout:
+                for line in proc.stdout:
+                    tail.append(line.rstrip("\r\n"))
+        except (OSError, ValueError):
+            log.exception("Не удалось прочитать вывод процесса %s", self.label)
+        finally:
+            if proc.stdout:
+                try:
+                    proc.stdout.close()
+                except (OSError, ValueError):
+                    pass
+        code = proc.wait()
+        if code == 0:
+            log.info("%s (PID %s) завершился, код выхода 0", self.label, proc.pid)
+        else:
+            output = "\n".join(tail)
+            rendered = (
+                output[-EXIT_TAIL_CHARS:]
+                if output
+                else "(процесс не вывел ничего в stdout/stderr)"
+            )
+            log.error(
+                "%s (PID %s) завершился с кодом %s. Вывод процесса:\n%s",
+                self.label, proc.pid, code, rendered,
+            )
+            if proc.pid not in self._stopped_pids:
+                self._on_failed_exit(proc, code)
 
     # -- состояние -------------------------------------------------------
 

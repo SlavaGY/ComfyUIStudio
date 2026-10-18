@@ -33,7 +33,7 @@ BASELINE = {
     "comfyui_studio/launcher/core/comfy_ws.py": 1,
     "comfyui_studio/launcher/core/managed_process.py": 6,
     "comfyui_studio/launcher/core/remote_net.py": 1,
-    "comfyui_studio/launcher/core/system_monitor.py": 3,
+    "comfyui_studio/launcher/core/system_monitor_hardware.py": 3,
     "comfyui_studio/launcher/integration/comfy_theme.py": 1,
     "comfyui_studio/launcher/ui/remote_controller.py": 1,
     "comfyui_studio/launcher/ui/settings/prompt_history_page.py": 5,
