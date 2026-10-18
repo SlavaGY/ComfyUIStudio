@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from comfyui_studio.themes.theme_manager import ThemeManager
 
+from ...errors import ProcessStartError
 from ..core.config import validate_portable_root
 from ..core.config_store import ConfigStore
 from ..core.external_apps import (
@@ -36,7 +37,8 @@ from ..core.external_apps import (
     launch_external_app,
     resolve_external_launch,
 )
-from ..core.launch_mode import MODES, is_rvc_mode, mode_label, normalize_mode
+from ..core.launch_mode import LM_STUDIO, MODES, is_rvc_mode, mode_label, normalize_mode
+from ..core.lm_studio import launch_lm_studio, lm_studio_executable, validate_lm_studio_executable
 from ..core.logging_setup import log
 from ..integration.tool_registry import IN_PROCESS_WINDOW_FACTORIES, ON_CLOSE_CALLBACKS
 from .settings.app_settings_dialog import AppSettingsDialog
@@ -266,7 +268,10 @@ class SettingsPage(QWidget):
         self.mode_changed.emit(mode)
 
     def _refresh_launch_btn(self):
-        busy = self._rvc_busy if is_rvc_mode(self.selected_mode()) else self._comfy_busy
+        mode = self.selected_mode()
+        busy = False if mode == LM_STUDIO else (
+            self._rvc_busy if is_rvc_mode(mode) else self._comfy_busy
+        )
         self.launch_btn.setEnabled(not busy)
 
     # -- состояние "сервер уже запущен" --------------------------------
@@ -525,6 +530,19 @@ class SettingsPage(QWidget):
         # сначала сохраняем их, затем берём снимок на момент запуска.
         self.settings_dialog.flush()
         mode = self.selected_mode()
+        if mode == LM_STUDIO:
+            path = lm_studio_executable(self.config.cfg)
+            valid, message = validate_lm_studio_executable(path)
+            if not valid:
+                self.set_status(self._tr(message))
+                return
+            try:
+                launch_lm_studio(path)
+            except ProcessStartError as error:
+                self.set_status(self._tr("Не удалось запустить LM Studio: {}").format(error))
+                return
+            self.set_status(self._tr("Запуск LM Studio в отдельном окне."))
+            return
         if is_rvc_mode(mode):
             # Ultimate RVC не зависит от ComfyUI: папка/скрипт ComfyUI тут
             # не проверяются, запуск ведёт MainWindow через RvcController.

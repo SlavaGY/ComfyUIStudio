@@ -55,6 +55,7 @@ from ...core.logging_setup import log
 from .advanced_page import AdvancedSettingsPage
 from .comfyui_page import ComfyUISettingsPage
 from .general_page import GeneralSettingsPage
+from .lm_studio_page import LmStudioSettingsPage
 from .prompt_builder_page import PromptBuilderSettingsPage
 from .prompt_generator_page import PromptGeneratorSettingsPage
 from .prompt_history_page import PromptHistorySettingsPage
@@ -199,6 +200,7 @@ class AppSettingsDialog(QDialog):
         # свой раздел. Кнопки Запустить/Остановить/Открыть соединяет окно
         # (launcher_window.py) -- диалог процессом не владеет.
         self.rvc_page = RvcSettingsPage(cfg, loc, parent=self)
+        self.lm_studio_page = LmStudioSettingsPage(cfg, loc, parent=self)
 
         # (заголовок дерева, страница) -- см. _add_section ниже; заголовки
         # "ComfyUI"/"Prompt Builder"/"PromptVault" не переводятся -- это
@@ -209,6 +211,7 @@ class AppSettingsDialog(QDialog):
             (self._tr("Общие"), self.general_page),
             ("ComfyUI", self.comfyui_page),
             ("Ultimate RVC", self.rvc_page),
+            ("LM Studio", self.lm_studio_page),
             ("Prompt Builder", self.prompt_builder_page),
             ("PromptVault", self.promptvault_page),
             (self._tr("Генератор промптов"), self.prompt_generator_page),
@@ -226,6 +229,7 @@ class AppSettingsDialog(QDialog):
         self.general_page.language_changed.connect(self._on_language_changed)
         self.comfyui_page.changed.connect(self._schedule_autosave)
         self.rvc_page.changed.connect(self._schedule_autosave)
+        self.lm_studio_page.changed.connect(self._schedule_autosave)
         self.advanced_page.changed.connect(self._schedule_autosave)
         self.advanced_page.reset_confirmed.connect(self._on_reset_confirmed)
         self.advanced_page.quit_requested.connect(self._on_quit_requested)
@@ -298,6 +302,7 @@ class AppSettingsDialog(QDialog):
         changes = {}
         changes.update(self.comfyui_page.collect())
         changes.update(self.rvc_page.collect())
+        changes.update(self.lm_studio_page.collect())
         changes.update(self.advanced_page.collect())
         changes.update(self.remote_page.collect())
         # force_save: config.json пишется при каждом автосохранении, как
@@ -306,6 +311,7 @@ class AppSettingsDialog(QDialog):
         cfg = self.config.cfg
         self.comfyui_page.cfg = cfg
         self.rvc_page.cfg = cfg
+        self.lm_studio_page.cfg = cfg
         self.advanced_page.cfg = cfg
         # Генератор промптов хранит настройки в своём общем файле, не в cfg
         self.prompt_generator_page.save()
@@ -431,6 +437,7 @@ class AppSettingsDialog(QDialog):
             self._tr("Общие"),
             "ComfyUI",
             "Ultimate RVC",
+            "LM Studio",
             "Prompt Builder",
             "PromptVault",
             self._tr("Генератор промптов"),
@@ -443,6 +450,7 @@ class AppSettingsDialog(QDialog):
         self.general_page.retranslate_ui()
         self.comfyui_page.retranslate_ui()
         self.rvc_page.retranslate_ui()
+        self.lm_studio_page.retranslate_ui()
         self.prompt_builder_page.retranslate_ui()
         self.promptvault_page.retranslate_ui()
         self.prompt_generator_page.retranslate_ui()

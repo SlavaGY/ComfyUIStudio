@@ -6,6 +6,7 @@ from comfyui_studio.launcher.core.launch_mode import (
     COMFYUI,
     IMAGINE,
     IMAGINE_PONY,
+    LM_STUDIO,
     MODES,
     RVC,
     RVC_GRADIO,
@@ -17,8 +18,8 @@ from comfyui_studio.launcher.core.launch_mode import (
 )
 
 
-def test_modes_cover_the_four_tools_in_order_plus_original_rvc():
-    assert [v for v, _ in MODES] == [COMFYUI, IMAGINE, IMAGINE_PONY, RVC, RVC_GRADIO]
+def test_modes_cover_the_tools_in_order_with_original_interfaces():
+    assert [v for v, _ in MODES] == [COMFYUI, IMAGINE, IMAGINE_PONY, RVC, RVC_GRADIO, LM_STUDIO]
 
 
 def test_old_config_values_are_still_valid():
@@ -42,6 +43,8 @@ def test_family_and_kind():
     assert is_rvc_mode(RVC) and is_rvc_mode(RVC_GRADIO) and not is_comfy_family(RVC)
     assert rvc_process_kind(RVC) == "app" and rvc_process_kind(RVC_GRADIO) == "gradio"
     assert rvc_process_kind(COMFYUI) is None
+    assert normalize_mode(LM_STUDIO) == LM_STUDIO
+    assert not is_comfy_family(LM_STUDIO) and not is_rvc_mode(LM_STUDIO)
 
 
 def test_mode_label():

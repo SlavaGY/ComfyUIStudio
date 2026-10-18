@@ -107,6 +107,9 @@ DEFAULT_CONFIG = {
         "launch_args": "",
         "auto_start": False,
     },
+    "lm_studio": {
+        "executable_path": "",
+    },
     "remote": {
         "enabled": False,
         "port": 7861,

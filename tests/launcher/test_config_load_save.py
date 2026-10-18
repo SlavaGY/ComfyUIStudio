@@ -34,11 +34,13 @@ def test_default_config_schema_is_stable():
     assert set(d) == {
         "root_path", "script", "port", "disable_auto_launch", "sync_comfy_theme",
         "interface", "imagine", "imagine_pony", "env_vars", "log_level", "remote",
-            "rvc",  # Ultimate RVC (этап RVC-1), см. docs/history/RVC_APPLY.md
+        "rvc",  # Ultimate RVC (этап RVC-1), см. docs/history/RVC_APPLY.md
+        "lm_studio",
     }
     assert d["port"] == 8188
     assert d["interface"] == "comfyui"
     assert d["log_level"] == "INFO"
+    assert d["lm_studio"] == {"executable_path": ""}
     assert d["imagine"] == {"port": 7860, "dev_mode": False}
     assert d["imagine_pony"] == {"port": 7862}  # 7860 -- Imagine, 7861 -- Remote
     assert d["remote"] == {

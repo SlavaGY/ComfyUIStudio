@@ -35,6 +35,16 @@ DEFAULT_LANGUAGE = "ru"
 # ru -> en, только для строк, реально обёрнутых в tr() ниже по коду
 TRANSLATIONS = {
     "en": {
+        "LM Studio (оригинал)": "LM Studio (original)",
+        "LM Studio открывается в собственном окне с оригинальным интерфейсом. Модели и чаты остаются в LM Studio. Закрытие Studio не закрывает LM Studio.": "LM Studio opens in its own window with its original interface. Models and chats remain in LM Studio. Closing Studio does not close LM Studio.",
+        "Для запуска выберите «LM Studio (оригинал)» в списке рядом с кнопкой «Запустить» на главном экране.": "To launch, select 'LM Studio (original)' next to the Launch button on the home screen.",
+        "Исполняемый файл LM Studio:": "LM Studio executable:",
+        "Исполняемый файл LM Studio": "LM Studio executable",
+        "Укажите путь к LM Studio.exe в настройках LM Studio.": "Set the path to LM Studio.exe in LM Studio settings.",
+        "Файл LM Studio не найден. Проверьте путь в настройках LM Studio.": "LM Studio file not found. Check the path in LM Studio settings.",
+        "Выберите исполняемый файл LM Studio.exe.": "Select the LM Studio.exe executable.",
+        "Не удалось запустить LM Studio: {}": "Failed to launch LM Studio: {}",
+        "Запуск LM Studio в отдельном окне.": "Launching LM Studio in a separate window.",
         "Загрузка интерфейса...": "Loading interface...",
         "Не удалось загрузить интерфейс. Остановите сервер и запустите его снова.": (
             "Could not load the interface. Stop the server and start it again."
