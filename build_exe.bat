@@ -1,5 +1,10 @@
 @echo off
+chcp 65001 >nul
 setlocal enabledelayedexpansion
+
+:: Match the UTF-8 batch file and Python output to the console code page.
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 
 :: ==============================================================
 :: build_exe.bat -- сборка ВСЕГО комплекта ComfyUI Studio ОДНИМ exe
