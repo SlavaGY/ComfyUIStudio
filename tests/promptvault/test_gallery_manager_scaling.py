@@ -13,7 +13,7 @@ import zipfile
 
 import pytest
 
-import comfyui_studio.promptvault.core.gallery_manager as gallery_manager_module
+import comfyui_studio.promptvault.core.gallery_base as gallery_base_module
 from comfyui_studio.promptvault.core.gallery_manager import GalleryManager
 from comfyui_studio.promptvault.core.repository import GenerationRepository
 
@@ -73,7 +73,7 @@ class TestLazyPagination:
 
     def test_first_page_available_synchronously(self, gallery, qapp, monkeypatch):
 
-        monkeypatch.setattr(gallery_manager_module, "GENERATIONS_PAGE_SIZE", 2)
+        monkeypatch.setattr(gallery_base_module, "GENERATIONS_PAGE_SIZE", 2)
 
         gm, folder = gallery
 
@@ -93,7 +93,7 @@ class TestLazyPagination:
         должно оказаться в памяти, пока это явно не запрошено —
         независимо от того, сколько обработано событий Qt."""
 
-        monkeypatch.setattr(gallery_manager_module, "GENERATIONS_PAGE_SIZE", 2)
+        monkeypatch.setattr(gallery_base_module, "GENERATIONS_PAGE_SIZE", 2)
 
         gm, folder = gallery
 
@@ -110,7 +110,7 @@ class TestLazyPagination:
 
     def test_load_more_filtered_appends_next_page(self, gallery, qapp, monkeypatch):
 
-        monkeypatch.setattr(gallery_manager_module, "GENERATIONS_PAGE_SIZE", 2)
+        monkeypatch.setattr(gallery_base_module, "GENERATIONS_PAGE_SIZE", 2)
 
         gm, folder = gallery
 
@@ -132,7 +132,7 @@ class TestLazyPagination:
 
     def test_load_more_filtered_emits_only_new_page(self, gallery, monkeypatch):
 
-        monkeypatch.setattr(gallery_manager_module, "GENERATIONS_PAGE_SIZE", 2)
+        monkeypatch.setattr(gallery_base_module, "GENERATIONS_PAGE_SIZE", 2)
 
         gm, folder = gallery
 
@@ -157,7 +157,7 @@ class TestLazyPagination:
 
     def test_switching_folder_resets_pagination_state(self, gallery, qapp, monkeypatch):
 
-        monkeypatch.setattr(gallery_manager_module, "GENERATIONS_PAGE_SIZE", 1)
+        monkeypatch.setattr(gallery_base_module, "GENERATIONS_PAGE_SIZE", 1)
 
         gm, folder = gallery
 

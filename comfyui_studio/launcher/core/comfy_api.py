@@ -1,30 +1,11 @@
-"""
-HTTP-клиент к API ComfyUI (этап 6 дорожной карты — HTTP API abstraction).
+"""HTTP-клиент ComfyUI: готовность, очередь, история и системные метрики.
 
-До этого этапа здесь был "зачаток" слоя — набор свободных функций
-(fetch_queue_status/fetch_history_ids/count_steps_in_prompt/is_port_open),
-вызываемых напрямую из UI-кода (LaunchWatcher, ResourceMonitor). Этап 6
-собирает их в класс ComfyAPIClient и расширяет чисто по HTTP, БЕЗ
-изменения транспорта (никакого /ws здесь нет — см. этап 7): та же
-логика опроса, что и раньше, просто за общим фасадом с явными
-методами и типизированными результатами вместо словарей.
+Модуль использует urllib/json и не зависит от Qt. WebSocket-клиент
+импортируется лениво в subscribe_websocket.
 
-Свободные функции (is_port_open, fetch_queue_status, fetch_history_ids,
-count_steps_in_prompt) сохранены как есть — это чистая логика без
-побочных эффектов вне сети, ComfyAPIClient вызывает их же внутри, а не
-дублирует. Стадия 0 дорожной карты отдельно называла именно эти
-функции первыми кандидатами на unit-тесты (чистая логика, без
-Qt-зависимостей) — см. tests/launcher/test_comfy_api.py.
-
-ComfyAPIClient статeless по HTTP-соединению (обычный urllib на каждый
-вызов, без держащегося сокета/сессии), но не по порту: порт можно
-задать один раз в конструкторе (случай LaunchWatcher — порт фиксирован
-на всю сессию запуска, известен из cfg) или передавать в каждый вызов
-отдельно (случай ResourceMonitor — текущий порт решает внешний
-callback в MainWindow._get_running_port и может быть None, если
-ComfyUI сейчас не запущен). Явный port= в вызове метода всегда
-перекрывает self.port.
-"""
+Порт задаётся в конструкторе или явно в вызове; явное значение имеет
+приоритет. Разрешение текущего порта остаётся у вызывающего кода,
+чтобы отличать остановленный процесс от ошибки сетевого запроса."""
 
 import json
 import urllib.error
@@ -68,11 +49,7 @@ def count_steps_in_prompt(prompt_dict):
 
 
 def _fetch_json(url, timeout):
-    """Общий каркас GET-запроса + разбор JSON. Возвращает None на любой
-    сетевой/парсинг сбой (недоступный порт, не-JSON ответ, таймаут) —
-    вызывающий код везде трактует None как "сейчас узнать не удалось",
-    не как ошибку, которую нужно поднимать выше (тот же принцип, что и
-    в исходных fetch_queue_status/fetch_history_ids до этапа 6)."""
+    """GET с разбором JSON; None означает сетевую ошибку или ошибку разбора."""
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
@@ -132,13 +109,12 @@ def fetch_history_ids(port, timeout=1.5):
 
 
 # --------------------------------------------------------------------------
-# Типизированные результаты (этап 6)
+# Типизированные результаты
 # --------------------------------------------------------------------------
 
 @dataclass
 class QueueState:
-    """Состояние очереди ComfyUI -- то же, что раньше возвращалось словарём
-    из fetch_queue_status(), но именованными полями."""
+    """Число выполняемых и ожидающих заданий, их идентификаторы и объёмы шагов."""
     running: int
     pending: int
     running_ids: set
@@ -147,18 +123,11 @@ class QueueState:
 
 @dataclass
 class SystemStats:
-    """Ответ /system_stats ComfyUI (новый эндпоинт для этапа 6 -- не
-    опрашивался нигде до этого этапа). Смоделированы только поля,
-    которые реально нужны сейчас (см. этап 8 -- "какие модели
-    используются" по VRAM per-device); остальное остаётся доступным
-    через raw, а не раздувается в дополнительные именованные поля
-    заранее. ВАЖНО: точный набор ключей ComfyUI не зафиксирован здесь
-    контрактом (в песочнице разработки нет запущенного ComfyUI, чтобы
-    сверить реальный ответ живьём) -- from_response() поэтому
-    защищается через .get() везде и не падает, если какого-то поля нет
-    или структура чуть отличается между версиями ComfyUI; при первом
-    реальном использовании (этап 8) стоит свериться с фактическим
-    ответом на машине пользователя."""
+    """Системные сведения и устройства из /system_stats ComfyUI.
+
+    Именованные поля содержат используемые клиентом сведения; полный ответ
+    доступен в raw. Отсутствующие и отличающиеся между версиями поля
+    обрабатываются через .get() и проверку типов в from_response."""
     os: str | None = None
     python_version: str | None = None
     comfyui_version: str | None = None
@@ -182,22 +151,11 @@ class SystemStats:
 
 
 class ComfyAPIClient:
-    """Фасад HTTP-опроса ComfyUI (этап 6 дорожной карты).
+    """HTTP-фасад для проверки готовности ComfyUI, очереди, истории,
+    системных сведений, текущего workflow и зарегистрированных нод.
 
-    Точка роста, описанная в плане этапа 6:
-        get_queue()            -- расширяет fetch_queue_status
-        get_history()          -- расширяет fetch_history_ids
-        get_system_stats()     -- новое: /system_stats
-        get_current_workflow() -- новое: граф сейчас выполняемого задания
-        get_object_info()      -- новое: /object_info
-
-    Критерий готовности этапа: LaunchWatcher и ResourceMonitor (и через
-    него -- ResourceBar/LogPanel/индикатор очереди в TrayIcon/
-    BrowserPage, получающие данные из stats_updated) переведены на эти
-    методы и НЕ используют fetch_queue_status/fetch_history_ids/
-    is_port_open напрямую. Ни одной строчки WebSocket-кода здесь нет --
-    это намеренно, см. этап 7.
-    """
+    WebSocket-клиент создаётся отдельно через ленивый subscribe_websocket;
+    HTTP-методы остаются доступны без Qt."""
 
     def __init__(self, port=None, timeout=DEFAULT_TIMEOUT):
         self.port = port
@@ -256,9 +214,7 @@ class ComfyAPIClient:
         return entries
 
     def get_system_stats(self, port=None, timeout=None):
-        """SystemStats или None. Новый эндпоинт для этапа 6 -- см.
-        предупреждение в докстринге SystemStats про непроверенную живьём
-        схему ответа."""
+        """Возвращает SystemStats или None, если порт неизвестен или опрос не удался."""
         p = self._resolve_port(port)
         if p is None:
             return None
@@ -292,13 +248,11 @@ class ComfyAPIClient:
         return graph if isinstance(graph, dict) else None
 
     def get_object_info(self, node_class=None, port=None, timeout=None):
-        """Словарь зарегистрированных нод из /object_info (все ноды, или
-        одна -- если передан node_class -- через /object_info/{class}),
-        либо None. Тяжёлый эндпоинт (полный /object_info у типичной
-        установки ComfyUI с кастомными нодами -- это сотни/тысячи
-        записей) -- вызывающей стороне (этап 8 -- "состояние custom
-        nodes") стоит кэшировать результат самой, а не опрашивать на
-        каждый тик таймера, как get_queue()/get_history_ids()."""
+        """Возвращает словарь зарегистрированных нод или None при недоступности.
+
+        node_class ограничивает запрос одной нодой. Полный /object_info может быть
+        большим; вызывающей стороне следует кэшировать результат и не запрашивать
+        его на каждом тике таймера."""
         p = self._resolve_port(port)
         if p is None:
             return None
@@ -308,27 +262,12 @@ class ComfyAPIClient:
         return _fetch_json(f"http://127.0.0.1:{p}{path}", timeout or self.timeout)
 
     def subscribe_websocket(self, callback=None, port=None):
-        """Возвращает ComfyWebSocketClient (этап 7 дорожной карты) для
-        текущего порта, или None, если порт неизвестен. callback, если
-        передан, подключается к событию ComfyWebSocketClient.event_received
-        (msg_type: str, payload: dict) -- под конкретные типы событий
-        (progress/executing/executed/...) у клиента есть отдельные
-        именованные сигналы, см. comfy_ws.py.
+        """Создаёт незапущенный ComfyWebSocketClient для выбранного порта.
 
-        Импорт comfy_ws -- НАМЕРЕННО внутри метода, а не на уровне
-        модуля: comfy_ws.py тянет PySide6.QtWebSockets, а сам
-        comfy_api.py остаётся Qt-независимым (см. докстринг модуля и
-        tests/launcher/test_comfy_api.py, которые не требуют PySide6
-        вообще) -- ленивый импорт даёт это только тем вызывающим,
-        которым WebSocket-канал реально нужен, не всем, кто просто
-        импортирует ComfyAPIClient ради HTTP-методов.
-
-        Возвращённый клиент создаётся в состоянии "не запущен" --
-        вызывающая сторона должна вызвать у него .start() сама (см.
-        ComfyWebSocketClient.start/stop), чтобы явно управлять его
-        жизненным циклом (например, привязать к тому же условию
-        "ComfyUI сейчас запущен", что и HTTP-опрос -- см.
-        ResourceMonitor)."""
+        Если порт неизвестен, возвращает None. callback подключается к общему
+        сигналу event_received(str, dict); конкретные события также имеют отдельные
+        сигналы. Вызывающая сторона управляет start()/stop() и временем жизни
+        клиента. Ленивый импорт сохраняет независимость HTTP-клиента от Qt."""
         p = self._resolve_port(port)
         if p is None:
             return None

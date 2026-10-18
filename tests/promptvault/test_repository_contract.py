@@ -1,18 +1,11 @@
-"""Контракт GenerationRepository (этап 6.1: разрез repository.py).
+"""Совместимость публичных вызовов GenerationRepository.
 
-Репозиторий разрезан на несколько модулей (запросы, редактирование,
-экспорт/импорт, статистика), но снаружи это по-прежнему ОДИН класс с
-прежними именами и сигнатурами -- на него опираются GalleryManager,
-folder_sync, main_window и десятки тестов. Здесь это зафиксировано:
+Фиксируются имена параметров, их порядок и значения по умолчанию:
+на них опираются UI, синхронизация папок и менеджер галереи.
+Приватные методы, SQL-константы и размещение класса по внутренним модулям
+не входят в контракт. Аннотации типов проверяет mypy.
 
-1. снимок публичной (и приватной, которой пользуются тесты) поверхности --
-   имена, вид (метод / staticmethod / classmethod) и сигнатуры;
-2. сквозной сценарий через все группы методов: sync -> чтение ->
-   редактирование и история -> массовое обновление -> теги/избранное ->
-   экспорт/импорт -> статистика -> удаление.
-
-Если разрез (или любой будущий рефакторинг) что-то сломает или потеряет,
-упадёт именно этот файл, а не «где-то в галерее».
+Сквозной сценарий проверяет результат работы всех групп операций.
 """
 
 import inspect
@@ -25,104 +18,46 @@ from comfyui_studio.promptvault.core.generation_filter import FilterOptions
 from comfyui_studio.promptvault.core.repository import GenerationRepository
 from comfyui_studio.promptvault.core.sort_options import SortMode
 
-# (имя, вид, сигнатура). Снято с repository.py до разреза.
-SURFACE = [
-    ("__init__", "method", "(self, db_path: 'str | Path | None' = None)"),
-    ("_build_generations", "method", "(self, gen_rows: 'list[tuple]') -> 'list[Generation]'"),
-    ("_folder_like_pattern", "class", "(cls, folder: 'str | Path') -> 'str'"),
-    ("_format_bucket_value", "static", "(value: 'float') -> 'str'"),
-    ("_like_escape", "static", "(value: 'str') -> 'str'"),
-    (
-        "_record_metadata_history",
-        "method",
-        "(self, conn: 'sqlite3.Connection', generation_id: 'int', old_values: 'dict[str, Any]', update_dict: 'dict[str, Any]') -> 'None'",
-    ),
-    (
-        "_sql_histogram",
-        "method",
-        "(self, table: 'str', column: 'str', num_buckets: 'int' = 10) -> 'list[HistogramBucket]'",
-    ),
-    (
-        "_upsert_generation",
-        "method",
-        "(self, folder: 'str', path: 'str', mtime: 'float', data: 'dict[str, Any]', extra_json: 'str') -> 'tuple[int, bool]'",
-    ),
-    ("add_generation_file", "method", "(self, path: 'str | Path') -> 'int | None'"),
-    ("available_custom_tags", "method", "(self, folder: 'str | Path') -> 'set[str]'"),
-    ("available_loras", "method", "(self, folder: 'str | Path') -> 'set[str]'"),
-    ("available_models", "method", "(self, folder: 'str | Path') -> 'set[str]'"),
-    ("available_samplers", "method", "(self, folder: 'str | Path') -> 'set[str]'"),
-    ("close", "method", "(self) -> 'None'"),
-    ("count_filtered", "method", "(self, folder: 'str | Path', options: 'FilterOptions') -> 'int'"),
-    ("count_generations", "method", "(self, folder: 'str | Path') -> 'int'"),
-    ("delete_generation", "method", "(self, generation_id: 'int', delete_files: 'bool' = False) -> 'bool'"),
-    (
-        "export_generations_zip",
-        "method",
-        "(self, generation_ids: 'list[int]', zip_path: 'str | Path', include_previews: 'bool' = True) -> 'int'",
-    ),
-    ("get_custom_tags", "method", "(self, generation_id: 'int') -> 'list[str]'"),
-    ("get_filtered_ids", "method", "(self, folder: 'str | Path', options: 'FilterOptions') -> 'list[int]'"),
-    ("get_generation", "method", "(self, generation_id: 'int') -> 'Generation | None'"),
-    ("get_generation_extra_data", "method", "(self, generation_id: 'int') -> 'dict'"),
-    ("get_metadata_history", "method", "(self, generation_id: 'int') -> 'list[dict[str, Any]]'"),
-    ("get_statistics", "method", "(self) -> 'Statistics'"),
-    ("import_user_data", "method", "(self, other_db_path: 'str | Path') -> 'tuple[int, int]'"),
-    (
-        "load_filtered_page",
-        "method",
-        "(self, folder: 'str | Path', options: 'FilterOptions', sort_mode: 'SortMode', offset: 'int' = 0, limit: 'int' = 500) -> 'list[Generation]'",
-    ),
-    ("load_generations", "method", "(self, folder: 'str | Path') -> 'list[Generation]'"),
-    ("load_generations_page", "method", "(self, folder: 'str | Path', offset: 'int', limit: 'int') -> 'list[Generation]'"),
-    ("set_custom_tags", "method", "(self, generation_id: 'int', tags: 'list[str]') -> 'None'"),
-    ("set_favorite", "method", "(self, generation_id: 'int', value: 'bool') -> 'None'"),
-    ("set_rating", "method", "(self, generation_id: 'int', value: 'int') -> 'None'"),
-    ("sync_folder", "method", "(self, folder: 'str | Path') -> 'bool'"),
-    ("update_generation", "method", "(self, generation_id: 'int', update_dict: 'dict[str, Any]') -> 'bool'"),
-    ("update_generations", "method", "(self, generation_ids: 'list[int]', update_dict: 'dict[str, Any]') -> 'list[int]'"),
+# Сигнатуры вызовов существующих потребителей; новые методы допустимы.
+PUBLIC_SIGNATURES = [
+    ('__init__', '(self, db_path=None)'),
+    ('add_generation_file', '(self, path)'),
+    ('available_custom_tags', '(self, folder)'),
+    ('available_loras', '(self, folder)'),
+    ('available_models', '(self, folder)'),
+    ('available_samplers', '(self, folder)'),
+    ('close', '(self)'),
+    ('count_filtered', '(self, folder, options)'),
+    ('count_generations', '(self, folder)'),
+    ('delete_generation', '(self, generation_id, delete_files=False)'),
+    ('export_generations_zip', '(self, generation_ids, zip_path, include_previews=True)'),
+    ('get_custom_tags', '(self, generation_id)'),
+    ('get_filtered_ids', '(self, folder, options)'),
+    ('get_generation', '(self, generation_id)'),
+    ('get_generation_extra_data', '(self, generation_id)'),
+    ('get_metadata_history', '(self, generation_id)'),
+    ('get_statistics', '(self)'),
+    ('import_user_data', '(self, other_db_path)'),
+    ('load_filtered_page', '(self, folder, options, sort_mode, offset=0, limit=500)'),
+    ('load_generations', '(self, folder)'),
+    ('load_generations_page', '(self, folder, offset, limit)'),
+    ('set_custom_tags', '(self, generation_id, tags)'),
+    ('set_favorite', '(self, generation_id, value)'),
+    ('set_rating', '(self, generation_id, value)'),
+    ('sync_folder', '(self, folder)'),
+    ('update_generation', '(self, generation_id, update_dict)'),
+    ('update_generations', '(self, generation_ids, update_dict)'),
 ]
 
-CLASS_ATTRIBUTES = ["_GENERATION_SELECT", "_JSON_FIELD_MAP"]
 
-
-def _kind(name):
-    raw = inspect.getattr_static(GenerationRepository, name)
-    if isinstance(raw, staticmethod):
-        return "static", raw.__func__
-    if isinstance(raw, classmethod):
-        return "class", raw.__func__
-    return "method", raw
-
-
-@pytest.mark.parametrize("name, kind, signature", SURFACE, ids=[row[0] for row in SURFACE])
-def test_public_surface_is_unchanged(name, kind, signature):
-    actual_kind, fn = _kind(name)
-    assert actual_kind == kind
-    assert str(inspect.signature(fn)) == signature
-
-
-@pytest.mark.parametrize("name", CLASS_ATTRIBUTES)
-def test_class_level_sql_constants_are_reachable(name):
-    assert isinstance(getattr(GenerationRepository, name), (str, dict))
-
-
-def test_no_unlisted_methods_appeared():
-    """Новый метод -- осознанное решение: его надо добавить в SURFACE."""
-    known = {row[0] for row in SURFACE} | set(CLASS_ATTRIBUTES)
-    actual = {
-        n
-        for n in dir(GenerationRepository)
-        if not (n.startswith("__") and n != "__init__") and n not in ("_abc_impl",)
-    }
-    # служебные атрибуты базовых классов (аннотации и т.п.) не считаем
-    actual = {n for n in actual if callable(getattr(GenerationRepository, n)) or n in CLASS_ATTRIBUTES}
-    assert actual == known, f"лишнее: {actual - known}, пропало: {known - actual}"
-
-
-def test_class_is_defined_in_repository_module():
-    """Импортируют именно отсюда (GalleryManager, folder_sync, main_window)."""
-    assert GenerationRepository.__module__ == "comfyui_studio.promptvault.core.repository"
+@pytest.mark.parametrize("name, expected", PUBLIC_SIGNATURES, ids=[row[0] for row in PUBLIC_SIGNATURES])
+def test_public_call_signature(name, expected):
+    signature = inspect.signature(getattr(GenerationRepository, name))
+    call_signature = signature.replace(
+        parameters=[p.replace(annotation=inspect.Parameter.empty) for p in signature.parameters.values()],
+        return_annotation=inspect.Signature.empty,
+    )
+    assert str(call_signature) == expected
 
 
 # --------------------------------------------------------------------------

@@ -24,7 +24,7 @@ import types
 
 import pytest
 
-from comfyui_studio.launcher.core import system_monitor as sm
+from comfyui_studio.launcher.core import system_monitor_hardware as hardware
 from comfyui_studio.launcher.core.comfy_api import QueueState
 from comfyui_studio.launcher.core.system_monitor import (
     ResourceMonitor,
@@ -100,8 +100,8 @@ def _queue(running_ids=(), pending=0, step_totals=None):
 
 class Harness:
     def __init__(self, monkeypatch, nvml=False):
-        monkeypatch.setattr(sm, "psutil", FakePsutil)
-        monkeypatch.setattr(sm, "pynvml", FakeNvml if nvml else None)
+        monkeypatch.setattr(hardware, "psutil", FakePsutil)
+        monkeypatch.setattr(hardware, "pynvml", FakeNvml if nvml else None)
         self.port = None
         # R6: сетевая часть опроса в проде идёт в рабочем потоке; тесты
         # этого файла проверяют ЛОГИКУ, поэтому запуск синхронный.
@@ -157,8 +157,8 @@ def test_poll_with_nvml_adds_gpu_keys(monkeypatch):
 
 
 def test_poll_without_psutil_has_no_cpu_ram_keys(monkeypatch):
-    monkeypatch.setattr(sm, "psutil", None)
-    monkeypatch.setattr(sm, "pynvml", None)
+    monkeypatch.setattr(hardware, "psutil", None)
+    monkeypatch.setattr(hardware, "pynvml", None)
     m = ResourceMonitor(lambda: None)
     got = []
     m.stats_updated.connect(lambda s: got.append(s))

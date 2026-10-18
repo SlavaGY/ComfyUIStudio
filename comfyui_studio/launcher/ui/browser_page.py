@@ -1,14 +1,10 @@
-"""
-Встроенный браузер (WebEngine) со страницей ComfyUI и панелью ресурсов.
-
-Вынесено из comfyui_launcher.py (этап 1 дорожной карты).
-"""
+"""Встроенный WebEngine-браузер ComfyUI и панель ресурсов."""
 
 import json
 import os
 
 from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QPalette
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
@@ -16,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -75,14 +72,14 @@ class BrowserPage(QWidget):
     # другой сервис (Ultimate RVC, см. rvc_browser_page.py) мог показать
     # свой веб-интерфейс в такой же странице со СВОИМ профилем: два
     # QWebEngineProfile с одним именем и одной папкой хранилища мешали бы
-    # друг другу. Значения по умолчанию -- прежние, ComfyUI работает как раньше.
+    # друг другу. Каждый сервис использует собственный профиль.
     PROFILE_NAME = "comfyui_launcher"
     PROFILE_DIR = WEBENGINE_PROFILE_DIR
     SETTINGS_TOOLTIP = "Вернуться к настройкам, не останавливая ComfyUI"
     STOP_TOOLTIP = "Остановить процесс ComfyUI"
 
     # Раздельные сигналы: "Настройки" НЕ останавливает сервер,
-    # "Остановить" — останавливает. Раньше обе кнопки делали одно и то же.
+    # "Остановить" — останавливает сервер.
     settings_requested = Signal()
     stop_requested = Signal()
 
@@ -95,9 +92,7 @@ class BrowserPage(QWidget):
 
         top_bar = QWidget()
         top_bar.setFixedHeight(40)
-        # Раньше цвет был захардкожен (тёмная "шторка браузера" поверх
-        # любой темы) — теперь панель красится тем же QSS, что и весь
-        # остальной интерфейс, и меняется вместе с темой оформления.
+        # Общий QSS задаёт цвет панели в соответствии с темой приложения.
         top_row = QHBoxLayout(top_bar)
         top_row.setContentsMargins(10, 0, 10, 0)
 
@@ -126,10 +121,19 @@ class BrowserPage(QWidget):
         self.view = QWebEngineView()
         self.view.setContextMenuPolicy(Qt.NoContextMenu)
         self.view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout.addWidget(self.view)
+        self._browser_stack = QStackedWidget()
+        self._loading_label = QLabel(self._tr("Загрузка интерфейса..."))
+        self._loading_label.setAlignment(Qt.AlignCenter)
+        self._loading_label.setWordWrap(True)
+        self._browser_stack.addWidget(self._loading_label)
+        self._browser_stack.addWidget(self.view)
+        layout.addWidget(self._browser_stack)
 
         self._profile = None
         self._page = None
+        self._profile_ready = True
+        self._pending_port = None
+        self._load_failed = False
         # True только когда встроенная страница ComfyUI реально
         # догрузилась — до этого runJavaScript() либо ничего не найдёт
         # (window.app ещё не создан фронтендом), либо выполнится в
@@ -145,18 +149,39 @@ class BrowserPage(QWidget):
         self.stop_btn.setText(self._tr("\u23F9 Остановить"))
         self.stop_btn.setToolTip(self._tr(self.STOP_TOOLTIP))
         self.resource_bar.retranslate_ui()
+        self._update_loading_text()
 
     def load(self, port):
+        self._pending_port = port
+        self._page_ready = False
+        self._load_failed = False
+        self._update_loading_text()
+        self._browser_stack.setCurrentWidget(self._loading_label)
+        self.address_label.setText(f"http://127.0.0.1:{port}/")
         if self._profile is None:
             os.makedirs(self.PROFILE_DIR, exist_ok=True)
             self._profile = QWebEngineProfile(self.PROFILE_NAME, self.view)
             self._profile.setPersistentStoragePath(self.PROFILE_DIR)
             self._on_profile_created(self._profile)
 
+        self._load_pending_page()
+
+    def _load_pending_page(self):
+        # Очистка профиля асинхронная: навигация до её завершения может
+        # зависнуть. unload() отменяет запрос, даже если профиль ещё готовится.
+        if not self._profile_ready or self._pending_port is None:
+            return
+        port = self._pending_port
+        self._pending_port = None
+        previous_page = self._page
         self._page = RestrictedWebPage(self._profile, "127.0.0.1", port, self.view)
-        self._page_ready = False
-        self._page.loadFinished.connect(self._on_load_finished)
+        self._page.setBackgroundColor(self.palette().color(QPalette.Window))
+        self._page.loadFinished.connect(
+            lambda ok, page=self._page: self._on_page_load_finished(page, ok)
+        )
         self.view.setPage(self._page)
+        if previous_page is not None:
+            previous_page.deleteLater()
         url = f"http://127.0.0.1:{port}/"
         self.address_label.setText(url)
         self.view.load(QUrl(url))
@@ -167,6 +192,20 @@ class BrowserPage(QWidget):
 
     def _on_load_finished(self, ok):
         self._page_ready = bool(ok)
+        self._load_failed = not ok
+        self._update_loading_text()
+        self._browser_stack.setCurrentWidget(self.view if ok else self._loading_label)
+
+    def _on_page_load_finished(self, page, ok):
+        if page is self._page:
+            self._on_load_finished(ok)
+
+    def _update_loading_text(self):
+        text = (
+            "Не удалось загрузить интерфейс. Остановите сервер и запустите его снова."
+            if self._load_failed else "Загрузка интерфейса..."
+        )
+        self._loading_label.setText(self._tr(text))
 
     def apply_color_palette(self, palette_id):
         """Переключает встроенную палитру ComfyUI в УЖЕ открытой странице —
@@ -207,7 +246,9 @@ class BrowserPage(QWidget):
         # Отвязываем страницу от вида перед уничтожением процесса,
         # чтобы не тянуть загрузку "мёртвого" сервера.
         self._page_ready = False
-        if self._profile is not None:
+        self._pending_port = None
+        self._browser_stack.setCurrentWidget(self._loading_label)
+        if self._profile is not None and self._profile_ready:
             self.view.setPage(QWebEnginePage(self._profile, self.view))
         if self._page is not None:
             self._page.deleteLater()

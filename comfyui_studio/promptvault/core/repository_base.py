@@ -1,12 +1,7 @@
-"""Общая основа миксинов GenerationRepository (этап 6.1 -- разрез repository.py).
+"""Общее соединение с SQLite для миксинов GenerationRepository.
 
-Репозиторий разрезан на модули по смыслу (запросы, редактирование,
-экспорт/импорт, статистика, синхронизация с диском), но остаётся ОДНИМ
-классом `repository.GenerationRepository` -- именно его импортируют
-GalleryManager, folder_sync и главное окно. Миксины делят одно
-соединение с БД; объявлено оно здесь, чтобы mypy видел `self._conn` во
-всех частях.
-"""
+Соединение создаётся в GenerationRepository.__init__; все группы операций
+используют один self._conn."""
 
 from __future__ import annotations
 

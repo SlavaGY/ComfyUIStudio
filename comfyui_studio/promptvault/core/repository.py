@@ -1,12 +1,8 @@
-"""GenerationRepository: хранение и синхронизация генераций в SQLite.
+"""Хранение и синхронизация генераций в SQLite.
 
-Класс собран из миксинов (этап 6.1 -- разрез бывшего репозитория на ~1360
-строк): запросы -- repository_query, редактирование/удаление --
-repository_edit, экспорт/импорт -- repository_transfer, статистика --
-repository_stats. Здесь остались соединение с БД и синхронизация с
-диском (sync_folder, _upsert_generation, add_generation_file).
-Публичная поверхность прежняя: см. tests/promptvault/test_repository_contract.py.
-"""
+GenerationRepository объединяет запросы (repository_query), редактирование
+(repository_edit), перенос данных (repository_transfer) и статистику
+(repository_stats). Здесь находятся соединение с БД и синхронизация с диском."""
 
 from __future__ import annotations
 
@@ -27,17 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 class GenerationRepository(TransferMixin, QueryMixin, EditMixin, StatisticsMixin):
-    """Хранит и обновляет данные о генерациях в SQLite.
+    """Хранит данные о генерациях и пользовательские отметки в SQLite.
 
-    Заменяет прежний подход (парсинг всех JSON-файлов при каждом
-    открытии папки + отдельный QSettings-блок для избранного/рейтинга):
-
-    - файлы парсятся один раз и только повторно при реальном
-      изменении (по mtime) — открытие уже просканированной папки
-      почти мгновенное;
-    - избранное/рейтинг обновляются одной точечной SQL-командой
-      вместо перезаписи целого JSON-блока в QSettings.
-    """
+    JSON-файл перечитывается при изменении mtime. Избранное и рейтинг
+    обновляются точечными SQL-запросами."""
 
     def __init__(self, db_path: str | Path | None = None):
         self._conn = connect(db_path)
