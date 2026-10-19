@@ -4,6 +4,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QWindow
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from ..core.native_window import hide_window_frame
+
 
 class LmStudioPage(QWidget):
     settings_requested = Signal()
@@ -40,9 +42,11 @@ class LmStudioPage(QWidget):
             raise RuntimeError("QWindow.fromWinId failed")
         self._window = window
         self._hwnd = hwnd
+        window.setFlag(Qt.FramelessWindowHint, True)
         self._container = QWidget.createWindowContainer(window, self)
         self._container.setFocusPolicy(Qt.StrongFocus)
         self._layout.addWidget(self._container, 1)
+        hide_window_frame(hwnd)
 
     def unload(self):
         if self._window is not None:
