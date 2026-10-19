@@ -228,3 +228,58 @@ def test_process_stop_uses_bound_identity_and_never_reused_pid(monkeypatch):
     identity.is_running.return_value = True
     process.stop()
     terminate.assert_called_once_with(identity, "LM Studio")
+
+
+def test_renderer_header_is_clipped_and_content_keeps_full_height(qtbot):
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QWidget
+
+    from comfyui_studio.launcher.ui.lm_studio_page import LmStudioViewport
+
+    viewport = LmStudioViewport()
+    qtbot.addWidget(viewport)
+    container = QWidget(viewport)
+    viewport.set_container(container)
+    viewport.resize(800, 600)
+    viewport.show()
+    container.show()
+    qtbot.waitUntil(lambda: container.width() == 800)
+    # Regression: hiding WS_CAPTION alone left LM Studio's blue renderer header
+    # and its Close button visible. The entire header must be outside the host.
+    assert container.y() == -30
+    assert container.height() == 630
+    assert not container.visibleRegion().contains(QPoint(10, 10))
+    assert container.visibleRegion().contains(QPoint(10, 30))
+    assert container.geometry().bottom() == viewport.rect().bottom()
+    viewport.resize(1050, 720)
+    qtbot.waitUntil(lambda: container.width() == 1050)
+    assert container.y() == -30
+    assert container.height() == 750
+    viewport.set_container(None)
+
+
+def test_foreign_window_uses_native_container_inside_clipping_viewport(qtbot, monkeypatch):
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QWindow
+
+    from comfyui_studio.launcher.ui import lm_studio_page as mod
+
+    # Use a real Qt window without launching LM Studio. This exercises the
+    # createWindowContainer path; a plain QWidget would miss Qt's native-parent
+    # optimization that otherwise bypasses the viewport and exposes the header.
+    window = QWindow()
+    monkeypatch.setattr(mod, "QWindow", SimpleNamespace(fromWinId=lambda hwnd: window))
+    monkeypatch.setattr(mod, "hide_window_frame", lambda hwnd: None)
+    page = mod.LmStudioPage()
+    qtbot.addWidget(page)
+    page.resize(800, 600)
+    page.show()
+    page.load(123)
+    assert page._container.parentWidget() is page._viewport
+    assert page._container.testAttribute(Qt.WA_NativeWindow)
+    assert page._container.y() == -30
+    assert not page._container.isHidden()
+    page.unload()
+    assert page._viewport._container is None
