@@ -36,7 +36,7 @@ DEFAULT_LANGUAGE = "ru"
 TRANSLATIONS = {
     "en": {
         "LM Studio (оригинал)": "LM Studio (original)",
-        "LM Studio открывается в собственном окне с оригинальным интерфейсом. Модели и чаты остаются в LM Studio. Закрытие Studio не закрывает LM Studio.": "LM Studio opens in its own window with its original interface. Models and chats remain in LM Studio. Closing Studio does not close LM Studio.",
+        "Оригинальное окно LM Studio открывается внутри Studio. Для завершения работы используйте кнопку «Остановить». При выходе из Studio LM Studio также останавливается.": "The original LM Studio window opens inside Studio. Use Stop to shut it down. Exiting Studio also stops LM Studio.",
         "Для запуска выберите «LM Studio (оригинал)» в списке рядом с кнопкой «Запустить» на главном экране.": "To launch, select 'LM Studio (original)' next to the Launch button on the home screen.",
         "Исполняемый файл LM Studio:": "LM Studio executable:",
         "Исполняемый файл LM Studio": "LM Studio executable",
@@ -44,7 +44,13 @@ TRANSLATIONS = {
         "Файл LM Studio не найден. Проверьте путь в настройках LM Studio.": "LM Studio file not found. Check the path in LM Studio settings.",
         "Выберите исполняемый файл LM Studio.exe.": "Select the LM Studio.exe executable.",
         "Не удалось запустить LM Studio: {}": "Failed to launch LM Studio: {}",
-        "Запуск LM Studio в отдельном окне.": "Launching LM Studio in a separate window.",
+        "Запуск LM Studio, ожидание окна...": "Starting LM Studio, waiting for its window...",
+        "LM Studio запущен": "LM Studio is running",
+        "Не удалось открыть окно LM Studio: {}": "Could not open the LM Studio window: {}",
+        "Не удалось дождаться окна LM Studio.": "Timed out waiting for the LM Studio window.",
+        "Окно LM Studio закрыто.": "The LM Studio window was closed.",
+        "Не удалось остановить LM Studio.": "Could not stop LM Studio.",
+        "Встраивание LM Studio поддерживается только в Windows.": "Embedding LM Studio is supported only on Windows.",
         "Загрузка интерфейса...": "Loading interface...",
         "Не удалось загрузить интерфейс. Остановите сервер и запустите его снова.": (
             "Could not load the interface. Stop the server and start it again."

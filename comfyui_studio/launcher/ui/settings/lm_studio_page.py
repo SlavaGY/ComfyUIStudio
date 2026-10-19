@@ -20,8 +20,9 @@ class LmStudioSettingsPage(QWidget):
     changed = Signal()
 
     INTRO = (
-        "LM Studio открывается в собственном окне с оригинальным интерфейсом. "
-        "Модели и чаты остаются в LM Studio. Закрытие Studio не закрывает LM Studio."
+        "Оригинальное окно LM Studio открывается внутри Studio. "
+        "Для завершения работы используйте кнопку «Остановить». "
+        "При выходе из Studio LM Studio также останавливается."
     )
     HINT = (
         "Для запуска выберите «LM Studio (оригинал)» в списке рядом с кнопкой "
@@ -85,6 +86,11 @@ class LmStudioSettingsPage(QWidget):
         section = dict(current) if isinstance(current, dict) else {}
         section["executable_path"] = self.path_edit.text().strip()
         return {"lm_studio": section}
+
+    def set_state(self, state):
+        enabled = state not in ("starting", "running", "failed_active")
+        self.path_edit.setEnabled(enabled)
+        self.browse_btn.setEnabled(enabled)
 
     def retranslate_ui(self):
         self.install_box.setTitle(self._tr("Установка"))

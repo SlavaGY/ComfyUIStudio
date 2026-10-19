@@ -140,3 +140,48 @@ def test_sync_comfy_theme_once_only_when_page_loaded_ok(win):
     win._on_app_theme_applied.assert_not_called()
     win._sync_comfy_theme_once(True)
     win._on_app_theme_applied.assert_called_once_with(win.theme_manager.current_theme())
+
+
+def test_lm_studio_ready_embeds_window_and_switches_page(win):
+    win.lm_studio_page = MagicMock()
+    win.showNormal = MagicMock()
+    win.raise_ = MagicMock()
+    win._show_lm_studio(1234567890123)
+    win.lm_studio_page.load.assert_called_once_with(1234567890123)
+    win.stack.setCurrentWidget.assert_called_once_with(win.lm_studio_page)
+
+
+def test_lm_studio_stop_returns_to_settings_without_stopping_other_services(win):
+    win.lm_studio_page = MagicMock()
+    win.stack.currentWidget.return_value = win.lm_studio_page
+    win._on_lm_studio_state_changed("stopped", "")
+    win.stack.setCurrentWidget.assert_called_once_with(win.settings_page)
+    win.launch_controller.stop.assert_not_called()
+
+
+def test_failed_lm_studio_shutdown_keeps_studio_and_other_services_alive(win):
+    win._quitting = True
+    win.lm_studio = MagicMock()
+    win.lm_studio.stop.return_value = False
+    win.resource_monitor = MagicMock()
+    win.tray = MagicMock()
+    win.showNormal = MagicMock()
+    event = MagicMock()
+    win.closeEvent(event)
+    event.ignore.assert_called_once()
+    event.accept.assert_not_called()
+    win.resource_monitor.stop.assert_not_called()
+    win.tray.hide.assert_not_called()
+    assert not win._quitting
+
+
+def test_minimizing_to_tray_leaves_lm_studio_running(win):
+    win._quitting = False
+    win.lm_studio = MagicMock()
+    win.tray = MagicMock()
+    win.tray.supportsMessages.return_value = False
+    win.hide = MagicMock()
+    event = MagicMock()
+    win.closeEvent(event)
+    win.lm_studio.stop.assert_not_called()
+    event.ignore.assert_called_once()

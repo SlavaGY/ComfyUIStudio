@@ -28,7 +28,6 @@ from PySide6.QtWidgets import (
 
 from comfyui_studio.themes.theme_manager import ThemeManager
 
-from ...errors import ProcessStartError
 from ..core.config import validate_portable_root
 from ..core.config_store import ConfigStore
 from ..core.external_apps import (
@@ -38,7 +37,6 @@ from ..core.external_apps import (
     resolve_external_launch,
 )
 from ..core.launch_mode import LM_STUDIO, MODES, is_rvc_mode, mode_label, normalize_mode
-from ..core.lm_studio import launch_lm_studio, lm_studio_executable, validate_lm_studio_executable
 from ..core.logging_setup import log
 from ..integration.tool_registry import IN_PROCESS_WINDOW_FACTORIES, ON_CLOSE_CALLBACKS
 from .settings.app_settings_dialog import AppSettingsDialog
@@ -58,6 +56,9 @@ class SettingsPage(QWidget):
     rvc_launch_requested = Signal(str)
     rvc_open_requested = Signal()
     rvc_stop_requested = Signal()
+    lm_studio_launch_requested = Signal()
+    lm_studio_open_requested = Signal()
+    lm_studio_stop_requested = Signal()
     language_changed = Signal(str)
     # НОВОЕ: Studio-wide выход/перезапуск, см. ui/settings/advanced_page.py
     # (кнопки "Application") и MainWindow.quit_studio()/restart_studio()
@@ -101,6 +102,7 @@ class SettingsPage(QWidget):
         self._comfy_busy = False
         self._comfy_launching = False
         self._rvc_busy = False
+        self._lm_studio_busy = False
 
         root = QVBoxLayout(self)
 
@@ -139,6 +141,21 @@ class SettingsPage(QWidget):
         rvc_running_row.addWidget(self.rvc_stop_btn)
         root.addWidget(self.rvc_running_bar)
         self.rvc_running_bar.setVisible(False)
+
+        self.lm_studio_running_bar = QWidget()
+        lm_row = QHBoxLayout(self.lm_studio_running_bar)
+        lm_row.setContentsMargins(0, 0, 0, 0)
+        self.lm_studio_running_label = QLabel()
+        lm_row.addWidget(self.lm_studio_running_label)
+        lm_row.addStretch(1)
+        self.lm_studio_open_btn = QPushButton(self._tr("Открыть"))
+        self.lm_studio_open_btn.clicked.connect(self.lm_studio_open_requested.emit)
+        lm_row.addWidget(self.lm_studio_open_btn)
+        self.lm_studio_stop_btn = QPushButton(self._tr("Остановить"))
+        self.lm_studio_stop_btn.clicked.connect(self.lm_studio_stop_requested.emit)
+        lm_row.addWidget(self.lm_studio_stop_btn)
+        root.addWidget(self.lm_studio_running_bar)
+        self.lm_studio_running_bar.hide()
 
         # Единое дерево настроек (этап 4) -- построено сразу, а не лениво
         # по первому открытию: General-страница внутри должна быть готова
@@ -269,10 +286,20 @@ class SettingsPage(QWidget):
 
     def _refresh_launch_btn(self):
         mode = self.selected_mode()
-        busy = False if mode == LM_STUDIO else (
+        busy = self._lm_studio_busy if mode == LM_STUDIO else (
             self._rvc_busy if is_rvc_mode(mode) else self._comfy_busy
         )
         self.launch_btn.setEnabled(not busy)
+
+    def set_lm_studio_state(self, state, message=""):
+        self._lm_studio_busy = state in ("starting", "running", "failed_active")
+        # Keep Stop available after an OS failure to terminate the process.
+        self.lm_studio_running_bar.setVisible(self._lm_studio_busy or state == "failed_active")
+        self.lm_studio_open_btn.setEnabled(state == "running")
+        self.lm_studio_running_label.setText(message)
+        self._refresh_launch_btn()
+        if state == "failed":
+            self.set_status(message)
 
     # -- состояние "сервер уже запущен" --------------------------------
 
@@ -403,6 +430,8 @@ class SettingsPage(QWidget):
         self.launch_btn.setText(self._tr("Запустить"))
         self.rvc_open_btn.setText(self._tr("Открыть"))
         self.rvc_stop_btn.setText(self._tr("Остановить"))
+        self.lm_studio_open_btn.setText(self._tr("Открыть"))
+        self.lm_studio_stop_btn.setText(self._tr("Остановить"))
         self._fill_mode_combo(self.selected_mode())
         self.cancel_launch_btn.setText(self._tr("Отмена"))
         self._refresh_external_status()
@@ -531,17 +560,8 @@ class SettingsPage(QWidget):
         self.settings_dialog.flush()
         mode = self.selected_mode()
         if mode == LM_STUDIO:
-            path = lm_studio_executable(self.config.cfg)
-            valid, message = validate_lm_studio_executable(path)
-            if not valid:
-                self.set_status(self._tr(message))
-                return
-            try:
-                launch_lm_studio(path)
-            except ProcessStartError as error:
-                self.set_status(self._tr("Не удалось запустить LM Studio: {}").format(error))
-                return
-            self.set_status(self._tr("Запуск LM Studio в отдельном окне."))
+            self.set_status("")
+            self.lm_studio_launch_requested.emit()
             return
         if is_rvc_mode(mode):
             # Ultimate RVC не зависит от ComfyUI: папка/скрипт ComfyUI тут

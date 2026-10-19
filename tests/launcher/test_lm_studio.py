@@ -64,14 +64,12 @@ def home(qtbot, monkeypatch, tmp_path):
     return page
 
 
-def test_home_flushes_new_path_and_launches_without_comfy(home, tmp_path, monkeypatch):
-    from comfyui_studio.launcher.ui import settings_page
-
+def test_home_flushes_new_path_and_launches_without_comfy(home, tmp_path):
     exe = tmp_path / "LM Studio.exe"
     exe.touch()
     home.settings_dialog.lm_studio_page.path_edit.setText(str(exe))
     launch = Mock()
-    monkeypatch.setattr(settings_page, "launch_lm_studio", launch)
+    home.lm_studio_launch_requested.connect(launch)
     comfy = Mock()
     rvc = Mock()
     home.launch_requested.connect(comfy)
@@ -80,23 +78,32 @@ def test_home_flushes_new_path_and_launches_without_comfy(home, tmp_path, monkey
     home._refresh_launch_btn()
     assert home.launch_btn.isEnabled()
     home.launch_btn.click()
-    launch.assert_called_once_with(str(exe))
+    launch.assert_called_once_with()
     assert home.config.cfg["lm_studio"]["executable_path"] == str(exe)
     comfy.assert_not_called()
     rvc.assert_not_called()
 
 
-def test_home_launch_error_stays_in_ui(home, tmp_path, monkeypatch):
-    from comfyui_studio.launcher.ui import settings_page
-
-    exe = tmp_path / "LM Studio.exe"
-    exe.touch()
-    home.settings_dialog.lm_studio_page.path_edit.setText(str(exe))
-    monkeypatch.setattr(settings_page, "launch_lm_studio", Mock(side_effect=ProcessStartError("denied")))
-    status = Mock()
-    monkeypatch.setattr(home, "set_status", status)
-    home._on_launch()
-    assert "denied" in status.call_args.args[0]
+def test_home_controls_launch_and_stop_independently(home):
+    stopped = Mock()
+    opened = Mock()
+    home.lm_studio_stop_requested.connect(stopped)
+    home.lm_studio_open_requested.connect(opened)
+    home.set_lm_studio_state("starting", "waiting")
+    assert not home.launch_btn.isEnabled()
+    assert not home.lm_studio_open_btn.isEnabled()
+    assert not home.lm_studio_running_bar.isHidden()
+    home.set_lm_studio_state("running", "running")
+    home.lm_studio_open_btn.click()
+    home.lm_studio_stop_btn.click()
+    opened.assert_called_once_with()
+    stopped.assert_called_once_with()
+    home.set_lm_studio_state("stopped")
+    assert home.launch_btn.isEnabled()
+    assert home.lm_studio_running_bar.isHidden()
+    home.set_lm_studio_state("failed_active", "stop failed")
+    assert home.lm_studio_stop_btn.isEnabled()
+    assert not home.launch_btn.isEnabled()
 
 
 def test_settings_preserve_future_keys_and_retranslate(qtbot):
@@ -109,4 +116,115 @@ def test_settings_preserve_future_keys_and_retranslate(qtbot):
     qtbot.addWidget(page)
     assert page.collect()["lm_studio"] == {"executable_path": "custom.exe", "future": 42}
     assert page.path_label.text() == "LM Studio executable:"
-    assert "original interface" in page.intro_label.text()
+    assert "inside Studio" in page.intro_label.text()
+
+
+@pytest.fixture
+def controller(qtbot):
+    from types import SimpleNamespace
+
+    from comfyui_studio.launcher.ui.lm_studio_controller import LmStudioController
+
+    process = Mock(hwnd=1234567890123)
+    process.poll_window.return_value = None
+    instance = LmStudioController(SimpleNamespace(cfg={}), process_factory=Mock(return_value=process))
+    yield instance, process
+    instance.stop()
+
+
+def test_controller_waits_for_window_and_reuses_existing_instance(controller):
+    instance, process = controller
+    ready = Mock()
+    instance.ready.connect(ready)
+    instance.start()
+    assert instance.state == "starting"
+    ready.assert_not_called()
+    process.poll_window.return_value = process.hwnd
+    instance._check()
+    assert instance.state == "running"
+    ready.assert_called_once_with(process.hwnd)
+    instance.start()
+    process.start.assert_called_once_with()
+    assert ready.call_count == 2
+
+
+def test_controller_stop_releases_native_window_before_termination(controller):
+    instance, process = controller
+    calls = []
+    instance.releasing.connect(lambda: calls.append("release"))
+    process.stop.side_effect = lambda: calls.append("stop")
+    instance.start()
+    assert instance.stop()
+    assert calls == ["release", "stop"]
+    assert instance.state == "stopped"
+    assert not instance._timer.isActive()
+
+
+def test_controller_timeout_stops_process_and_reports_failure(controller):
+    instance, process = controller
+    instance.start()
+    instance._deadline = 0
+    instance._check()
+    assert instance.state == "failed"
+    process.stop.assert_called_once_with()
+    assert not instance._timer.isActive()
+
+
+def test_controller_window_close_cleans_up_process(controller):
+    instance, process = controller
+    process.poll_window.return_value = process.hwnd
+    instance.start()
+    process.poll_window.return_value = None
+    instance._check()
+    assert instance.state == "failed"
+    process.stop.assert_called_once_with()
+
+
+def test_controller_failed_stop_can_be_retried(controller):
+    instance, process = controller
+    instance.start()
+    process.stop.side_effect = ProcessStartError("denied")
+    assert not instance.stop()
+    assert instance.state == "failed_active"
+    assert instance._process is process
+    process.stop.side_effect = None
+    assert instance.stop()
+    assert instance.state == "stopped"
+
+
+def test_controller_launch_failure_reports_error(controller):
+    instance, process = controller
+    process.start.side_effect = ProcessStartError("missing")
+    instance.start()
+    assert instance.state == "failed"
+    assert not instance._timer.isActive()
+
+
+def test_process_adopts_existing_window_without_second_launch(tmp_path, monkeypatch):
+    exe = tmp_path / "LM Studio.exe"
+    exe.touch()
+    monkeypatch.setattr(core, "find_app_window", Mock(return_value=(111, 222)))
+    identity = Mock()
+    monkeypatch.setattr(core.psutil, "Process", Mock(return_value=identity))
+    launch = Mock()
+    monkeypatch.setattr(core, "launch_lm_studio", launch)
+    process = core.LmStudioProcess(str(exe))
+    process.start()
+    assert process.hwnd == 111
+    assert process.identity is identity
+    launch.assert_not_called()
+
+
+def test_process_stop_uses_bound_identity_and_never_reused_pid(monkeypatch):
+    terminate = Mock(return_value=True)
+    monkeypatch.setattr(core, "terminate_process_tree", terminate)
+    process = core.LmStudioProcess("test.exe")
+    identity = Mock()
+    process.identity = identity
+    identity.is_running.return_value = False  # Includes psutil's PID reuse check.
+    process.stop()
+    terminate.assert_not_called()
+    process.identity = identity
+    identity.is_running.return_value = True
+    process.stop()
+    terminate.assert_called_once_with(identity, "LM Studio")
