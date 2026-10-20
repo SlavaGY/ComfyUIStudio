@@ -151,6 +151,25 @@ def test_lm_studio_ready_embeds_window_and_switches_page(win):
     win.stack.setCurrentWidget.assert_called_once_with(win.lm_studio_page)
 
 
+@pytest.mark.parametrize("needs_reload", [True, False])
+def test_lm_studio_same_port_reopens_missing_or_crashed_page(win, needs_reload):
+    win.lm_studio_browser_page = MagicMock()
+    win.lm_studio_browser_page.needs_reload.return_value = needs_reload
+    win._lm_studio_loaded_port = 7864
+    win._show_lm_studio_app(7864)
+    assert win.lm_studio_browser_page.load.call_count == int(needs_reload)
+    win.stack.setCurrentWidget.assert_called_once_with(win.lm_studio_browser_page)
+
+
+def test_lm_studio_failed_stop_allows_reopening_the_existing_web_server(win):
+    win.lm_studio_browser_page = MagicMock()
+    win.lm_studio_app = MagicMock(state="failed_active")
+    win._on_lm_studio_app_state_changed("failed_active", "stop failed")
+    win.settings_page.lm_studio_open_btn.setEnabled.assert_called_once_with(True)
+    win._open_lm_studio()
+    win.lm_studio_app.start.assert_called_once_with()
+
+
 def test_lm_studio_stop_returns_to_settings_without_stopping_other_services(win):
     win.lm_studio_page = MagicMock()
     win.stack.currentWidget.return_value = win.lm_studio_page

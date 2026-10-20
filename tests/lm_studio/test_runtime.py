@@ -1,7 +1,7 @@
 """Headless startup ownership and CLI progress handling."""
 
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
@@ -65,4 +65,23 @@ def test_replaced_daemon_is_left_running():
         runtime.command = AsyncMock(return_value='{"status":"running","pid":100,"isDaemon":true}')
         await runtime.close()
         runtime.command.assert_awaited_once_with("daemon", "status", "--json")
+    asyncio.run(scenario())
+
+
+def test_owned_desktop_shutdown_does_not_wait_for_wedged_model_api(monkeypatch):
+    terminate = Mock(return_value=True)
+    monkeypatch.setattr("comfyui_studio.launcher.core.managed_process.terminate_process_tree", terminate)
+
+    async def scenario():
+        runtime = Runtime({})
+        desktop = Mock()
+        desktop.is_running.return_value = True
+        runtime.owned_desktop = desktop
+        runtime.owned_models.add("loaded")
+        runtime.owns_server = True
+        runtime.request = AsyncMock(side_effect=AssertionError("Engine must not be contacted"))
+        runtime.command = AsyncMock(side_effect=AssertionError("CLI must not be contacted"))
+        await runtime.close()
+        terminate.assert_called_once_with(desktop, "LM Studio")
+        assert runtime.client.is_closed
     asyncio.run(scenario())

@@ -35,9 +35,18 @@ class LmStudioAppController(QObject):
         self.state_changed.emit(state, message)
 
     def start(self):
+        if self._process is not None and not self._process.is_running():
+            self._timer.stop()
+            self._task.cancel()
+            self._process = None
         if self._process is not None:
             if self.state == "running":
                 self.ready.emit(self.port)
+            elif self.state == "failed_active":
+                self._deadline = time.monotonic() + 60
+                self._state("starting", self._tr("Запуск интерфейса LM Studio…"))
+                self._timer.start()
+                self._check()
             return
         try:
             process = self._factory(self.config.cfg)
@@ -56,7 +65,12 @@ class LmStudioAppController(QObject):
         if self._process is None:
             return
         if not self._process.is_running():
-            self._fail(self._tr("Приложение LM Studio неожиданно завершилось. Подробности — в журнале Studio."))
+            if self.state == "failed_active":
+                self._timer.stop()
+                self._process = None
+                self._state("stopped")
+            else:
+                self._fail(self._tr("Приложение LM Studio неожиданно завершилось. Подробности — в журнале Studio."))
         elif self.state == "starting":
             self._task.run(lambda: is_app_ready(self.port), self._probed)
 
@@ -81,6 +95,7 @@ class LmStudioAppController(QObject):
             self._process.stop()
             if self._process.is_running():
                 self._state("failed_active", self._tr("Не удалось остановить LM Studio."))
+                self._timer.start()
                 return False
         self._process = None
         self._state("stopped")

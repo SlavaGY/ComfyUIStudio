@@ -321,17 +321,22 @@ class MainWindow(QMainWindow):
     def _open_lm_studio(self):
         if self.lm_studio_app.state == "running":
             self._show_lm_studio_app(self.lm_studio_app.port)
+        elif self.lm_studio_app.state == "failed_active":
+            self.lm_studio_app.start()
         else:
             self.lm_studio.start()
 
     def _show_lm_studio_app(self, port):
-        if self._lm_studio_loaded_port != port:
+        if (self._lm_studio_loaded_port != port
+                or self.lm_studio_browser_page.needs_reload()):
             self.lm_studio_browser_page.load(port)
             self._lm_studio_loaded_port = port
         self.stack.setCurrentWidget(self.lm_studio_browser_page)
 
     def _on_lm_studio_app_state_changed(self, state, message):
         self.settings_page.set_lm_studio_state(state, message)
+        if state == "failed_active":
+            self.settings_page.lm_studio_open_btn.setEnabled(True)
         self.settings_page.settings_dialog.lm_studio_page.set_state(state)
         if state in ("stopped", "failed", "failed_active"):
             self._lm_studio_loaded_port = None

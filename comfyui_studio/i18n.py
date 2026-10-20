@@ -709,6 +709,8 @@ TRANSLATIONS = {
         "Вернуться к настройкам, не останавливая Ultimate RVC": "Back to settings without stopping Ultimate RVC",
         "Остановить процесс Ultimate RVC": "Stop the Ultimate RVC process",
         "Сохранить файл": "Save file",
+        "Повторить загрузку": "Reload page",
+        "Не удалось загрузить интерфейс LM Studio. Повторите загрузку страницы.": "Could not load the LM Studio interface. Reload the page.",
         "Ultimate RVC (оригинал)": "Ultimate RVC (original)",
         "{} запущен на порту {}": "{} is running on port {}",
         "Ultimate RVC уже запущен в другом режиме. Остановите его (кнопка «Остановить» выше) и запустите заново.": "Ultimate RVC is already running in another mode. Stop it (the “Stop” button above) and start again.",

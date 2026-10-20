@@ -116,6 +116,7 @@
     article.append(node("div", "message__label", t(message.role === "user" ? "Вы" : "Ассистент")));
     if (message.reasoning) {
       const details = node("details", "reasoning");
+      details.open = message.status === "streaming";
       details.append(node("summary", "", t("Рассуждение")), node("pre", "", message.reasoning)); article.append(details);
     }
     const body = node("div", "message__body"); markdown(body, message.content); article.append(body);
@@ -209,7 +210,8 @@
           const pane = $("messages"), nearBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 140;
           const reasoningOpen = article.querySelector("details")?.open;
           const replacement = messageElement(answer);
-          if (reasoningOpen && replacement.querySelector("details")) replacement.querySelector("details").open = true;
+          if (answer.status === "streaming" && reasoningOpen !== undefined && replacement.querySelector("details"))
+            replacement.querySelector("details").open = reasoningOpen;
           article.replaceWith(replacement); article = replacement;
           if (nearBottom) pane.scrollTop = pane.scrollHeight;
         }

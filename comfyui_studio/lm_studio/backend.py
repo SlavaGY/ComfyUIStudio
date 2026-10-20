@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from ..web_common import NoCacheMiddleware, mount_common_static, register_ui_prefs, static_dir
+from .reasoning import ReasoningParser
 from .runtime import EngineError, Runtime
 from .store import ChatStore
 
@@ -212,6 +213,7 @@ def create_app(config: dict, data_dir: Path, runtime=None):
 
         async def produce():
             answer = {"role": "assistant", "content": "", "reasoning": "", "status": "interrupted"}
+            parser = ReasoningParser()
             started = time.monotonic()
             try:
                 async with engine.client.stream("POST", "/v1/chat/completions", json=payload) as response:
@@ -233,19 +235,27 @@ def create_app(config: dict, data_dir: Path, runtime=None):
                         if not choices:
                             continue
                         delta = choices[0].get("delta") or {}
-                        content = delta.get("content") or ""
-                        reasoning = delta.get("reasoning_content") or delta.get("reasoning") or ""
+                        content, tagged_reasoning = parser.feed(delta.get("content") or "")
+                        reasoning = (delta.get("reasoning_content") or delta.get("reasoning") or "") + tagged_reasoning
                         answer["content"] += content
                         answer["reasoning"] += reasoning
                         queue.put_nowait(event({"content": content, "reasoning": reasoning}))
                     if not finished:
                         raise EngineError("Соединение прервано до завершения ответа.")
+                    content, reasoning = parser.feed("", final=True)
+                    answer["content"] += content
+                    answer["reasoning"] += reasoning
+                    if content or reasoning:
+                        queue.put_nowait(event({"content": content, "reasoning": reasoning}))
                     answer["status"] = "completed"
                     queue.put_nowait(event({"done": True}))
             except (EngineError, httpx.HTTPError, ValueError) as error:
                 answer["status"], answer["error"] = "error", str(error)
                 queue.put_nowait(event({"error": str(error)}))
             finally:
+                content, reasoning = parser.feed("", final=True)
+                answer["content"] += content
+                answer["reasoning"] += reasoning
                 answer["seconds"] = round(time.monotonic() - started, 2)
                 messages.append(answer)
                 store.save(chat)

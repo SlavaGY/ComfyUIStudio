@@ -154,6 +154,17 @@ class Runtime:
 
     async def close(self):
         # Only resources started by this application are released.
+        if self.owned_desktop is not None:
+            # A model load can wedge the engine's HTTP and CLI handlers. Stop
+            # our desktop tree before waiting on either, otherwise the parent
+            # kills the UI backend first and leaves its llama workers behind.
+            from ..launcher.core.managed_process import terminate_process_tree
+            try:
+                if self.owned_desktop.is_running():
+                    await asyncio.to_thread(terminate_process_tree, self.owned_desktop, "LM Studio")
+            finally:
+                await self.client.aclose()
+            return
         for instance in list(self.owned_models):
             try:
                 await self.request("POST", "/api/v1/models/unload", json={"instance_id": instance}, timeout=10)
@@ -168,7 +179,4 @@ class Runtime:
                     await self.command("daemon", "down")
         except (EngineError, ValueError):
             log.exception("Could not release LM Studio runtime")
-        if self.owned_desktop is not None and self.owned_desktop.is_running():
-            from ..launcher.core.managed_process import terminate_process_tree
-            await asyncio.to_thread(terminate_process_tree, self.owned_desktop, "LM Studio")
         await self.client.aclose()

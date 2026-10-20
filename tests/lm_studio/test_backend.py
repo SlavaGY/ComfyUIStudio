@@ -31,7 +31,7 @@ def environment(tmp_path):
             return httpx.Response(200, json={"status": "unloaded"})
         if options["status"] != 200:
             return httpx.Response(options["status"], json={"error": {"message": "model failed"}})
-        data = "".join("data: " + json.dumps(c, ensure_ascii=False) + "\n\n" for c in response_chunks)
+        data = "".join("data: " + json.dumps(c, ensure_ascii=False) + "\n\n" for c in options.get("chunks", response_chunks))
         if options["finish"]:
             data += "data: [DONE]\n\n"
         return httpx.Response(200, text=data)
@@ -71,6 +71,21 @@ def test_followup_uses_previous_messages_without_reasoning(environment):
     payload = json.loads(captured[-1].content)
     assert [m["role"] for m in payload["messages"]] == ["user", "assistant", "user"]
     assert all("reasoning" not in m for m in payload["messages"])
+
+
+def test_tagged_reasoning_is_streamed_and_saved_separately(environment):
+    client, _, captured, options = environment
+    options["chunks"] = [{"choices": [{"delta": {"content": text}}]}
+                         for text in ["<thi", "nk>Think", " carefully</thi", "nk>Final answer"]]
+    chat_id = client.post("/api/chats").json()["id"]
+    response = send(client, chat_id)
+    deltas = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+    assert "".join(d.get("content", "") for d in deltas) == "Final answer"
+    assert "".join(d.get("reasoning", "") for d in deltas) == "Think carefully"
+    answer = client.get(f"/api/chats/{chat_id}").json()["messages"][-1]
+    assert answer["content"] == "Final answer" and answer["reasoning"] == "Think carefully"
+    send(client, chat_id, text="Continue")
+    assert json.loads(captured[-1].content)["messages"][1]["content"] == "Final answer"
 
 
 def test_retry_replaces_last_answer_instead_of_duplicating_prompt(environment):

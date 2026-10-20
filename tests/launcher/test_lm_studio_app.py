@@ -56,3 +56,41 @@ def test_app_controller_only_opens_its_own_ready_endpoint(qtbot):
     controller.stop()
     process.stop.assert_called_once()
     assert controller.state == "stopped" and not controller._timer.isActive()
+
+
+def test_failed_stop_can_reopen_surviving_server_and_detect_late_exit(qtbot):
+    process = Mock(port=7864)
+    process.is_running.return_value = True
+    controller = LmStudioAppController(SimpleNamespace(cfg={}), process_factory=Mock(return_value=process))
+    controller._task.run = Mock()
+    opened = Mock()
+    controller.ready.connect(opened)
+    controller.start()
+    controller._probed(True, None)
+    assert not controller.stop()
+    assert controller.state == "failed_active" and controller._timer.isActive()
+    controller.start()
+    controller._probed(True, None)
+    assert controller.state == "running" and opened.call_count == 2
+    process.start.assert_called_once()
+    controller.stop()
+    process.is_running.return_value = False
+    controller._check()
+    assert controller.state == "stopped" and controller._process is None
+    assert not controller._timer.isActive()
+
+
+def test_start_replaces_process_that_exited_between_checks(qtbot):
+    old = Mock()
+    old.is_running.return_value = False
+    process = Mock(port=7864)
+    process.is_running.return_value = True
+    factory = Mock(return_value=process)
+    controller = LmStudioAppController(SimpleNamespace(cfg={}), process_factory=factory)
+    controller._task.run = Mock()
+    controller._process, controller.state = old, "failed_active"
+    controller.start()
+    assert controller._process is process and controller.state == "starting"
+    process.start.assert_called_once()
+    process.is_running.return_value = False
+    controller.stop()
