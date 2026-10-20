@@ -575,8 +575,15 @@ private fun TerminalWebView(device: TokenStore.Device, openPath: String?, ui: Te
                 // самого WebView -- то, чем и является этот factory-блок.
                 WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
                 WebView(ctx).apply {
+                    tag = WebViewNavigation()
+                    layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    )
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
                     // Куки, включая наш remote_token, должны переживать
                     // перезапуск приложения -- см. AuthWebViewClient
                     // докстринг про cookie-based auth "по факту".
@@ -654,7 +661,15 @@ private fun TerminalWebView(device: TokenStore.Device, openPath: String?, ui: Te
                 // же ?token= в первом запросе, ровно как и домашней "/".
                 // tokenSeparator -- см. его объявление выше про "&" вместо
                 // "?", когда openPath уже несёт свой ?prompt_id=...
-                webView.loadUrl("$baseUrl${tokenSeparator}token=${device.accessToken}")
+                val requestedUrl = "$baseUrl${tokenSeparator}token=${device.accessToken}"
+                if ((webView.tag as WebViewNavigation).shouldLoad(requestedUrl, reloadTrigger)) {
+                    webView.loadUrl(requestedUrl)
+                }
+            },
+            onRelease = { webView ->
+                if (webViewRef === webView) webViewRef = null
+                webView.stopLoading()
+                webView.destroy()
             },
         )
     }
