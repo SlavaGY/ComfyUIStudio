@@ -1,6 +1,8 @@
 # Сборка (build_exe.bat / PyInstaller / pip)
 build/
 dist/
+!comfyui_studio/lm_studio/static/vendor/**/dist/
+!comfyui_studio/lm_studio/static/vendor/**/dist/**
 comfyui_studio.egg-info/
 
 # Виртуальные окружения (.venv, .venv-build, .venv-build-full и т.п.)

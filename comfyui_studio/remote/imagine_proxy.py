@@ -119,6 +119,11 @@ async def _proxy_app(app_id: str, label: str, port, path: str, request: Request)
     if port is None:
         raise HTTPException(status_code=503, detail=f"{label} сейчас не запущен.")
     target_base = f"http://127.0.0.1:{port}"
+    lm_studio = app_id == "lm_studio"
+    if lm_studio:
+        origin = request.headers.get("origin")
+        if origin and origin != f"{request.url.scheme}://{request.url.netloc}":
+            raise HTTPException(403, "Cross-origin request rejected")
 
     upstream_url = f"{target_base}/{path}"
     upstream_headers = {
@@ -126,14 +131,23 @@ async def _proxy_app(app_id: str, label: str, port, path: str, request: Request)
         for key, value in request.headers.items()
         if key.lower() not in _HOP_BY_HOP_REQUEST_HEADERS
     }
+    params = httpx.QueryParams(str(request.query_params))
+    if lm_studio:
+        # Authenticate at Remote, never pass its device token to the engine.
+        upstream_headers.pop("authorization", None)
+        upstream_headers.pop("referer", None)
+        if "origin" in upstream_headers:
+            upstream_headers["origin"] = target_base
+        params = params.remove("token")
     body = await request.body()
 
     upstream_request = _client.build_request(
         request.method,
         upstream_url,
-        params=request.query_params,
+        params=params,
         headers=upstream_headers,
         content=body,
+        timeout=httpx.Timeout(None, connect=5) if lm_studio else _client.timeout,
     )
     try:
         upstream_response = await _client.send(upstream_request, stream=True)
@@ -162,8 +176,15 @@ async def _proxy_app(app_id: str, label: str, port, path: str, request: Request)
             media_type=content_type,
         )
     else:
+        async def stream():
+            try:
+                async for chunk in upstream_response.aiter_raw():
+                    yield chunk
+            finally:
+                await upstream_response.aclose()
+
         response = StreamingResponse(
-            upstream_response.aiter_raw(),
+            stream(),
             status_code=upstream_response.status_code,
             headers=response_headers,
             media_type=content_type,
@@ -189,3 +210,8 @@ async def proxy_imagine(path: str, request: Request):
 @router.api_route("/apps/imagine_pony/{path:path}", methods=_PROXY_METHODS)
 async def proxy_imagine_pony(path: str, request: Request):
     return await _proxy_app("imagine_pony", "Imagine Pony", runtime.imagine_pony_port, path, request)
+
+
+@router.api_route("/apps/lm_studio/{path:path}", methods=_PROXY_METHODS)
+async def proxy_lm_studio(path: str, request: Request):
+    return await _proxy_app("lm_studio", "LM Studio", runtime.lm_studio_port, path, request)

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LM Studio · Studio</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/themes.css">
+  <link rel="stylesheet" href="vendor/katex/dist/katex.min.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__brand"><span class="mark">◆</span> LM Studio <span class="edition">STUDIO</span></div>
+    <nav aria-label="Navigation"><button class="tab is-active" data-tab="chat" data-i18n="Чат">Чат</button><button class="tab" data-tab="models" data-i18n="Модели">Модели</button><button class="tab" data-tab="settings" data-i18n="Настройки">Настройки</button></nav>
+    <div class="connection"><span id="statusDot" class="status-dot"></span><span id="statusText" role="status" data-i18n="Подключение…">Подключение…</span></div>
+  </header>
+  <div class="mobile-tools"><button id="toggleChats" class="btn-link" data-i18n="Диалоги">Диалоги</button><button id="toggleParameters" class="btn-link" data-i18n="Параметры">Параметры</button></div>
+  <div id="remoteTools" class="remote-tools" hidden><a href="/" data-i18n="← Приложения">← Приложения</a><button id="remoteStop" class="btn-link danger" data-i18n="Остановить LM Studio">Остановить LM Studio</button></div>
+  <div id="banner" class="banner" role="alert" hidden></div>
+  <main class="workspace">
+    <aside class="sidebar">
+      <button id="newChat" class="btn-primary" data-i18n="＋ Новый диалог">＋ Новый диалог</button>
+      <label class="sr-only" for="chatSearch" data-i18n="Поиск диалогов">Поиск диалогов</label>
+      <input id="chatSearch" type="search" placeholder="Поиск диалогов" data-i18n-placeholder="Поиск диалогов">
+      <div class="section-label" data-i18n="ДИАЛОГИ">ДИАЛОГИ</div>
+      <div id="chatList" class="chat-list"></div>
+      <p class="sidebar-note" data-i18n="Диалоги сохраняются в Studio на этом компьютере.">Диалоги сохраняются в Studio на этом компьютере.</p>
+    </aside>
+    <section id="chatPane" class="chat-pane">
+      <div class="chat-header"><input id="chatTitle" aria-label="Название диалога" data-i18n-title="Название диалога" placeholder="Новый диалог" data-i18n-placeholder="Новый диалог" maxlength="200"><button id="deleteChat" class="btn-ghost danger" data-i18n="Удалить">Удалить</button></div>
+      <div id="messages" class="messages" aria-live="polite"></div>
+      <div class="composer-wrap">
+        <div id="editNotice" class="edit-notice" hidden><span data-i18n="Редактирование запроса. Последующие ответы будут заменены.">Редактирование запроса. Последующие ответы будут заменены.</span><button id="cancelEdit" class="btn-link" data-i18n="Отмена">Отмена</button></div>
+        <div class="composer">
+          <div id="pendingAttachments" class="attachment-list"></div>
+          <label class="sr-only" for="prompt" data-i18n="Сообщение">Сообщение</label>
+          <textarea id="prompt" rows="3" maxlength="40000" placeholder="Напишите сообщение…" data-i18n-placeholder="Напишите сообщение…"></textarea>
+          <div class="composer-tools"><input id="fileInput" type="file" multiple hidden><button id="attach" class="btn-ghost" title="Текст, PDF, DOCX, PNG, JPEG, WebP · до 10 МБ" data-i18n="＋ Файл">＋ Файл</button><span class="hint" data-i18n="Enter — отправить · Shift+Enter — новая строка">Enter — отправить · Shift+Enter — новая строка</span><button id="stop" class="btn-danger" hidden data-i18n="■ Остановить">■ Остановить</button><button id="send" class="btn-primary" disabled data-i18n="Отправить ↑">Отправить ↑</button></div>
+        </div>
+        <div class="composer-footer"><span id="generationInfo" class="hint"></span><button id="retry" class="btn-link" disabled data-i18n="Повторить ответ">Повторить ответ</button></div>
+      </div>
+    </section>
+    <section id="settingsPane" class="models-pane" hidden>
+      <div class="section-heading"><div><div class="section-label" data-i18n="Настройки">Настройки</div><h1>Integrations</h1><p class="hint" data-i18n="Подключения MCP для инструментов модели">Подключения MCP для инструментов модели</p></div><button id="addIntegration" class="btn-ghost" data-i18n="＋ Добавить">＋ Добавить</button></div>
+      <p class="hint" data-i18n="Подключите MCP-сервер по HTTP/HTTPS URL. Разрешите Remote MCP в настройках сервера LM Studio. Пустой список инструментов разрешает все инструменты подключения.">Подключите MCP-сервер по HTTP/HTTPS URL. Разрешите Remote MCP в настройках сервера LM Studio. Пустой список инструментов разрешает все инструменты подключения.</p>
+      <div id="integrations" class="integration-list"></div>
+      <button id="saveIntegrations" class="btn-primary" data-i18n="Сохранить подключения">Сохранить подключения</button><span id="integrationStatus" class="hint" role="status"></span>
+    </section>
+    <aside id="parameters" class="parameters">
+      <div class="section-label" data-i18n="МОДЕЛЬ И ПАРАМЕТРЫ">МОДЕЛЬ И ПАРАМЕТРЫ</div>
+      <label class="field"><span data-i18n="Модель">Модель</span><select id="modelSelect"><option value="" data-i18n="Выберите модель">Выберите модель</option></select></label>
+      <button id="refreshModels" class="btn-ghost full" data-i18n="Обновить модели">Обновить модели</button>
+      <label class="field"><span data-i18n="Системный промпт">Системный промпт</span><textarea id="system" rows="6" maxlength="40000" placeholder="Роль и инструкции для модели…" data-i18n-placeholder="Роль и инструкции для модели…"></textarea></label>
+      <div class="divider"></div>
+      <label class="field"><span data-i18n="Температура">Температура</span><input id="temperature" type="number" min="0" max="2" step="0.1" value="0.7"></label>
+      <label class="field"><span>Top P</span><input id="topP" type="number" min="0.01" max="1" step="0.05" value="0.95"></label>
+      <label class="field"><span data-i18n="Максимум токенов ответа">Максимум токенов ответа</span><input id="maxTokens" type="number" min="1" max="131072" value="2048"></label>
+      <p class="hint" data-i18n="Параметры сохраняются отдельно для каждого диалога.">Параметры сохраняются отдельно для каждого диалога.</p>
+    </aside>
+    <section id="modelsPane" class="models-pane" hidden>
+      <div class="section-heading"><div><div class="section-label" data-i18n="БИБЛИОТЕКА">БИБЛИОТЕКА</div><h1 data-i18n="Ваши модели">Ваши модели</h1><p class="hint" data-i18n="Модели из локальной библиотеки LM Studio.">Модели из локальной библиотеки LM Studio.</p></div><button id="reloadModels" class="btn-ghost" data-i18n="Обновить">Обновить</button></div>
+      <label class="field context-field"><span data-i18n="Контекст при загрузке, токенов">Контекст при загрузке, токенов</span><input id="contextLength" type="number" min="512" max="1048576" value="4096"></label>
+      <div id="modelCards" class="model-cards"></div>
+      <p class="hint" data-i18n="Поиск и скачивание новых моделей доступны в приложении «LM Studio (оригинал)».">Поиск и скачивание новых моделей доступны в приложении «LM Studio (оригинал)».</p>
+    </section>
+  </main>
+  <script src="common/js/i18n_engine.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="vendor/marked/lib/marked.umd.js"></script>
+  <script src="vendor/dompurify/dist/purify.min.js"></script>
+  <script src="vendor/katex/dist/katex.min.js"></script>
+  <script src="js/richtext.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

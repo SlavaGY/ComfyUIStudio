@@ -233,7 +233,7 @@ async function stopServer() {{
         // без этого fetch() мог бы ждать бесконечно с нулевой обратной
         // связью пользователю.
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
         const resp = await fetch('/api/v1/remote/system/stop-server', {{
             method: 'POST',
             headers: {{ 'Authorization': 'Bearer ' + window.__REMOTE_TOKEN__ }},
@@ -257,7 +257,7 @@ async function stopServer() {{
     }} catch (e) {{
         console.error('stopServer: сетевая ошибка -- ' + e);
         button.disabled = false;
-        hint.textContent = e && e.name === 'AbortError' ? 'сервер не ответил за 20с' : 'нет соединения, повторите';
+        hint.textContent = e && e.name === 'AbortError' ? 'сервер не ответил за 60с' : 'нет соединения, повторите';
         return;
     }}
     console.log('stopServer: успех, перезагружаю страницу');

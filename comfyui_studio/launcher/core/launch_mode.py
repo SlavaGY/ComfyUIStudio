@@ -11,6 +11,8 @@
   rvc           -- Ultimate RVC: собственное приложение Studio (comfyui_studio/rvc/)
   rvc_gradio    -- Ultimate RVC: оригинальный Gradio-интерфейс (там есть то, чего
                    в приложении Studio пока нет, например обучение моделей)
+  lm_studio_app -- чат и библиотека моделей в оформлении Studio
+  lm_studio     -- установленное LM Studio с родным интерфейсом внутри Studio
 
 Значение хранится в старом ключе cfg["interface"], поэтому прежние
 config.json читаются без миграции (comfyui/imagine/imagine_pony те же).
@@ -24,6 +26,8 @@ IMAGINE = "imagine"
 IMAGINE_PONY = "imagine_pony"
 RVC = "rvc"
 RVC_GRADIO = "rvc_gradio"
+LM_STUDIO = "lm_studio"
+LM_STUDIO_APP = "lm_studio_app"
 
 # (значение в конфиге, подпись в списке). Порядок = порядок в списке.
 MODES = (
@@ -32,6 +36,8 @@ MODES = (
     (IMAGINE_PONY, "Imagine Pony"),
     (RVC, "Ultimate RVC"),
     (RVC_GRADIO, "Ultimate RVC (оригинал)"),
+    (LM_STUDIO_APP, "LM Studio"),
+    (LM_STUDIO, "LM Studio (оригинал)"),
 )
 
 _VALUES = tuple(value for value, _label in MODES)
@@ -50,7 +56,11 @@ def is_rvc_mode(mode):
 
 def is_comfy_family(mode):
     """Режимы, которым нужен запущенный ComfyUI (весь прежний путь запуска)."""
-    return not is_rvc_mode(mode)
+    return mode in (COMFYUI, IMAGINE, IMAGINE_PONY)
+
+
+def is_lm_studio_mode(mode):
+    return mode in (LM_STUDIO, LM_STUDIO_APP)
 
 
 def rvc_process_kind(mode):

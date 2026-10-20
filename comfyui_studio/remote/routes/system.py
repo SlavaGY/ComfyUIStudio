@@ -4,11 +4,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from ...launcher.core.comfy_api import ComfyAPIClient
 from ...launcher.core.imagine_process import is_imagine_available
-from .. import app_launcher, comfy_launcher, pony_launcher
+from .. import app_launcher, comfy_launcher, lm_studio_launcher, pony_launcher
 from ..auth import require_device
 from ..gpu_stats import get_gpu_stats
 from ..models import RemoteStatus
@@ -78,7 +78,14 @@ def stop_server(_device_id: str = Depends(require_device)) -> dict:
     про то, почему это вообще было нужно -- Remote физически не имеет
     доступа к объекту процесса, запущенного другим ОС-процессом,
     Studio)."""
+    lm_error = None
+    try:
+        lm_studio_launcher.stop()
+    except RuntimeError as error:
+        lm_error = str(error)
     pony_launcher.stop_pony()
     app_launcher.stop_imagine()
     comfy_launcher.stop_comfyui()
+    if lm_error:
+        raise HTTPException(500, lm_error)
     return {"status": "stopped"}

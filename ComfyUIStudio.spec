@@ -37,6 +37,7 @@ datas = [
     # workflow_template.json (см. backend/workflow.py _ASSETS_DIR) --
     # ни то ни другое не .py, PyInstaller не подхватит их сам.
     ('comfyui_studio/imagine/static', 'comfyui_studio/imagine/static'),
+    ('comfyui_studio/lm_studio/static', 'comfyui_studio/lm_studio/static'),
     ('comfyui_studio/imagine/assets', 'comfyui_studio/imagine/assets'),
     # Imagine Pony (comfyui_studio/imagine_pony/) -- то же: статика и workflow_template.json.
     ('comfyui_studio/imagine_pony/static', 'comfyui_studio/imagine_pony/static'),
@@ -72,6 +73,8 @@ hiddenimports = [
     # импортирует uvicorn/backend.main (см. его main()) — оба уровня лени
     # PyInstaller не обязан пройти статическим анализом.
     "comfyui_studio.imagine.__main__",
+    "comfyui_studio.lm_studio.__main__",
+    "comfyui_studio.lm_studio.backend",
     "comfyui_studio.imagine.backend.main",
     # Imagine Pony -- та же двухуровневая лень (IMAGINE_PONY_CLI_FLAG в main.py).
     "comfyui_studio.imagine_pony.__main__",
