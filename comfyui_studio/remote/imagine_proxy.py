@@ -131,14 +131,14 @@ async def _proxy_app(app_id: str, label: str, port, path: str, request: Request)
         for key, value in request.headers.items()
         if key.lower() not in _HOP_BY_HOP_REQUEST_HEADERS
     }
-    params = request.query_params
+    params = httpx.QueryParams(str(request.query_params))
     if lm_studio:
         # Authenticate at Remote, never pass its device token to the engine.
         upstream_headers.pop("authorization", None)
         upstream_headers.pop("referer", None)
         if "origin" in upstream_headers:
             upstream_headers["origin"] = target_base
-        params = [(key, value) for key, value in request.query_params.multi_items() if key != "token"]
+        params = params.remove("token")
     body = await request.body()
 
     upstream_request = _client.build_request(

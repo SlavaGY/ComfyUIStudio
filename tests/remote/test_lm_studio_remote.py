@@ -154,6 +154,9 @@ def test_proxy_preserves_origin_guard_and_does_not_leak_device_credentials(phone
     response = client.get("/apps/lm_studio/?token=" + token)
     assert "window.__REMOTE_TOKEN__" in response.text
     assert "token" not in seen[-1].url.params
+    client.get("/apps/lm_studio/api/models?tag=a&tag=b&token=" + token)
+    assert seen[-1].url.params.get_list("tag") == ["a", "b"]
+    assert "token" not in seen[-1].url.params
     client.headers["Authorization"] = "Bearer " + token
     assert client.post("/apps/lm_studio/api/chats", headers={"Origin": "http://phone:7861"}).status_code == 200
     assert seen[-1].headers["origin"] == "http://127.0.0.1:7864"

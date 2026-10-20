@@ -5,6 +5,7 @@ import json
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -54,8 +55,8 @@ def create_app(config: dict, data_dir: Path, runtime=None):
     store = ChatStore(data_dir / "chats.sqlite3")
     attachments = Attachments(data_dir / "attachments")
     integrations = IntegrationStore(data_dir / "integrations.json")
-    busy = set()
-    tasks = {}
+    busy: set[str] = set()
+    tasks: dict[str, asyncio.Task[None]] = {}
 
     @asynccontextmanager
     async def lifespan(app):
@@ -233,7 +234,7 @@ def create_app(config: dict, data_dir: Path, runtime=None):
                 raise HTTPException(400, str(error)) from error
             if index is not None:
                 del messages[index:]
-            message = {"role": "user", "content": body.text.strip()}
+            message: dict[str, Any] = {"role": "user", "content": body.text.strip()}
             if files:
                 message["attachments"] = files
             messages.append(message)
@@ -259,7 +260,7 @@ def create_app(config: dict, data_dir: Path, runtime=None):
         store.save(chat)
         busy.add(chat_id)
 
-        queue = asyncio.Queue()
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
 
         async def produce():
             answer = {"role": "assistant", "content": "", "reasoning": "", "status": "interrupted"}
