@@ -177,6 +177,7 @@ include = ["comfyui_studio*"]
     "lm_studio/static/**/*.woff",
     "lm_studio/static/**/*.ttf",
     "lm_studio/static/vendor/**/LICENSE*",
+    "lm_studio/static/vendor/README.md",
     # Общая статика веб-приложений (js/i18n_engine.js), раздаётся по /common.
     "web_common/static/**/*.js",
 ]
