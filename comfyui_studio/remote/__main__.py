@@ -55,6 +55,7 @@ def _parse_args(argv):
     parser.add_argument("--comfy-port", type=int, default=None)
     parser.add_argument("--imagine-port", type=int, default=None)
     parser.add_argument("--imagine-pony-port", type=int, default=None)
+    parser.add_argument("--lm-studio-port", type=int, choices=range(1, 65536), metavar="PORT", default=None)
     parser.add_argument("--dev", action="store_true")
     return parser.parse_args(argv)
 
@@ -73,6 +74,7 @@ def main(argv=None):
     runtime.comfy_port = args.comfy_port
     runtime.imagine_port = args.imagine_port
     runtime.imagine_pony_port = args.imagine_pony_port
+    runtime.lm_studio_port = args.lm_studio_port
     # НОВОЕ (этап 5, mDNS) -- собственный адрес/порт Remote нужны
     # mdns.py (см. state.py) ДО того, как app.py поднимет lifespan.
     runtime.host = args.host

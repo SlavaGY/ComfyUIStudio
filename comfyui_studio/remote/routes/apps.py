@@ -59,3 +59,17 @@ def start_app(app_id: str, _device_id: str = Depends(require_device)) -> dict:
     # обязан продолжить опрашивать GET /apps, а не считать один этот
     # ответ финальным.
     return {"status": app.status_fn() if app.status_fn else "starting"}
+
+
+@router.post("/apps/{app_id}/stop")
+def stop_app(app_id: str, _device_id: str = Depends(require_device)) -> dict:
+    app = get_app(app_id)
+    if app is None:
+        raise HTTPException(404, "Неизвестное приложение.")
+    if app.stop_fn is None:
+        raise HTTPException(400, "Остановка этого приложения через Remote не поддерживается.")
+    try:
+        app.stop_fn()
+    except RuntimeError as error:
+        raise HTTPException(500, str(error)) from error
+    return {"status": app.status_fn() if app.status_fn else "stopped"}

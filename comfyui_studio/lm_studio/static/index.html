@@ -14,6 +14,8 @@
     <nav aria-label="Navigation"><button class="tab is-active" data-tab="chat" data-i18n="Чат">Чат</button><button class="tab" data-tab="models" data-i18n="Модели">Модели</button><button class="tab" data-tab="settings" data-i18n="Настройки">Настройки</button></nav>
     <div class="connection"><span id="statusDot" class="status-dot"></span><span id="statusText" role="status" data-i18n="Подключение…">Подключение…</span></div>
   </header>
+  <div class="mobile-tools"><button id="toggleChats" class="btn-link" data-i18n="Диалоги">Диалоги</button><button id="toggleParameters" class="btn-link" data-i18n="Параметры">Параметры</button></div>
+  <div id="remoteTools" class="remote-tools" hidden><a href="/" data-i18n="← Приложения">← Приложения</a><button id="remoteStop" class="btn-link danger" data-i18n="Остановить LM Studio">Остановить LM Studio</button></div>
   <div id="banner" class="banner" role="alert" hidden></div>
   <main class="workspace">
     <aside class="sidebar">

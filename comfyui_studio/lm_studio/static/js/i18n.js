@@ -1,5 +1,7 @@
 "use strict";
 window.I18N = window.createI18n({storagePrefix: "studio.lmstudio", EN: {
+  "Диалоги":"Conversations", "Параметры":"Parameters", "← Приложения":"← Apps", "Остановить LM Studio":"Stop LM Studio",
+  "Остановить LM Studio на компьютере?":"Stop LM Studio on the computer?",
   "Настройки":"Settings", "Редактировать":"Edit", "Отмена":"Cancel", "＋ Файл":"＋ File", "Удалить файл":"Remove file",
   "Редактирование запроса. Последующие ответы будут заменены.":"Editing a prompt. Subsequent answers will be replaced.",
   "Последующие сообщения будут заменены. Продолжить?":"Subsequent messages will be replaced. Continue?",

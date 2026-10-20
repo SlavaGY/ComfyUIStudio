@@ -28,6 +28,7 @@ class RemoteRuntimeState:
     # Imagine Pony (comfyui_studio/imagine_pony/) -- второе веб-приложение
     # терминала, регистрируется в apps_registry под id "imagine_pony".
     imagine_pony_port: Optional[int] = None
+    lm_studio_port: Optional[int] = None
     # НОВОЕ (этап 5 дорожной карты, mDNS): адрес/порт, на которых слушает
     # САМ Remote (а не ComfyUI/Imagine, как поля выше) -- нужны mdns.py,
     # чтобы решить, стоит ли вообще объявлять сервис (см. его докстринг:

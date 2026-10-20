@@ -30,7 +30,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 
 from ..launcher.core.imagine_process import is_imagine_available
-from . import app_launcher, pony_launcher
+from . import app_launcher, lm_studio_launcher, pony_launcher
 from . import mdns as mdns_module
 from .apps_registry import RemoteApp, register_app
 from .generation_watcher import GenerationWatcher
@@ -82,6 +82,14 @@ def _register_imagine_pony() -> None:
 
 def _register_known_apps() -> None:
     _register_imagine_pony()
+    if runtime.lm_studio_port is not None:
+        register_app(RemoteApp(
+            id="lm_studio", name="LM Studio", path="/apps/lm_studio/",
+            proxy_target=lambda: (f"http://127.0.0.1:{runtime.lm_studio_port}"
+                                  if lm_studio_launcher.status() == "running" else None),
+            status_fn=lm_studio_launcher.status, start_fn=lm_studio_launcher.start,
+            error_fn=lm_studio_launcher.last_error, stop_fn=lm_studio_launcher.stop,
+        ))
     if runtime.imagine_port is None:
         # Imagine не настроен для этого запуска Remote (--imagine-port
         # не передан, см. __main__.py) -- значит, Studio в принципе не

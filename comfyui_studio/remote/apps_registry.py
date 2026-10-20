@@ -61,6 +61,7 @@ class RemoteApp:
     # None, если приложение не сообщает такие ошибки отдельно от
     # исключений start_fn().
     error_fn: Optional[Callable[[], Optional[str]]] = None
+    stop_fn: Optional[Callable[[], None]] = None
 
 
 def register_app(app: RemoteApp) -> None:

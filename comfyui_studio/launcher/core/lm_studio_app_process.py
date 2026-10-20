@@ -7,6 +7,8 @@ import sys
 import urllib.error
 import urllib.request
 
+import psutil
+
 from ...errors import ProcessStartError
 from ...lm_studio.__main__ import LM_STUDIO_CLI_FLAG
 from .constants import APP_DIR, CONFIG_PATH, PROJECT_ROOT
@@ -39,12 +41,23 @@ class LmStudioAppProcess(ManagedProcess):
     def __init__(self, cfg):
         super().__init__()
         self.port = app_port(cfg)
+        self._attached = None
 
     def start(self):
         missing = find_missing_modules(("fastapi", "uvicorn", "httpx", "pydantic", "pypdf"))
         if missing:
             raise ProcessStartError("Установите зависимости Studio: pip install .[imagine] (" + ", ".join(missing) + ")")
         if is_port_in_use(self.port):
+            if is_app_ready(self.port):
+                from ...remote.process_by_port import find_pid_listening_on_port
+                pid = find_pid_listening_on_port(self.port)
+                if pid is not None:
+                    try:
+                        self._attached = psutil.Process(pid)
+                        self._attached.create_time()  # Cache identity before PID reuse.
+                        return
+                    except psutil.Error as error:
+                        raise ProcessStartError("Не удалось подключиться к запущенному LM Studio.") from error
             raise ProcessStartError(f"Порт приложения LM Studio {self.port} уже занят.")
         args = ["--port", str(self.port), "--config", CONFIG_PATH,
                 "--data-dir", os.path.join(APP_DIR, "lm_studio")]
@@ -54,15 +67,30 @@ class LmStudioAppProcess(ManagedProcess):
         return self._spawn_streamed(cmd, cwd=PROJECT_ROOT, env=env)
 
     def stop(self):
-        if self.proc is not None and self.is_running():
+        process = self._attached if self._attached is not None else self.proc
+        if process is not None and self.is_running():
             try:
                 req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/shutdown", data=b"{}", method="POST",
                                              headers={"Content-Type": "application/json"})
                 with urllib.request.urlopen(req, timeout=2):
                     pass
-                self.proc.wait(timeout=20)
+                process.wait(timeout=20)
                 self.proc = None
+                self._attached = None
                 return
-            except (OSError, ValueError, subprocess.TimeoutExpired):
+            except (OSError, ValueError, subprocess.TimeoutExpired, psutil.Error):
                 pass
+        if self._attached is not None:
+            from .managed_process import terminate_process_tree
+            if not self._attached.is_running() or terminate_process_tree(self._attached, self.label):
+                self._attached = None
+            return
         super().stop()
+
+    def is_running(self):
+        if self._attached is not None:
+            return self._attached.is_running()
+        return super().is_running()
+
+    def exit_code(self):
+        return None if self._attached is not None else super().exit_code()

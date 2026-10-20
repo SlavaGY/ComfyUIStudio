@@ -110,6 +110,7 @@ class RemoteController(QObject):
                 comfy_port=fresh_cfg.get("port"),
                 imagine_port=imagine_port,
                 imagine_pony_port=imagine_pony_port,
+                lm_studio_port=(fresh_cfg.get("lm_studio") or {}).get("ui_port", 7864),
             )
             self.process.start()
         except RuntimeError as e:

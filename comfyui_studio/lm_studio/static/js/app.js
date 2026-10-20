@@ -71,6 +71,7 @@
     navigating = true; controls();
     try {
     chat = await api("chats/" + id);
+    delete document.body.dataset.mobilePanel;
     cancelEdit();
     $("chatTitle").value = chat.title;
     $("system").value = chat.system;
@@ -310,6 +311,20 @@
   }
   async function init() {
     await I18N.init();
+    $("toggleChats").onclick = () => { document.body.dataset.mobilePanel = document.body.dataset.mobilePanel === "chats" ? "" : "chats"; };
+    $("toggleParameters").onclick = () => { document.body.dataset.mobilePanel = document.body.dataset.mobilePanel === "parameters" ? "" : "parameters"; };
+    if (window.__REMOTE_TOKEN__) {
+      $("remoteTools").hidden = false;
+      $("remoteStop").onclick = () => guarded(async () => {
+        if (!confirm(t("Остановить LM Studio на компьютере?"))) return;
+        $("remoteStop").disabled = true;
+        try {
+          const response = await fetch("/api/v1/remote/apps/lm_studio/stop", {method: "POST", headers: {Authorization: "Bearer " + window.__REMOTE_TOKEN__}});
+          if (!response.ok) { const error = await response.json(); throw Error(error.detail || response.statusText); }
+          location.href = "/";
+        } finally { $("remoteStop").disabled = false; }
+      });
+    }
     $("newChat").onclick = () => guarded(newChat);
     $("chatSearch").oninput = renderHistory;
     $("send").onclick = () => guarded(() => send(false));
@@ -334,7 +349,9 @@
       if (chats.length) await open(chats[0].id); else await newChat();
     });
     document.querySelectorAll("[data-tab]").forEach(button => { button.onclick = () => {
+      delete document.body.dataset.mobilePanel;
       const chatTab = button.dataset.tab === "chat";
+      $("toggleParameters").disabled = !chatTab;
       $("chatPane").hidden = $("parameters").hidden = !chatTab; $("modelsPane").hidden = chatTab;
       $("modelsPane").hidden = button.dataset.tab !== "models";
       $("settingsPane").hidden = button.dataset.tab !== "settings";

@@ -66,7 +66,7 @@ def _missing_remote_dependencies():
 
 
 def resolve_remote_launch(host, port, comfy_host, comfy_port, imagine_port, dev_mode=False,
-                          imagine_pony_port=None):
+                          imagine_pony_port=None, lm_studio_port=None):
     """Аналог resolve_imagine_launch() -- возвращает (cmd, cwd, None)
     либо (None, None, error)."""
     extra_args = ["--host", host, "--port", str(port), "--comfy-host", comfy_host]
@@ -76,6 +76,8 @@ def resolve_remote_launch(host, port, comfy_host, comfy_port, imagine_port, dev_
         extra_args += ["--imagine-port", str(imagine_port)]
     if imagine_pony_port:
         extra_args += ["--imagine-pony-port", str(imagine_pony_port)]
+    if lm_studio_port:
+        extra_args += ["--lm-studio-port", str(lm_studio_port)]
     if dev_mode:
         extra_args.append("--dev")
 
@@ -129,9 +131,10 @@ class RemoteProcess(ManagedProcess):
     label = "Remote"
 
     def __init__(self, host, port, comfy_host, comfy_port, imagine_port=None, dev_mode=False,
-                 imagine_pony_port=None):
+                 imagine_pony_port=None, lm_studio_port=None):
         super().__init__()
         self.imagine_pony_port = imagine_pony_port
+        self.lm_studio_port = lm_studio_port
         self.host = host
         self.port = port
         self.comfy_host = comfy_host
@@ -144,6 +147,7 @@ class RemoteProcess(ManagedProcess):
             self.host, self.port, self.comfy_host, self.comfy_port,
             self.imagine_port, self.dev_mode,
             imagine_pony_port=self.imagine_pony_port,
+            lm_studio_port=self.lm_studio_port,
         )
         if error:
             raise ProcessStartError(error)

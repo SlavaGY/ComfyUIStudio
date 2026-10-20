@@ -37,6 +37,29 @@ def test_invalid_ui_port_is_rejected(port):
         core.LmStudioAppProcess({"lm_studio": {"ui_port": port}})
 
 
+def test_desktop_reuses_chat_started_by_remote(monkeypatch):
+    monkeypatch.setattr(core, "find_missing_modules", lambda modules: [])
+    monkeypatch.setattr(core, "is_port_in_use", lambda port: True)
+    monkeypatch.setattr(core, "is_app_ready", lambda port: True)
+    monkeypatch.setattr("comfyui_studio.remote.process_by_port.find_pid_listening_on_port", lambda port: 123)
+    attached = Mock()
+    attached.is_running.return_value = True
+    monkeypatch.setattr(core.psutil, "Process", lambda pid: attached)
+    process = core.LmStudioAppProcess({})
+    spawn = Mock()
+    monkeypatch.setattr(process, "_spawn_streamed", spawn)
+    process.start()
+    assert process.is_running()
+    spawn.assert_not_called()
+    response = Mock()
+    response.__enter__ = Mock()
+    response.__exit__ = Mock()
+    monkeypatch.setattr(core.urllib.request, "urlopen", lambda *args, **kwargs: response)
+    process.stop()
+    attached.wait.assert_called_once_with(timeout=20)
+    assert process._attached is None
+
+
 def test_app_controller_only_opens_its_own_ready_endpoint(qtbot):
     process = Mock(port=7864)
     process.is_running.return_value = True
