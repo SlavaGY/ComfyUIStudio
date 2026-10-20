@@ -114,7 +114,9 @@ def test_settings_preserve_future_keys_and_retranslate(qtbot):
     loc.tr.side_effect = lambda text: TRANSLATIONS["en"].get(text, text)
     page = LmStudioSettingsPage({"lm_studio": {"executable_path": "custom.exe", "future": 42}}, loc)
     qtbot.addWidget(page)
-    assert page.collect()["lm_studio"] == {"executable_path": "custom.exe", "future": 42}
+    section = page.collect()["lm_studio"]
+    assert section["executable_path"] == "custom.exe" and section["future"] == 42
+    assert section["api_port"] == 1234 and section["ui_port"] == 7864
     assert page.path_label.text() == "LM Studio executable:"
     assert "inside Studio" in page.intro_label.text()
 

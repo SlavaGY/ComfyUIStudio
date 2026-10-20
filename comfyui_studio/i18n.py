@@ -35,6 +35,17 @@ DEFAULT_LANGUAGE = "ru"
 # ru -> en, только для строк, реально обёрнутых в tr() ниже по коду
 TRANSLATIONS = {
     "en": {
+        "CLI lms (необязательно):": "lms CLI (optional):",
+        "Порт сервера LM Studio:": "LM Studio server port:",
+        "Порт интерфейса Studio:": "Studio interface port:",
+        "API-токен LM Studio (если включён):": "LM Studio API token (if enabled):",
+        "Автоматически запускать локальный сервер LM Studio": "Automatically start the local LM Studio server",
+        "«LM Studio» открывает чат Studio. «LM Studio (оригинал)» сохраняет родной интерфейс. История этих приложений хранится отдельно.": "LM Studio opens the Studio chat. LM Studio (original) keeps the native interface. The two applications store their conversations separately.",
+        "Запуск интерфейса LM Studio…": "Starting the LM Studio interface…",
+        "Приложение LM Studio неожиданно завершилось. Подробности — в журнале Studio.": "The LM Studio application exited unexpectedly. See the Studio log for details.",
+        "Не удалось дождаться интерфейса LM Studio.": "Timed out waiting for the LM Studio interface.",
+        "Вернуться к настройкам, не останавливая LM Studio": "Return to settings without stopping LM Studio",
+        "Остановить приложение LM Studio": "Stop the LM Studio application",
         "LM Studio (оригинал)": "LM Studio (original)",
         "Оригинальное окно LM Studio открывается внутри Studio. Для завершения работы используйте кнопку «Остановить». При выходе из Studio LM Studio также останавливается.": "The original LM Studio window opens inside Studio. Use Stop to shut it down. Exiting Studio also stops LM Studio.",
         "Для запуска выберите «LM Studio (оригинал)» в списке рядом с кнопкой «Запустить» на главном экране.": "To launch, select 'LM Studio (original)' next to the Launch button on the home screen.",

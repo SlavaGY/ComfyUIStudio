@@ -88,6 +88,11 @@ def dispatch_subprocess_mode():
     делает. Вызывать нужно ДО Qt-импортов и создания QApplication (см.
     комментарии ниже, перенесены из корневого main.py без изменений).
     """
+    if len(sys.argv) > 1 and sys.argv[1] == "--studio-lm-studio":
+        from comfyui_studio.lm_studio.__main__ import main as lm_studio_main
+        lm_studio_main(sys.argv[2:])
+        sys.exit(0)
+
     # Диспетчеризация в режим подпроцесса -- для Imagine (см.
     # comfyui_studio/imagine/, launcher/core/imagine_process.py): из
     # исходников лаунчер спавнит `python -m comfyui_studio.imagine`

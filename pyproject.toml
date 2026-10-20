@@ -169,6 +169,9 @@ include = ["comfyui_studio*"]
     "rvc/static/**/*.html",
     "rvc/static/**/*.css",
     "rvc/static/**/*.js",
+    "lm_studio/static/**/*.html",
+    "lm_studio/static/**/*.css",
+    "lm_studio/static/**/*.js",
     # Общая статика веб-приложений (js/i18n_engine.js), раздаётся по /common.
     "web_common/static/**/*.js",
 ]

@@ -31,6 +31,8 @@ from ..core.system_monitor import ResourceMonitor
 from ..integration.comfy_theme import COMFY_PALETTE_MAP
 from .browser_page import BrowserPage
 from .launch_controller import LaunchController
+from .lm_studio_app_controller import LmStudioAppController
+from .lm_studio_browser_page import LmStudioBrowserPage
 from .lm_studio_controller import LmStudioController
 from .lm_studio_page import LmStudioPage
 from .remote_controller import RemoteController
@@ -84,11 +86,13 @@ class MainWindow(QMainWindow):
         # переключение между ними не должно сбрасывать открытую страницу.
         self.rvc_browser_page = RvcBrowserPage(loc)
         self.lm_studio_page = LmStudioPage(loc)
+        self.lm_studio_browser_page = LmStudioBrowserPage(loc)
 
         self.stack.addWidget(self.settings_page)
         self.stack.addWidget(self.browser_page)
         self.stack.addWidget(self.rvc_browser_page)
         self.stack.addWidget(self.lm_studio_page)
+        self.stack.addWidget(self.lm_studio_browser_page)
 
         self.settings_page.open_running_requested.connect(self._show_browser_page)
         self.settings_page.stop_requested.connect(self._stop_and_show_settings)
@@ -146,13 +150,24 @@ class MainWindow(QMainWindow):
         self.lm_studio.state_changed.connect(self._on_lm_studio_state_changed)
         self.lm_studio.ready.connect(self._show_lm_studio)
         self.lm_studio.releasing.connect(self.lm_studio_page.unload)
-        self.settings_page.lm_studio_launch_requested.connect(self.lm_studio.start)
-        self.settings_page.lm_studio_open_requested.connect(self.lm_studio.start)
+        self.settings_page.lm_studio_launch_requested.connect(self._start_lm_studio_original)
+        self.settings_page.lm_studio_open_requested.connect(self._open_lm_studio)
         self.settings_page.lm_studio_stop_requested.connect(self._stop_lm_studio)
         self.lm_studio_page.settings_requested.connect(
             lambda: self.stack.setCurrentWidget(self.settings_page)
         )
         self.lm_studio_page.stop_requested.connect(self._stop_lm_studio)
+
+        self.lm_studio_app = LmStudioAppController(self.config, loc=self.loc, parent=self)
+        self._lm_studio_loaded_port = None
+        self.lm_studio_app.state_changed.connect(self._on_lm_studio_app_state_changed)
+        self.lm_studio_app.ready.connect(self._show_lm_studio_app)
+        self.lm_studio_app.releasing.connect(self.lm_studio_browser_page.unload)
+        self.settings_page.lm_studio_app_launch_requested.connect(self._start_lm_studio_app)
+        self.lm_studio_browser_page.settings_requested.connect(
+            lambda: self.stack.setCurrentWidget(self.settings_page)
+        )
+        self.lm_studio_browser_page.stop_requested.connect(self._stop_lm_studio)
 
         self.theme_manager.theme_applied.connect(self._on_app_theme_applied)
 
@@ -288,7 +303,40 @@ class MainWindow(QMainWindow):
         self.raise_()
 
     def _stop_lm_studio(self):
-        self.lm_studio.stop()
+        if self.lm_studio_app.state in ("starting", "running", "failed_active"):
+            self.lm_studio_app.stop()
+        else:
+            self.lm_studio.stop()
+
+    def _start_lm_studio_original(self):
+        if self.lm_studio_app.state in ("starting", "running", "failed_active"):
+            return
+        self.lm_studio.start()
+
+    def _start_lm_studio_app(self):
+        if self.lm_studio.state in ("starting", "running", "failed_active"):
+            return
+        self.lm_studio_app.start()
+
+    def _open_lm_studio(self):
+        if self.lm_studio_app.state == "running":
+            self._show_lm_studio_app(self.lm_studio_app.port)
+        else:
+            self.lm_studio.start()
+
+    def _show_lm_studio_app(self, port):
+        if self._lm_studio_loaded_port != port:
+            self.lm_studio_browser_page.load(port)
+            self._lm_studio_loaded_port = port
+        self.stack.setCurrentWidget(self.lm_studio_browser_page)
+
+    def _on_lm_studio_app_state_changed(self, state, message):
+        self.settings_page.set_lm_studio_state(state, message)
+        self.settings_page.settings_dialog.lm_studio_page.set_state(state)
+        if state in ("stopped", "failed", "failed_active"):
+            self._lm_studio_loaded_port = None
+            if self.stack.currentWidget() is self.lm_studio_browser_page:
+                self.stack.setCurrentWidget(self.settings_page)
 
     # -- Ultimate RVC ------------------------------------------------------
 
@@ -394,6 +442,7 @@ class MainWindow(QMainWindow):
         self.browser_page.retranslate_ui()
         self.rvc_browser_page.retranslate_ui()
         self.lm_studio_page.retranslate_ui()
+        self.lm_studio_browser_page.retranslate_ui()
         self.tray.retranslate_ui()
         self.settings_page.retranslate_ui()
 
@@ -471,6 +520,12 @@ class MainWindow(QMainWindow):
             self.launch_controller.stop_processes()
 
         if not self.lm_studio.stop():
+            event.ignore()
+            self._quitting = False
+            self.showNormal()
+            return
+
+        if not self.lm_studio_app.stop():
             event.ignore()
             self._quitting = False
             self.showNormal()

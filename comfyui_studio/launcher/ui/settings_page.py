@@ -36,7 +36,15 @@ from ..core.external_apps import (
     launch_external_app,
     resolve_external_launch,
 )
-from ..core.launch_mode import LM_STUDIO, MODES, is_rvc_mode, mode_label, normalize_mode
+from ..core.launch_mode import (
+    LM_STUDIO,
+    LM_STUDIO_APP,
+    MODES,
+    is_lm_studio_mode,
+    is_rvc_mode,
+    mode_label,
+    normalize_mode,
+)
 from ..core.logging_setup import log
 from ..integration.tool_registry import IN_PROCESS_WINDOW_FACTORIES, ON_CLOSE_CALLBACKS
 from .settings.app_settings_dialog import AppSettingsDialog
@@ -57,6 +65,7 @@ class SettingsPage(QWidget):
     rvc_open_requested = Signal()
     rvc_stop_requested = Signal()
     lm_studio_launch_requested = Signal()
+    lm_studio_app_launch_requested = Signal()
     lm_studio_open_requested = Signal()
     lm_studio_stop_requested = Signal()
     language_changed = Signal(str)
@@ -286,7 +295,7 @@ class SettingsPage(QWidget):
 
     def _refresh_launch_btn(self):
         mode = self.selected_mode()
-        busy = self._lm_studio_busy if mode == LM_STUDIO else (
+        busy = self._lm_studio_busy if is_lm_studio_mode(mode) else (
             self._rvc_busy if is_rvc_mode(mode) else self._comfy_busy
         )
         self.launch_btn.setEnabled(not busy)
@@ -562,6 +571,10 @@ class SettingsPage(QWidget):
         if mode == LM_STUDIO:
             self.set_status("")
             self.lm_studio_launch_requested.emit()
+            return
+        if mode == LM_STUDIO_APP:
+            self.set_status("")
+            self.lm_studio_app_launch_requested.emit()
             return
         if is_rvc_mode(mode):
             # Ultimate RVC не зависит от ComfyUI: папка/скрипт ComfyUI тут
