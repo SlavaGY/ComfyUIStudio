@@ -13,6 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from ..web_common import NoCacheMiddleware, mount_common_static, register_ui_prefs, static_dir
+from .attachments import Attachments, AttachmentUpload
+from .integrations import IntegrationSettings, IntegrationStore
 from .reasoning import ReasoningParser
 from .runtime import EngineError, Runtime
 from .store import ChatStore
@@ -30,6 +32,8 @@ class ChatSettings(BaseModel):
 class SendRequest(ChatSettings):
     text: str = Field(default="", max_length=40000)
     retry: bool = False
+    message_index: int | None = Field(default=None, ge=0)
+    attachments: list[str] = Field(default_factory=list, max_length=8)
 
 
 class LoadRequest(BaseModel):
@@ -48,6 +52,8 @@ def event(data):
 def create_app(config: dict, data_dir: Path, runtime=None):
     engine = runtime or Runtime(config)
     store = ChatStore(data_dir / "chats.sqlite3")
+    attachments = Attachments(data_dir / "attachments")
+    integrations = IntegrationStore(data_dir / "integrations.json")
     busy = set()
     tasks = {}
 
@@ -143,6 +149,24 @@ def create_app(config: dict, data_dir: Path, runtime=None):
     async def chats():
         return {"chats": store.list()}
 
+    @app.post("/api/attachments")
+    def upload_attachment(body: AttachmentUpload):
+        try:
+            return attachments.add(body)
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
+
+    @app.get("/api/integrations")
+    async def read_integrations():
+        return integrations.read().model_dump()
+
+    @app.put("/api/integrations")
+    async def save_integrations(body: IntegrationSettings):
+        if busy:
+            raise HTTPException(409, "Дождитесь завершения ответа или остановите генерацию.")
+        integrations.save(body)
+        return body.model_dump()
+
     @app.post("/api/chats")
     async def create_chat():
         return store.create()
@@ -185,27 +209,53 @@ def create_app(config: dict, data_dir: Path, runtime=None):
         chat = get_chat(chat_id)
         if not body.model.strip():
             raise HTTPException(400, "Выберите модель")
-        if not body.retry and not body.text.strip():
+        if not body.retry and not body.text.strip() and not body.attachments:
             raise HTTPException(400, "Введите сообщение")
-        values = body.model_dump(exclude={"text", "retry"})
+        values = body.model_dump(exclude={"text", "retry", "message_index", "attachments"})
         if not values["title"]:
             values["title"] = chat["title"]
         chat.update(values)
         messages = chat["messages"]
+        index = body.message_index
+        if index is not None and (index >= len(messages) or messages[index]["role"] != "user"):
+            raise HTTPException(400, "Выберите сообщение пользователя")
         if body.retry:
-            if messages and messages[-1]["role"] == "assistant":
+            if index is not None:
+                del messages[index + 1:]
+            elif messages and messages[-1]["role"] == "assistant":
                 messages.pop()
             if not messages or messages[-1]["role"] != "user":
                 raise HTTPException(400, "Нет сообщения для повторной генерации")
         else:
-            messages.append({"role": "user", "content": body.text.strip()})
+            try:
+                files = [attachments.summary(attachments.get(identifier)) for identifier in body.attachments]
+            except ValueError as error:
+                raise HTTPException(400, str(error)) from error
+            if index is not None:
+                del messages[index:]
+            message = {"role": "user", "content": body.text.strip()}
+            if files:
+                message["attachments"] = files
+            messages.append(message)
         if not chat["title"]:
-            chat["title"] = messages[-1]["content"][:70]
-        context = [{"role": m["role"], "content": m["content"]} for m in messages]
+            chat["title"] = (messages[-1]["content"] or messages[-1].get("attachments", [{}])[0].get("name", ""))[:70]
+        tools = integrations.tools()
+        try:
+            context = [{"role": m["role"], "content": attachments.context(m)} for m in messages]
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
         if chat["system"]:
             context.insert(0, {"role": "system", "content": chat["system"]})
         payload = {key: chat[key] for key in ("model", "temperature", "top_p", "max_tokens")}
         payload.update(messages=context, stream=True)
+        endpoint = "/v1/chat/completions"
+        if tools:
+            endpoint = "/v1/responses"
+            context = [{"role": m["role"], "content": attachments.context(m, responses=True)
+                        if m["role"] == "user" else m["content"]} for m in messages]
+            payload = {"model": chat["model"], "input": context, "tools": tools, "stream": True,
+                       "store": False, "instructions": chat["system"], "temperature": chat["temperature"],
+                       "top_p": chat["top_p"], "max_output_tokens": chat["max_tokens"]}
         store.save(chat)
         busy.add(chat_id)
 
@@ -216,7 +266,7 @@ def create_app(config: dict, data_dir: Path, runtime=None):
             parser = ReasoningParser()
             started = time.monotonic()
             try:
-                async with engine.client.stream("POST", "/v1/chat/completions", json=payload) as response:
+                async with engine.client.stream("POST", endpoint, json=payload) as response:
                     if not response.is_success:
                         await response.aread()
                         engine.check_response(response)
@@ -231,6 +281,25 @@ def create_app(config: dict, data_dir: Path, runtime=None):
                         chunk = json.loads(data)
                         if chunk.get("error"):
                             raise EngineError(str(chunk["error"]))
+                        if tools:
+                            kind = chunk.get("type", "")
+                            if kind == "response.completed":
+                                finished = True
+                                break
+                            if kind in ("response.failed", "response.incomplete", "error"):
+                                raise EngineError(str(chunk.get("response", {}).get("error") or chunk.get("message") or "Ответ интеграции не завершён"))
+                            if kind.startswith("response.mcp"):
+                                queue.put_nowait(event({"tool_status": kind}))
+                            if kind == "response.output_text.delta":
+                                content, reasoning = parser.feed(chunk.get("delta") or "")
+                            elif kind in ("response.reasoning_text.delta", "response.reasoning_summary_text.delta"):
+                                content, reasoning = "", chunk.get("delta") or ""
+                            else:
+                                continue
+                            answer["content"] += content
+                            answer["reasoning"] += reasoning
+                            queue.put_nowait(event({"content": content, "reasoning": reasoning}))
+                            continue
                         choices = chunk.get("choices") or []
                         if not choices:
                             continue

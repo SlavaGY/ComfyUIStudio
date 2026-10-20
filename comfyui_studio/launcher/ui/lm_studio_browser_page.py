@@ -3,6 +3,7 @@
 import os
 
 from PySide6.QtCore import QTimer
+from PySide6.QtWebEngineCore import QWebEngineSettings
 from PySide6.QtWidgets import QPushButton
 
 from ..core.constants import APP_DIR
@@ -28,6 +29,13 @@ class LmStudioBrowserPage(BrowserPage):
         self._load_timer.setInterval(30000)
         self._load_timer.timeout.connect(lambda: self._on_load_finished(False))
         self.view.renderProcessTerminated.connect(self._renderer_stopped)
+
+    def _load_pending_page(self):
+        super()._load_pending_page()
+        if self._page is not None:
+            settings = self._page.settings()
+            settings.setAttribute(QWebEngineSettings.JavascriptCanAccessClipboard, True)
+            settings.setAttribute(QWebEngineSettings.JavascriptCanPaste, True)
 
     def needs_reload(self):
         return self._page is None or self._load_failed

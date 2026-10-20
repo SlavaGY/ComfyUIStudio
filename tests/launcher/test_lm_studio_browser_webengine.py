@@ -23,7 +23,12 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):
         pass
     def do_GET(self):
-        body = b'<html><body>LM Studio recovery test</body></html>'
+        body = b"""<html><body data-test="LM Studio recovery test"><script>window.marked={use:()=>{}};window.t=s=>s;
+            /*COPY_HELPER*/</script><button
+            style="position:absolute;left:0;top:0;width:160px;height:50px"
+            onclick="copyStudioText('Studio clipboard test')">Copy</button></body></html>"""
+        helper = Path('comfyui_studio/lm_studio/static/js/richtext.js').read_bytes()
+        body = body.replace(b'/*COPY_HELPER*/', helper)
         self.send_response(200)
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
@@ -43,10 +48,13 @@ def until(predicate):
 server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
 threading.Thread(target=server.serve_forever, daemon=True).start()
 page = Browser()
+page.resize(900, 600)
 page.show()
 try:
     page.load(server.server_port)
     until(lambda: page._page_ready)
+    page._page.runJavaScript("document.querySelector('button').click()")
+    until(lambda: app.clipboard().text() == 'Studio clipboard test')
     old_page = page._page
     # Terminate only the renderer PID obtained from this isolated test page.
     renderer = psutil.Process(page._page.renderProcessPid())
@@ -63,7 +71,7 @@ try:
     page.load(server.server_port)
     until(lambda: page._page_ready)
     result = []
-    page._page.runJavaScript('document.body.textContent', result.append)
+    page._page.runJavaScript('document.body.dataset.test', result.append)
     until(lambda: bool(result))
     assert result == ['LM Studio recovery test'], result
     print('Renderer crash, retry and same-port restart passed')

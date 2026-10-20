@@ -1,9 +1,10 @@
-/* Local chat application. Model output is rendered as DOM text, never HTML. */
+/* Local chat application. Markdown output passes through the safe renderer. */
 "use strict";
 (() => {
   const $ = id => document.getElementById(id);
   let chat = null, chats = [], models = [], ready = false, busy = false, modelBusy = false, navigating = false;
   let controller = null, saveQueue = Promise.resolve(), pendingSaveError = null, stopRequested = false;
+  let pendingAttachments = [], editIndex = null, uploading = false;
 
   function node(tag, className, text) {
     const element = document.createElement(tag);
@@ -26,15 +27,18 @@
       temperature: Number($("temperature").value), top_p: Number($("topP").value), max_tokens: Number($("maxTokens").value)};
   }
   function controls() {
-    $("send").disabled = !ready || busy || modelBusy || navigating || !$("modelSelect").value;
+    $("send").disabled = !ready || busy || modelBusy || navigating || uploading || !$("modelSelect").value;
     $("stop").hidden = !busy;
     $("send").hidden = busy;
     $("retry").disabled = !ready || busy || modelBusy || navigating || !chat || !chat.messages.length;
     for (const id of ["newChat", "deleteChat", "chatTitle", "modelSelect", "system", "temperature", "topP", "maxTokens", "contextLength", "refreshModels", "reloadModels"])
-      $(id).disabled = busy || modelBusy || navigating;
-    document.querySelectorAll(".chat-item").forEach(button => { button.disabled = busy || modelBusy || navigating; });
+      $(id).disabled = busy || modelBusy || navigating || uploading;
+    document.querySelectorAll(".chat-item").forEach(button => { button.disabled = busy || modelBusy || navigating || uploading; });
     document.querySelectorAll(".model-card button").forEach(button => { button.disabled = busy || modelBusy || !ready; });
     $("prompt").disabled = busy || navigating;
+    for (const id of ["attach", "fileInput", "cancelEdit", "addIntegration", "saveIntegrations"])
+      $(id).disabled = busy || modelBusy || navigating || uploading;
+    document.querySelectorAll(".message-edit,.message-retry,.attachment-remove,.integration-list input,.integration-list textarea,.integration-list button").forEach(button => { button.disabled = busy || navigating || uploading; });
   }
   function save() {
     if (!chat || busy) return saveQueue;
@@ -67,6 +71,7 @@
     navigating = true; controls();
     try {
     chat = await api("chats/" + id);
+    cancelEdit();
     $("chatTitle").value = chat.title;
     $("system").value = chat.system;
     $("temperature").value = chat.temperature;
@@ -84,34 +89,10 @@
       await history(); await open(created.id); $("prompt").value = ""; $("prompt").focus();
     } finally { navigating = false; controls(); }
   }
-  // A small safe renderer: paragraphs, headings, emphasis, inline/fenced code.
-  // HTML and model-generated links deliberately remain text.
-  function inline(element, text) {
-    const regex = /(`[^`\n]+`|\*\*[^*\n]+\*\*)/g; let offset = 0, match;
-    while ((match = regex.exec(text))) {
-      element.append(document.createTextNode(text.slice(offset, match.index)));
-      const code = match[0].startsWith("`");
-      element.append(node(code ? "code" : "strong", "", match[0].slice(code ? 1 : 2, code ? -1 : -2)));
-      offset = regex.lastIndex;
-    }
-    element.append(document.createTextNode(text.slice(offset)));
-  }
   function markdown(element, text) {
-    element.replaceChildren();
-    text.split("```").forEach((part, index) => {
-      if (index % 2) {
-        const newline = part.indexOf("\n"), pre = node("pre");
-        pre.append(node("code", "", newline >= 0 ? part.slice(newline + 1) : part)); element.append(pre);
-      } else {
-        for (const paragraph of part.split(/\n\s*\n/)) {
-          if (!paragraph) continue;
-          const heading = paragraph.match(/^#{1,3}\s+(.+)$/);
-          const block = node(heading ? "h3" : "p"); inline(block, heading ? heading[1] : paragraph); element.append(block);
-        }
-      }
-    });
+    renderStudioMarkdown(element, text);
   }
-  function messageElement(message) {
+  function messageElement(message, index) {
     const article = node("article", "message message--" + message.role);
     article.append(node("div", "message__label", t(message.role === "user" ? "Вы" : "Ассистент")));
     if (message.reasoning) {
@@ -123,8 +104,22 @@
     const actions = node("div", "message__actions");
     if (message.content) {
       const copy = node("button", "btn-link", t("Копировать"));
-      copy.onclick = () => guarded(async () => { await navigator.clipboard.writeText(message.content); copy.textContent = t("Скопировано"); });
+      copy.onclick = () => guarded(async () => { await copyStudioText(message.content); copy.textContent = t("Скопировано"); });
       actions.append(copy);
+    }
+    for (const file of message.attachments || []) article.append(node("span", "attachment-chip", "▧ " + file.name));
+    if (index !== undefined && message.role === "user") {
+      const edit = node("button", "btn-link message-edit", t("Редактировать"));
+      edit.disabled = busy; edit.onclick = () => beginEdit(index); actions.append(edit);
+    }
+    if (index !== undefined && message.role === "assistant") {
+      const retry = node("button", "btn-link message-retry", t("Повторить ответ"));
+      retry.disabled = busy || !ready;
+      retry.onclick = () => guarded(() => {
+        if (index < chat.messages.length - 1 && !confirm(t("Последующие сообщения будут заменены. Продолжить?"))) return;
+        return send(true, index - 1);
+      });
+      actions.append(retry);
     }
     if (message.status && !["completed", "streaming"].includes(message.status)) actions.append(node("span", "interrupted", t("Ответ прерван")));
     if (message.seconds) actions.append(node("span", "", message.seconds + " s"));
@@ -137,7 +132,7 @@
       const welcome = node("div", "welcome");
       welcome.append(node("span", "mark", "◆"), node("h2", "", t("О чём поговорим?")), node("p", "", t("Выберите локальную модель и начните диалог. Ваша история останется на этом компьютере.")));
       pane.append(welcome);
-    } else for (const message of chat.messages) pane.append(messageElement(message));
+    } else for (const [index, message] of chat.messages.entries()) pane.append(messageElement(message, index));
     pane.scrollTop = pane.scrollHeight;
   }
   function renderModels() {
@@ -177,24 +172,92 @@
     catch (e) { banner(e.message); }
     finally { modelBusy = false; controls(); }
   }
-  async function send(retry = false) {
-    if (busy || modelBusy || !ready || !chat) return;
+  function renderAttachments() {
+    const list = $("pendingAttachments"); list.replaceChildren();
+    pendingAttachments.forEach((file, index) => {
+      const chip = node("span", "attachment-chip", "▧ " + file.name);
+      const remove = node("button", "btn-link attachment-remove", "×"); remove.title = t("Удалить файл");
+      remove.onclick = () => { pendingAttachments.splice(index, 1); renderAttachments(); controls(); };
+      chip.append(remove); list.append(chip);
+    });
+  }
+  function cancelEdit() {
+    editIndex = null; pendingAttachments = []; $("editNotice").hidden = true;
+    $("prompt").value = ""; renderAttachments();
+  }
+  function beginEdit(index) {
+    if (busy || uploading) return;
+    editIndex = index; pendingAttachments = [...(chat.messages[index].attachments || [])];
+    $("prompt").value = chat.messages[index].content;
+    $("editNotice").hidden = false; renderAttachments(); $("prompt").focus();
+  }
+  async function uploadFiles(files) {
+    if (pendingAttachments.length + files.length > 8) throw Error(t("Можно прикрепить до 8 файлов"));
+    uploading = true; controls(); banner(t("Прикрепление файлов…"));
+    try {
+      for (const file of files) {
+        if (!file.size || file.size > 10 * 1024 * 1024) throw Error(t("Максимальный размер файла — 10 МБ") + ": " + file.name);
+        const data = await new Promise((resolve, reject) => {
+          const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(",")[1]);
+          reader.onerror = () => reject(Error(t("Не удалось прочитать файл"))); reader.readAsDataURL(file);
+        });
+        pendingAttachments.push(await api("attachments", "POST", {name: file.name, data})); renderAttachments();
+      }
+      banner();
+    } finally { uploading = false; $("fileInput").value = ""; controls(); }
+  }
+  function integrationCard(item = {}) {
+    const card = node("article", "integration-card");
+    function field(label, key, value = "", type = "text") {
+      const wrapper = node("label", "field"), input = node(type === "textarea" ? "textarea" : "input");
+      if (type !== "textarea") input.type = type;
+      input.dataset.key = key; input.value = value; wrapper.append(node("span", "", t(label)), input); card.append(wrapper); return input;
+    }
+    const enabled = field("Включено", "enabled", "", "checkbox"); enabled.checked = item.enabled !== false;
+    field("Имя", "name", item.name || ""); field("URL MCP-сервера", "url", item.url || "", "url");
+    field("Разрешённые инструменты (через запятую)", "allowed_tools", (item.allowed_tools || []).join(", "));
+    const headers = {...(item.headers || {})}, bearer = headers.Authorization || ""; delete headers.Authorization;
+    field("Токен Bearer (необязательно)", "token", bearer.replace(/^Bearer /, ""), "password");
+    field("Дополнительные HTTP-заголовки (JSON)", "headers", JSON.stringify(headers), "textarea");
+    const remove = node("button", "btn-link danger", t("Удалить")); remove.onclick = () => card.remove(); card.append(remove);
+    $("integrations").append(card); controls();
+  }
+  async function loadIntegrations() {
+    const data = await api("integrations"); $("integrations").replaceChildren();
+    for (const item of data.integrations) integrationCard(item);
+  }
+  async function saveIntegrations() {
+    const integrations = Array.from($("integrations").children).map(card => {
+      const value = key => card.querySelector(`[data-key="${key}"]`).value.trim();
+      const headers = JSON.parse(value("headers") || "{}");
+      if (value("token")) headers.Authorization = "Bearer " + value("token");
+      return {name: value("name"), url: value("url"), headers,
+        enabled: card.querySelector('[data-key="enabled"]').checked,
+        allowed_tools: value("allowed_tools").split(",").map(s => s.trim()).filter(Boolean)};
+    });
+    await api("integrations", "PUT", {integrations}); $("integrationStatus").textContent = t("Подключения сохранены");
+  }
+  async function send(retry = false, index = null) {
+    if (busy || modelBusy || uploading || !ready || !chat) return;
     if (!$("modelSelect").value) { banner(t("Сначала выберите модель")); return; }
-    const text = $("prompt").value.trim(); if (!retry && !text) return;
+    const text = $("prompt").value.trim(); if (!retry && !text && !pendingAttachments.length) return;
+    if (!retry && editIndex !== null && !confirm(t("Последующие сообщения будут заменены. Продолжить?"))) return;
     await flush();
     if (busy) return;
-    const id = chat.id, body = {...settings(), text, retry};
+    const id = chat.id, targetIndex = retry ? index : editIndex;
+    const body = {...settings(), text, retry, message_index: targetIndex, attachments: pendingAttachments.map(file => file.id)};
     busy = true; stopRequested = false; controller = new AbortController(); controls(); banner();
     $("generationInfo").textContent = t("Генерация…");
-    if (retry && chat.messages.at(-1)?.role === "assistant") chat.messages.pop();
-    if (!retry) chat.messages.push({role: "user", content: text});
+    if (targetIndex !== null) chat.messages.splice(targetIndex + (retry ? 1 : 0));
+    else if (retry && chat.messages.at(-1)?.role === "assistant") chat.messages.pop();
+    if (!retry) chat.messages.push({role: "user", content: text, attachments: [...pendingAttachments]});
     const answer = {role: "assistant", content: "", reasoning: "", status: "streaming"};
     chat.messages.push(answer); renderMessages();
     let article = $("messages").lastChild, terminal = false;
     try {
       const response = await fetch("api/chats/" + id + "/send", {method: "POST", signal: controller.signal, headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
       if (!response.ok) { const error = await response.json(); throw Error(typeof error.detail === "string" ? error.detail : JSON.stringify(error.detail)); }
-      if (!retry) $("prompt").value = "";
+      if (!retry) cancelEdit();
       const reader = response.body.getReader(), decoder = new TextDecoder(); let buffer = "";
       while (true) {
         const {value, done} = await reader.read(); if (done) break;
@@ -205,6 +268,7 @@
           if (!block.startsWith("data: ")) continue;
           const delta = JSON.parse(block.slice(6));
           if (delta.error) throw Error(delta.error);
+          if (delta.tool_status) $("generationInfo").textContent = t("Выполняется инструмент MCP…");
           if (delta.done) { terminal = true; answer.status = "completed"; }
           answer.content += delta.content || ""; answer.reasoning += delta.reasoning || "";
           const pane = $("messages"), nearBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 140;
@@ -250,6 +314,11 @@
     $("chatSearch").oninput = renderHistory;
     $("send").onclick = () => guarded(() => send(false));
     $("retry").onclick = () => guarded(() => send(true));
+    $("attach").onclick = () => $("fileInput").click();
+    $("fileInput").onchange = () => guarded(() => uploadFiles(Array.from($("fileInput").files)));
+    $("cancelEdit").onclick = cancelEdit;
+    $("addIntegration").onclick = () => integrationCard();
+    $("saveIntegrations").onclick = () => guarded(saveIntegrations);
     $("stop").onclick = () => guarded(async () => {
       stopRequested = true;
       try { await api("chats/" + chat.id + "/cancel", "POST"); }
@@ -267,6 +336,9 @@
     document.querySelectorAll("[data-tab]").forEach(button => { button.onclick = () => {
       const chatTab = button.dataset.tab === "chat";
       $("chatPane").hidden = $("parameters").hidden = !chatTab; $("modelsPane").hidden = chatTab;
+      $("modelsPane").hidden = button.dataset.tab !== "models";
+      $("settingsPane").hidden = button.dataset.tab !== "settings";
+      if (button.dataset.tab === "settings") guarded(loadIntegrations);
       document.querySelectorAll("[data-tab]").forEach(tab => tab.classList.toggle("is-active", tab === button));
     }; });
     window.addEventListener("imagine:languagechange", () => { renderHistory(); renderModels(); if (!busy) renderMessages(); health(); });

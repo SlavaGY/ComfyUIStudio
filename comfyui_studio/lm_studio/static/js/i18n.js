@@ -1,5 +1,16 @@
 "use strict";
 window.I18N = window.createI18n({storagePrefix: "studio.lmstudio", EN: {
+  "Настройки":"Settings", "Редактировать":"Edit", "Отмена":"Cancel", "＋ Файл":"＋ File", "Удалить файл":"Remove file",
+  "Редактирование запроса. Последующие ответы будут заменены.":"Editing a prompt. Subsequent answers will be replaced.",
+  "Последующие сообщения будут заменены. Продолжить?":"Subsequent messages will be replaced. Continue?",
+  "Можно прикрепить до 8 файлов":"You can attach up to 8 files", "Прикрепление файлов…":"Attaching files…",
+  "Максимальный размер файла — 10 МБ":"Maximum file size is 10 MB", "Не удалось прочитать файл":"Could not read the file",
+  "Не удалось скопировать текст":"Could not copy the text", "＋ Добавить":"＋ Add", "Включено":"Enabled", "Имя":"Name",
+  "URL MCP-сервера":"MCP server URL", "Разрешённые инструменты (через запятую)":"Allowed tools (comma separated)",
+  "Токен Bearer (необязательно)":"Bearer token (optional)", "Дополнительные HTTP-заголовки (JSON)":"Additional HTTP headers (JSON)",
+  "Сохранить подключения":"Save connections", "Подключения сохранены":"Connections saved", "Выполняется инструмент MCP…":"Running an MCP tool…",
+  "Подключения MCP для инструментов модели":"MCP connections for model tools",
+  "Подключите MCP-сервер по HTTP/HTTPS URL. Разрешите Remote MCP в настройках сервера LM Studio. Пустой список инструментов разрешает все инструменты подключения.":"Connect an MCP server by HTTP/HTTPS URL. Enable Remote MCP in LM Studio server settings. An empty tool list allows all tools from the connection.",
   "Чат":"Chat", "Модели":"Models", "Подключение…":"Connecting…", "Готов к работе":"Ready", "Ошибка подключения":"Connection error",
   "＋ Новый диалог":"＋ New conversation", "Поиск диалогов":"Search conversations", "ДИАЛОГИ":"CONVERSATIONS",
   "Диалоги сохраняются в Studio на этом компьютере.":"Conversations are saved in Studio on this computer.",

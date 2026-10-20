@@ -41,7 +41,7 @@ class LmStudioAppProcess(ManagedProcess):
         self.port = app_port(cfg)
 
     def start(self):
-        missing = find_missing_modules(("fastapi", "uvicorn", "httpx", "pydantic"))
+        missing = find_missing_modules(("fastapi", "uvicorn", "httpx", "pydantic", "pypdf"))
         if missing:
             raise ProcessStartError("Установите зависимости Studio: pip install .[imagine] (" + ", ".join(missing) + ")")
         if is_port_in_use(self.port):

@@ -69,6 +69,7 @@ imagine = [
     # это не гарантирует конкретную версию/наличие в рантайме без
     # прямого объявления -- поэтому здесь явно.
     "httpx>=0.27",
+    "pypdf>=6.0",
     # НОВОЕ (Remote, этап 5 дорожной карты): mDNS-объявление Remote в
     # локальной сети (comfyui_studio/remote/mdns.py, §5 -- "mDNS
     # discovery"). Используется async-API (zeroconf.asyncio) -- версия
@@ -172,6 +173,10 @@ include = ["comfyui_studio*"]
     "lm_studio/static/**/*.html",
     "lm_studio/static/**/*.css",
     "lm_studio/static/**/*.js",
+    "lm_studio/static/**/*.woff2",
+    "lm_studio/static/**/*.woff",
+    "lm_studio/static/**/*.ttf",
+    "lm_studio/static/vendor/**/LICENSE*",
     # Общая статика веб-приложений (js/i18n_engine.js), раздаётся по /common.
     "web_common/static/**/*.js",
 ]

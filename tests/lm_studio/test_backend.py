@@ -1,6 +1,7 @@
 """Chat persistence, model operations and streaming against the LM Studio protocol."""
 
 import asyncio
+import base64
 import json
 import threading
 
@@ -86,6 +87,71 @@ def test_tagged_reasoning_is_streamed_and_saved_separately(environment):
     assert answer["content"] == "Final answer" and answer["reasoning"] == "Think carefully"
     send(client, chat_id, text="Continue")
     assert json.loads(captured[-1].content)["messages"][1]["content"] == "Final answer"
+
+
+def test_edit_and_retry_earlier_prompt_replace_only_following_messages(environment):
+    client, _, captured, _ = environment
+    chat_id = client.post("/api/chats").json()["id"]
+    send(client, chat_id, text="First")
+    send(client, chat_id, text="Second")
+    send(client, chat_id, text="Edited", message_index=0)
+    messages = client.get(f"/api/chats/{chat_id}").json()["messages"]
+    assert len(messages) == 2 and messages[0]["content"] == "Edited"
+    send(client, chat_id, text="Followup")
+    send(client, chat_id, retry=True, message_index=0)
+    assert len(client.get(f"/api/chats/{chat_id}").json()["messages"]) == 2
+    assert json.loads(captured[-1].content)["messages"] == [{"role": "user", "content": "Edited"}]
+    assert send(client, chat_id, message_index=1).status_code == 400
+
+
+def test_files_reach_model_and_survive_edit_retry_and_reload(environment):
+    client, _, captured, _ = environment
+    chat_id = client.post("/api/chats").json()["id"]
+    upload = client.post("/api/attachments", json={"name": "notes.txt", "data": base64.b64encode("Файл с фактами".encode()).decode()})
+    assert upload.status_code == 200
+    file = upload.json()
+    send(client, chat_id, text="", attachments=[file["id"]])
+    assert "Файл с фактами" in json.loads(captured[-1].content)["messages"][0]["content"]
+    saved = client.get(f"/api/chats/{chat_id}").json()
+    assert saved["title"] == "notes.txt" and saved["messages"][0]["attachments"] == [file]
+    send(client, chat_id, retry=True)
+    assert "Файл с фактами" in json.loads(captured[-1].content)["messages"][0]["content"]
+    before = client.get(f"/api/chats/{chat_id}").json()
+    assert send(client, chat_id, message_index=0, attachments=["../invalid"]).status_code == 400
+    assert client.get(f"/api/chats/{chat_id}").json() == before
+
+
+def test_images_are_sent_as_multimodal_content(environment):
+    client, _, captured, _ = environment
+    image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jJ1cAAAAASUVORK5CYII="
+    file = client.post("/api/attachments", json={"name": "pixel.png", "data": image}).json()
+    chat_id = client.post("/api/chats").json()["id"]
+    send(client, chat_id, attachments=[file["id"]])
+    content = json.loads(captured[-1].content)["messages"][0]["content"]
+    assert content[0] == {"type": "text", "text": "Hello"}
+    assert content[1]["image_url"]["url"] == "data:image/png;base64," + image
+
+
+def test_mcp_settings_drive_responses_api_without_storing_credentials_in_chat(environment):
+    client, _, captured, options = environment
+    body = {"integrations": [{"name": "test-mcp", "url": "http://127.0.0.1:9999/mcp", "headers": {"Authorization": "Bearer secret"}, "allowed_tools": ["search"]}]}
+    assert client.put("/api/integrations", json=body).status_code == 200
+    assert client.get("/api/integrations").json()["integrations"][0]["enabled"]
+    options["chunks"] = [{"type": "response.output_text.delta", "delta": "Tool result"}, {"type": "response.completed"}]
+    chat_id = client.post("/api/chats").json()["id"]
+    response = send(client, chat_id)
+    assert '"done": true' in response.text
+    assert captured[-1].url.path == "/v1/responses"
+    payload = json.loads(captured[-1].content)
+    assert payload["tools"][0]["headers"] == {"Authorization": "Bearer secret"}
+    assert payload["tools"][0]["allowed_tools"] == ["search"]
+    assert payload["input"][0]["content"][0]["text"] == "Hello"
+    saved = client.get(f"/api/chats/{chat_id}").json()
+    assert saved["messages"][-1]["content"] == "Tool result" and "secret" not in json.dumps(saved)
+    send(client, chat_id, text="Continue")
+    assert [m["role"] for m in json.loads(captured[-1].content)["input"]] == ["user", "assistant", "user"]
+    assert client.put("/api/integrations", json={"integrations": [{"name": "bad", "url": "file:///etc/passwd"}]}).status_code == 422
+    assert client.get("/api/integrations").json()["integrations"][0]["name"] == "test-mcp"
 
 
 def test_retry_replaces_last_answer_instead_of_duplicating_prompt(environment):
