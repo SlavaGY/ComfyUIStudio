@@ -207,7 +207,7 @@ def test_local_only_and_static_assets(environment):
     assert client.get("/api/health", headers={"host": "attacker.test"}).status_code == 403
     assert client.get("/").status_code == 200
     assert client.get("/css/themes.css").status_code == 200
-    assert 'src="js/stream_renderer.js"' in client.get("/").text
+    assert 'src="js/stream_renderer.js?v=' in client.get("/").text
     assert client.get("/js/stream_renderer.js").status_code == 200
     assert client.get("/common/js/i18n_engine.js").status_code == 200
     assert "no-store" in client.get("/").headers["cache-control"]

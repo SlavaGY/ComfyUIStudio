@@ -10,10 +10,15 @@ from typing import Any
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from ..web_common import NoCacheMiddleware, mount_common_static, register_ui_prefs, static_dir
+from ..web_common import (
+    CachedStaticFiles,
+    CachePolicyMiddleware,
+    mount_common_static,
+    register_ui_prefs,
+    static_dir,
+)
 from .attachments import Attachments, AttachmentUpload
 from .integrations import IntegrationSettings, IntegrationStore
 from .reasoning import ReasoningParser
@@ -74,7 +79,7 @@ def create_app(config: dict, data_dir: Path, runtime=None):
             await engine.close()
 
     app = FastAPI(title="Studio · LM Studio", lifespan=lifespan)
-    app.add_middleware(NoCacheMiddleware)
+    app.add_middleware(CachePolicyMiddleware)
     app.state.engine = engine
     app.state.store = store
     app.state.generations = tasks
@@ -358,5 +363,5 @@ def create_app(config: dict, data_dir: Path, runtime=None):
 
     register_ui_prefs(app)
     mount_common_static(app)
-    app.mount("/", StaticFiles(directory=str(static_dir("lm_studio")), html=True), name="ui")
+    app.mount("/", CachedStaticFiles(directory=static_dir("lm_studio"), html=True), name="ui")
     return app

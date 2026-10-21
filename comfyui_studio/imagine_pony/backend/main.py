@@ -16,13 +16,13 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from comfyui_studio.imagine.backend.comfy_client import ComfyClient, ComfyUIError
 from comfyui_studio.imagine.backend.workflow import find_output_images
 from comfyui_studio.web_common import (
-    NoCacheMiddleware,
+    CachedStaticFiles,
+    CachePolicyMiddleware,
     mount_common_static,
     register_ui_prefs,
     static_dir,
@@ -41,7 +41,7 @@ app = FastAPI(title="Imagine Pony — генератор PonyXL на ComfyUI")
 REQUIRED_NODES = ("CharacterSearchUI", "PromptBuilderNode", "MultiLoraLoader")
 
 
-app.add_middleware(NoCacheMiddleware)
+app.add_middleware(CachePolicyMiddleware)
 
 
 def get_client(timeout: float = 10.0) -> ComfyClient:
@@ -389,4 +389,4 @@ def get_image(filename: str, subfolder: str = "", type: str = "output"):
 
 config_store.DATA_DIR.mkdir(parents=True, exist_ok=True)
 mount_common_static(app)  # /common -- общий JS движок переводов; ДО корневого "/"
-app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="static")
+app.mount("/", CachedStaticFiles(directory=_STATIC_DIR, html=True), name="static")
