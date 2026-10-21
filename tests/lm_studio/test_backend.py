@@ -214,6 +214,21 @@ def test_local_only_and_static_assets(environment):
     assert client.get("/api/v1/remote/apps").status_code == 404
 
 
+def test_chat_list_pages_searches_and_validates_input(environment):
+    client, app, _, _ = environment
+    for i in range(55):
+        chat = app.state.store.create()
+        chat["title"] = f"Диалог {i}"
+        app.state.store.save(chat)
+    first = client.get("/api/chats").json()
+    assert len(first["chats"]) == 50 and first["next_cursor"]
+    second = client.get("/api/chats", params={"cursor": first["next_cursor"]}).json()
+    assert len(second["chats"]) == 5 and second["next_cursor"] is None
+    assert client.get("/api/chats?search=диалог%200").json()["chats"][0]["title"] == "Диалог 0"
+    for query in ("limit=0", "limit=101", "cursor=invalid"):
+        assert client.get("/api/chats?" + query).status_code == 422
+
+
 def test_stop_persists_partial_reply_and_releases_chat(tmp_path):
     token_sent = threading.Event()
 

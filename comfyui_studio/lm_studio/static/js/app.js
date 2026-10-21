@@ -5,6 +5,10 @@
   let chat = null, chats = [], models = [], ready = false, busy = false, modelBusy = false, navigating = false;
   let controller = null, saveQueue = Promise.resolve(), pendingSaveError = null, stopRequested = false;
   let pendingAttachments = [], editIndex = null, uploading = false;
+  let searchTimer = null;
+  const historyPager = createStudioChatHistory(params => api("chats?" + params), () => {
+    chats = historyPager.items; renderHistory();
+  });
 
   function node(tag, className, text) {
     const element = document.createElement(tag);
@@ -36,6 +40,7 @@
     document.querySelectorAll(".chat-item").forEach(button => { button.disabled = busy || modelBusy || navigating || uploading; });
     document.querySelectorAll(".model-card button").forEach(button => { button.disabled = busy || modelBusy || !ready; });
     $("prompt").disabled = busy || navigating;
+    $("moreChats").disabled = historyPager.loading || busy || navigating || uploading;
     for (const id of ["attach", "fileInput", "cancelEdit", "addIntegration", "saveIntegrations"])
       $(id).disabled = busy || modelBusy || navigating || uploading;
     document.querySelectorAll(".message-edit,.message-retry,.attachment-remove,.integration-list input,.integration-list textarea,.integration-list button").forEach(button => { button.disabled = busy || navigating || uploading; });
@@ -47,24 +52,31 @@
       try {
         await api("chats/" + id, "PUT", body); pendingSaveError = null;
         const item = chats.find(c => c.id === id);
-        if (item) { item.title = body.title; item.model = body.model; renderHistory(); }
+        const renamed = item ? item.title !== body.title : chat && chat.id === id && chat.title !== body.title;
+        if (item) {
+          item.title = body.title; item.model = body.model;
+        }
+        if (chat && chat.id === id) chat.title = body.title;
+        if (renamed && historyPager.query) await history(); else renderHistory();
       }
       catch (e) { pendingSaveError = e; banner(e.message); }
     });
     return saveQueue;
   }
   async function flush() { await save(); if (pendingSaveError) throw pendingSaveError; }
-  async function history() { chats = (await api("chats")).chats; renderHistory(); }
+  async function history() { clearTimeout(searchTimer); await historyPager.reset($("chatSearch").value); }
   function renderHistory() {
     const list = $("chatList"); list.replaceChildren();
-    const query = $("chatSearch").value.toLocaleLowerCase();
-    for (const item of chats.filter(c => (c.title || t("Новый диалог")).toLocaleLowerCase().includes(query))) {
+    for (const item of chats) {
       const button = node("button", "chat-item" + (chat && chat.id === item.id ? " is-active" : ""), item.title || t("Новый диалог"));
       button.title = item.title || t("Новый диалог");
       button.onclick = () => guarded(async () => { await flush(); await open(item.id); });
       list.append(button);
     }
-    if (!chats.length) list.append(node("p", "hint", t("Нет сохранённых диалогов")));
+    if (!chats.length) list.append(node("p", "hint", t(historyPager.loading ? "Загрузка…" :
+      historyPager.query ? "Диалоги не найдены" : "Нет сохранённых диалогов")));
+    $("moreChats").hidden = !historyPager.nextCursor;
+    $("moreChats").textContent = t(historyPager.loading ? "Загрузка…" : "Показать ещё");
     controls();
   }
   async function open(id) {
@@ -87,6 +99,7 @@
     try {
       if (chat) await flush();
       const created = await api("chats", "POST");
+      $("chatSearch").value = "";
       await history(); await open(created.id); $("prompt").value = ""; $("prompt").focus();
     } finally { navigating = false; controls(); }
   }
@@ -322,7 +335,10 @@
       });
     }
     $("newChat").onclick = () => guarded(newChat);
-    $("chatSearch").oninput = renderHistory;
+    $("chatSearch").oninput = () => {
+      clearTimeout(searchTimer); searchTimer = setTimeout(() => guarded(history), 250);
+    };
+    $("moreChats").onclick = () => guarded(() => historyPager.loadMore());
     $("send").onclick = () => guarded(() => send(false));
     $("retry").onclick = () => guarded(() => send(true));
     $("attach").onclick = () => $("fileInput").click();
@@ -341,7 +357,8 @@
     $("refreshModels").onclick = $("reloadModels").onclick = () => guarded(refreshModels);
     $("deleteChat").onclick = () => guarded(async () => {
       if (!chat || !confirm(t("Удалить этот диалог?"))) return;
-      await flush(); await api("chats/" + chat.id, "DELETE"); chat = null; await history();
+      await flush(); await api("chats/" + chat.id, "DELETE"); chat = null;
+      $("chatSearch").value = ""; await history();
       if (chats.length) await open(chats[0].id); else await newChat();
     });
     document.querySelectorAll("[data-tab]").forEach(button => { button.onclick = () => {

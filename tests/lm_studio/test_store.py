@@ -4,6 +4,8 @@ import json
 import sqlite3
 from unittest.mock import patch
 
+import pytest
+
 from comfyui_studio.lm_studio.store import ChatStore
 
 
@@ -44,3 +46,52 @@ def test_listing_does_not_select_payload(tmp_path):
     with sqlite3.connect(store.path) as db:
         db.execute("UPDATE chats SET payload='not JSON'")
     assert store.list() == [{key: chat[key] for key in ("id", "title", "model", "updated")}]
+
+
+def test_cursor_pages_cover_tied_timestamps_without_duplicates(tmp_path):
+    store = ChatStore(tmp_path / "chats.sqlite3")
+    with store.connect() as db:
+        db.executemany("INSERT INTO chats (id, updated, title, model, payload) VALUES (?, ?, ?, '', 'not JSON')",
+                       [(f"{i:04d}", i // 3, f"Chat {i}") for i in range(123)])
+    found, cursor = [], None
+    while True:
+        page = store.list_page(7, cursor)
+        assert 0 < len(page["chats"]) <= 7
+        found.extend(item["id"] for item in page["chats"])
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+    assert found == [item["id"] for item in store.list()]
+    assert len(set(found)) == 123
+
+
+def test_search_is_unicode_literal_and_covers_later_pages(tmp_path):
+    store = ChatStore(tmp_path / "chats.sqlite3")
+    with store.connect() as db:
+        db.executemany("INSERT INTO chats (id, updated, title, model, payload) VALUES (?, ?, ?, '', '{}')",
+                       [(str(i), i, "Обычный") for i in range(100)])
+        db.execute("UPDATE chats SET title='ЁЖИК 100%_test' WHERE id='0'")
+    assert store.list_page(search="ёжик 100%_")["chats"][0]["id"] == "0"
+    assert not store.list_page(search="missing")["chats"]
+    unnamed = store.create()
+    assert store.list_page(search="new conversation")["chats"][0]["id"] == unnamed["id"]
+    assert store.list_page(search="новый диалог")["chats"][0]["id"] == unnamed["id"]
+
+
+def test_inserts_and_deletions_do_not_shift_remaining_pages(tmp_path):
+    store = ChatStore(tmp_path / "chats.sqlite3")
+    with store.connect() as db:
+        db.executemany("INSERT INTO chats (id, updated, title, model, payload) VALUES (?, ?, '', '', '{}')",
+                       [(str(i), i) for i in range(10)])
+    first = store.list_page(3)
+    store.delete("9")
+    store.create()
+    second = store.list_page(3, first["next_cursor"])
+    assert [item["id"] for item in second["chats"]] == ["6", "5", "4"]
+
+
+@pytest.mark.parametrize("cursor", ["invalid", "e30", "W10", "WzEsbnVsbF0", "W05hTiwiaWQiXQ"])
+def test_invalid_cursors_are_rejected(tmp_path, cursor):
+    store = ChatStore(tmp_path / "chats.sqlite3")
+    with pytest.raises(ValueError, match="Invalid cursor"):
+        store.list_page(cursor=cursor)

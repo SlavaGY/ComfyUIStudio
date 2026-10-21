@@ -1,6 +1,9 @@
 """Local conversation storage, independent of the original LM Studio library."""
 
+import base64
+import binascii
 import json
+import math
 import sqlite3
 import time
 import uuid
@@ -25,11 +28,13 @@ class ChatStore:
                 chat = json.loads(payload)
                 db.execute("UPDATE chats SET title=?, model=? WHERE id=?",
                            (chat.get("title", ""), chat.get("model", ""), chat_id))
-            db.execute("CREATE INDEX IF NOT EXISTS idx_chats_summary ON chats(updated DESC, id, title, model)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_chats_page ON chats(updated DESC, id DESC, title, model)")
+            db.execute("DROP INDEX IF EXISTS idx_chats_summary")
 
     @contextmanager
     def connect(self):
         db = sqlite3.connect(self.path, timeout=10)
+        db.create_function("casefold", 1, lambda value: (value or "").casefold(), deterministic=True)
         try:
             with db:
                 yield db
@@ -38,8 +43,39 @@ class ChatStore:
 
     def list(self):
         with self.connect() as db:
-            rows = db.execute("SELECT id, title, model, updated FROM chats ORDER BY updated DESC").fetchall()
+            rows = db.execute("SELECT id, title, model, updated FROM chats ORDER BY updated DESC, id DESC").fetchall()
         return [dict(zip(("id", "title", "model", "updated"), row)) for row in rows]
+
+    def list_page(self, limit=50, cursor=None, search=""):
+        if not 1 <= limit <= 100:
+            raise ValueError("Invalid page size")
+        conditions, params = [], []
+        if cursor:
+            try:
+                updated, chat_id = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
+                if (not isinstance(updated, (int, float)) or not math.isfinite(updated)
+                        or not isinstance(chat_id, str) or not chat_id):
+                    raise ValueError("Invalid cursor")
+            except (ValueError, TypeError, OverflowError, binascii.Error) as error:
+                raise ValueError("Invalid cursor") from error
+            conditions.append("(updated, id) < (?, ?)")
+            params.extend((updated, chat_id))
+        if search:
+            conditions.append("instr(casefold(CASE WHEN title='' THEN 'Новый диалог New conversation' ELSE title END), ?) > 0")
+            params.append(search.casefold())
+        where = " WHERE " + " AND ".join(conditions) if conditions else ""
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT id, title, model, updated FROM chats" + where
+                + " ORDER BY updated DESC, id DESC LIMIT ?", [*params, limit + 1]
+            ).fetchall()
+        more = len(rows) > limit
+        rows = rows[:limit]
+        next_cursor = None
+        if more:
+            next_cursor = base64.urlsafe_b64encode(json.dumps([rows[-1][3], rows[-1][0]]).encode()).decode().rstrip("=")
+        return {"chats": [dict(zip(("id", "title", "model", "updated"), row)) for row in rows],
+                "next_cursor": next_cursor}
 
     def get(self, chat_id):
         with self.connect() as db:

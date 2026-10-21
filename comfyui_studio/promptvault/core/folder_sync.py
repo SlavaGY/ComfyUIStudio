@@ -7,6 +7,7 @@ from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer, Signal
 
 from comfyui_studio.launcher.core.background import BackgroundTask
 from comfyui_studio.promptvault.config import POLL_INTERVAL_MS
+from comfyui_studio.promptvault.core.directory_index import DirectoryIndex
 from comfyui_studio.promptvault.core.repository import GenerationRepository
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,8 @@ class FolderSync(QObject):
         self._initial = False
         self._initial_error_reported = False
         self._task = BackgroundTask(self)
+        self._index: DirectoryIndex | None = None
+        self._dirty: set[str] = set()
 
         self._watcher = QFileSystemWatcher(self)
         self._watcher.directoryChanged.connect(self._on_fs_event)
@@ -62,6 +65,7 @@ class FolderSync(QObject):
         self.stop()
 
         self._folder = str(folder)
+        self._index = DirectoryIndex(self._folder)
 
         # Рекурсивное обнаружение подпапок выполняет тот же рабочий поток,
         # что и индексацию. В GUI остаётся только регистрация готовых путей.
@@ -95,17 +99,20 @@ class FolderSync(QObject):
             logger.info("Остановлено отслеживание папки: %s", self._folder)
 
         self._folder = None
+        self._index = None
+        self._dirty.clear()
 
     # --------------------------------------------------
 
     def _on_fs_event(self, _changed_path: str) -> None:
 
         if self._folder is not None:
+            self._dirty.add(_changed_path)
             self._debounce.start()
 
     def _sync(self) -> None:
 
-        if self._folder is None:
+        if self._folder is None or self._index is None:
             return
 
         if self._task.is_busy():
@@ -114,15 +121,19 @@ class FolderSync(QObject):
 
         self._pending = False
         folder, generation, db_path = self._folder, self._generation, self._db_path
+        index, dirty = self._index, self._dirty
+        self._dirty = set()
 
         def scan() -> tuple[bool, list[str]]:
-            repository = GenerationRepository(db_path)
-            try:
-                directories = [folder] + [str(p) for p in Path(folder).rglob("*") if p.is_dir()]
-                changed = repository.sync_folder(folder)
-                return changed, directories
-            finally:
-                repository.close()
+            changes = index.scan(dirty)
+            changed = False
+            if changes.files:
+                repository = GenerationRepository(db_path)
+                try:
+                    changed = repository.sync_files(folder, changes.files, force=not changes.reconcile)
+                finally:
+                    repository.close()
+            return changed, changes.directories
 
         self._task.run(scan, lambda result, error: self._on_scanned(generation, result, error))
 
@@ -134,6 +145,8 @@ class FolderSync(QObject):
     ) -> None:
         if generation == self._generation and self._folder is not None:
             if error is not None:
+                if self._index is not None:
+                    self._index.invalidate()
                 logger.error("Ошибка синхронизации %s: %s", self._folder, error)
                 # Первичную ошибку показываем один раз; повторные фоновые
                 # ошибки остаются в журнале и не мешают работе с галереей.
@@ -143,6 +156,9 @@ class FolderSync(QObject):
             elif result is not None:
                 changed, directories = result
                 watched = set(self._watcher.directories())
+                obsolete = list(watched - set(directories))
+                if obsolete:
+                    self._watcher.removePaths(obsolete)
                 additions = [path for path in directories if path not in watched]
                 if additions:
                     self._watcher.addPaths(additions)

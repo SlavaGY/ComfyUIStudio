@@ -42,13 +42,14 @@ class TestRestoreLastFolder:
     def test_async_open_error_respects_silent_restore(self, qapp, qtbot, tmp_path, monkeypatch, show_errors):
         folder = tmp_path / "gens"
         folder.mkdir()
+        _write_json(folder, "first")
         warnings = []
 
-        def fail_sync(repository, path):
+        def fail_sync(repository, path, files, **kwargs):
             raise OSError("disk unavailable")
 
         monkeypatch.setattr(
-            "comfyui_studio.promptvault.core.repository.GenerationRepository.sync_folder", fail_sync
+            "comfyui_studio.promptvault.core.repository.GenerationRepository.sync_files", fail_sync
         )
         monkeypatch.setattr(
             "comfyui_studio.promptvault.ui.main_window.QMessageBox.warning",

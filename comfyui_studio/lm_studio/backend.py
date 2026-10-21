@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -152,8 +152,12 @@ def create_app(config: dict, data_dir: Path, runtime=None):
         return result
 
     @app.get("/api/chats")
-    def chats():
-        return {"chats": store.list()}
+    def chats(limit: int = Query(50, ge=1, le=100), cursor: str | None = Query(None, max_length=512),
+              search: str = Query("", max_length=200)):
+        try:
+            return store.list_page(limit, cursor, search)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
 
     @app.post("/api/attachments")
     def upload_attachment(body: AttachmentUpload):

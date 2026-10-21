@@ -21,9 +21,10 @@
     <aside class="sidebar">
       <button id="newChat" class="btn-primary" data-i18n="＋ Новый диалог">＋ Новый диалог</button>
       <label class="sr-only" for="chatSearch" data-i18n="Поиск диалогов">Поиск диалогов</label>
-      <input id="chatSearch" type="search" placeholder="Поиск диалогов" data-i18n-placeholder="Поиск диалогов">
+      <input id="chatSearch" type="search" maxlength="200" placeholder="Поиск диалогов" data-i18n-placeholder="Поиск диалогов">
       <div class="section-label" data-i18n="ДИАЛОГИ">ДИАЛОГИ</div>
       <div id="chatList" class="chat-list"></div>
+      <button id="moreChats" class="btn-link" data-i18n="Показать ещё" hidden>Показать ещё</button>
       <p class="sidebar-note" data-i18n="Диалоги сохраняются в Studio на этом компьютере.">Диалоги сохраняются в Studio на этом компьютере.</p>
     </aside>
     <section id="chatPane" class="chat-pane">
@@ -71,6 +72,7 @@
   <script src="vendor/katex/dist/katex.min.js"></script>
   <script src="js/richtext.js"></script>
   <script src="js/stream_renderer.js"></script>
+  <script src="js/chat_history.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

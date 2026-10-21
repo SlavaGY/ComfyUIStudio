@@ -3,10 +3,11 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+import uuid
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QImageReader
 
 from comfyui_studio.promptvault.config import (
     THUMBNAIL_CACHE_DIR,
@@ -16,11 +17,11 @@ from comfyui_studio.promptvault.config import (
 from comfyui_studio.promptvault.utils import enforce_dir_size_limit
 
 
-def make_thumb(image_path: str | Path, size: int = 256) -> Path | None:
+def make_thumb(image_path: str | Path, size: int = 256, *, cache_dir: Path | None = None) -> Path | None:
     """Создаёт (или переиспользует уже созданную) миниатюру изображения.
 
     Кэш хранится в THUMBNAIL_CACHE_DIR (~/.promptvault/thumbnails) по
-    хэшу полного пути к исходному файлу — не зависит от текущей
+    хэшу пути, версии исходного файла и размера миниатюры — не зависит от текущей
     рабочей директории, в отличие от прежнего относительного пути
     "cache/thumbnails".
 
@@ -33,35 +34,45 @@ def make_thumb(image_path: str | Path, size: int = 256) -> Path | None:
     if not image_path.exists():
         return None
 
-    THUMBNAIL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_dir = cache_dir if cache_dir is not None else THUMBNAIL_CACHE_DIR
+    cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # уникальный ключ из полного пути
+    metadata = image_path.stat()
+    # Размер и версия исходника входят в ключ: обновление картинки или
+    # запрос другого размера не должны возвращать устаревшую миниатюру.
     file_hash = hashlib.md5(
-        str(image_path.resolve()).encode("utf-8")
+        f"{image_path.resolve()}:{metadata.st_mtime_ns}:{metadata.st_size}:{size}".encode("utf-8")
     ).hexdigest()
 
-    cache_path = THUMBNAIL_CACHE_DIR / f"{file_hash}.webp"
+    cache_path = cache_dir / f"{file_hash}.webp"
 
     if cache_path.exists():
         return cache_path
 
-    pixmap = QPixmap(str(image_path))
+    reader = QImageReader(str(image_path))
+    reader.setAutoTransform(True)
+    original_size = reader.size()
+    if original_size.isValid():
+        reader.setScaledSize(original_size.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio))
+    image = reader.read()
 
-    if pixmap.isNull():
+    if image.isNull():
         return None
 
-    pixmap = pixmap.scaled(
+    image = image.scaled(
         size,
         size,
         Qt.AspectRatioMode.KeepAspectRatio,
         Qt.TransformationMode.SmoothTransformation
     )
 
-    pixmap.save(
-        str(cache_path),
-        "WEBP",
-        90
-    )
+    partial = cache_path.with_suffix(f".{uuid.uuid4().hex}.part.webp")
+    try:
+        if not image.save(str(partial), quality=90):
+            return None
+        partial.replace(cache_path)
+    finally:
+        partial.unlink(missing_ok=True)
 
     return cache_path
 
@@ -75,8 +86,8 @@ def cleanup_thumbnail_cache(
     Сначала удаляются миниатюры старше max_age_days (по mtime — mtime
     миниатюры обновляется только при её создании, т.к. make_thumb
     переиспользует уже существующий файл без записи в него повторно;
-    "старая" миниатюра — значит соответствующее изображение давно не
-    открывали). Если после этого кэш всё ещё превышает
+    возраст считается от создания, а не последнего просмотра).
+    Если после этого кэш всё ещё превышает
     max_total_bytes, дополнительно удаляются самые старые из
     оставшихся файлов, пока размер не опустится до лимита.
 

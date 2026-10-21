@@ -37,16 +37,16 @@ def test_initial_scan_runs_off_gui_and_updates_shared_database(sync_environment,
     write_generation(nested, "first")
     entered, release = threading.Event(), threading.Event()
     gui_thread = threading.get_ident()
-    original = GenerationRepository.sync_folder
+    original = GenerationRepository.sync_files
     workers = []
 
-    def slow_scan(worker, path):
+    def slow_scan(worker, path, files, **kwargs):
         workers.append((threading.get_ident(), worker._conn is repository._conn))
         entered.set()
         assert release.wait(5)
-        return original(worker, path)
+        return original(worker, path, files, **kwargs)
 
-    monkeypatch.setattr(GenerationRepository, "sync_folder", slow_scan)
+    monkeypatch.setattr(GenerationRepository, "sync_files", slow_scan)
     changed, heartbeat = [], []
     sync.changed.connect(lambda: changed.append(threading.get_ident()))
     try:
@@ -70,17 +70,17 @@ def test_switch_coalesces_work_and_discards_old_result(sync_environment, tmp_pat
     write_generation(first, "first")
     write_generation(second, "second")
     entered, release = threading.Event(), threading.Event()
-    original = GenerationRepository.sync_folder
+    original = GenerationRepository.sync_files
     calls, notifications = [], []
 
-    def slow_scan(worker, path):
+    def slow_scan(worker, path, files, **kwargs):
         calls.append(path)
         if path == str(first):
             entered.set()
             assert release.wait(5)
-        return original(worker, path)
+        return original(worker, path, files, **kwargs)
 
-    monkeypatch.setattr(GenerationRepository, "sync_folder", slow_scan)
+    monkeypatch.setattr(GenerationRepository, "sync_files", slow_scan)
     sync.changed.connect(lambda: notifications.append(sync._folder))
     try:
         sync.watch(first)
@@ -103,14 +103,14 @@ def test_stop_ignores_inflight_result(sync_environment, tmp_path, qtbot, monkeyp
     folder = tmp_path / "generations"
     write_generation(folder, "first")
     entered, release = threading.Event(), threading.Event()
-    original = GenerationRepository.sync_folder
+    original = GenerationRepository.sync_files
 
-    def slow_scan(worker, path):
+    def slow_scan(worker, path, files, **kwargs):
         entered.set()
         assert release.wait(5)
-        return original(worker, path)
+        return original(worker, path, files, **kwargs)
 
-    monkeypatch.setattr(GenerationRepository, "sync_folder", slow_scan)
+    monkeypatch.setattr(GenerationRepository, "sync_files", slow_scan)
     notifications = []
     sync.changed.connect(lambda: notifications.append(True))
     try:
@@ -128,19 +128,19 @@ def test_error_releases_worker_and_next_scan_recovers(sync_environment, tmp_path
     sync, repository = sync_environment
     folder = tmp_path / "generations"
     write_generation(folder, "first")
-    original = GenerationRepository.sync_folder
+    original = GenerationRepository.sync_files
     errors, notifications = [], []
     sync.failed.connect(errors.append)
     sync.changed.connect(lambda: notifications.append(True))
 
-    def failing_scan(worker, path):
+    def failing_scan(worker, path, files, **kwargs):
         raise OSError("unavailable disk")
 
-    monkeypatch.setattr(GenerationRepository, "sync_folder", failing_scan)
+    monkeypatch.setattr(GenerationRepository, "sync_files", failing_scan)
     sync.watch(folder)
     qtbot.waitUntil(lambda: bool(errors))
     assert errors == ["unavailable disk"] and not notifications
-    monkeypatch.setattr(GenerationRepository, "sync_folder", original)
+    monkeypatch.setattr(GenerationRepository, "sync_files", original)
     sync._sync()
     qtbot.waitUntil(lambda: bool(notifications))
     assert repository.count_generations(folder) == 1
@@ -151,16 +151,17 @@ def test_filesystem_event_burst_starts_one_scan(sync_environment, tmp_path, qtbo
     folder = tmp_path / "generations"
     write_generation(folder, "first")
     calls = []
-    original = GenerationRepository.sync_folder
+    original = GenerationRepository.sync_files
 
-    def record_scan(worker, path):
+    def record_scan(worker, path, files, **kwargs):
         calls.append(path)
-        return original(worker, path)
+        return original(worker, path, files, **kwargs)
 
-    monkeypatch.setattr(GenerationRepository, "sync_folder", record_scan)
+    monkeypatch.setattr(GenerationRepository, "sync_files", record_scan)
     sync.watch(folder)
     qtbot.waitUntil(lambda: not sync._task.is_busy())
     assert calls == [str(folder)]
+    write_generation(folder, "second")
     for _ in range(20):
         sync._on_fs_event(str(folder))
     assert calls == [str(folder)]

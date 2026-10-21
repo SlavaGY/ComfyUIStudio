@@ -30,6 +30,7 @@ window.I18N = window.createI18n({storagePrefix: "studio.lmstudio", EN: {
   "Ответ прерван":"Response interrupted", "Генерация…":"Generating…", "Загрузить":"Load", "Выгрузить":"Unload", "В памяти":"Loaded", "На диске":"On disk",
   "Загрузка модели…":"Loading model…", "Выгрузка модели…":"Unloading model…", "Нет локальных языковых моделей. Скачайте модель в оригинальном LM Studio.":"No local language models. Download a model in the original LM Studio app.",
   "Удалить этот диалог?":"Delete this conversation?", "Нет сохранённых диалогов":"No saved conversations", "Остановлено":"Stopped",
+  "Показать ещё":"Show more", "Диалоги не найдены":"No matching conversations", "Загрузка…":"Loading…",
   "Сначала выберите модель":"Select a model first", "Сохранение…":"Saving…", "Соединение прервано до завершения ответа.":"Connection closed before the response completed."
 }});
 window.t = window.I18N.t;
