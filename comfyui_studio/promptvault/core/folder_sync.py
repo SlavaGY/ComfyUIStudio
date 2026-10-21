@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer, Signal
 
+from comfyui_studio.launcher.core.background import BackgroundTask
 from comfyui_studio.promptvault.config import POLL_INTERVAL_MS
 from comfyui_studio.promptvault.core.repository import GenerationRepository
 
@@ -23,6 +24,7 @@ class FolderSync(QObject):
     """
 
     changed = Signal()
+    failed = Signal(str)
 
     def __init__(
         self,
@@ -31,8 +33,13 @@ class FolderSync(QObject):
     ):
         super().__init__(parent)
 
-        self._repository = repository
+        self._db_path = repository.db_path
         self._folder: str | None = None
+        self._generation = 0
+        self._pending = False
+        self._initial = False
+        self._initial_error_reported = False
+        self._task = BackgroundTask(self)
 
         self._watcher = QFileSystemWatcher(self)
         self._watcher.directoryChanged.connect(self._on_fs_event)
@@ -40,6 +47,10 @@ class FolderSync(QObject):
         self._timer = QTimer(self)
         self._timer.setInterval(POLL_INTERVAL_MS)
         self._timer.timeout.connect(self._sync)
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(250)
+        self._debounce.timeout.connect(self._sync)
 
     # --------------------------------------------------
 
@@ -52,14 +63,14 @@ class FolderSync(QObject):
 
         self._folder = str(folder)
 
-        dirs = [self._folder] + [
-            str(p) for p in Path(folder).rglob("*") if p.is_dir()
-        ]
-
-        if dirs:
-            self._watcher.addPaths(dirs)
+        # Рекурсивное обнаружение подпапок выполняет тот же рабочий поток,
+        # что и индексацию. В GUI остаётся только регистрация готовых путей.
+        self._watcher.addPath(self._folder)
+        self._initial = True
+        self._initial_error_reported = False
 
         self._timer.start()
+        self._sync()
 
         logger.info("Начато отслеживание папки: %s", self._folder)
 
@@ -68,6 +79,12 @@ class FolderSync(QObject):
         активно. Безопасно вызывать повторно."""
 
         self._timer.stop()
+        self._debounce.stop()
+        self._generation += 1
+        self._pending = False
+        self._initial = False
+        # Не cancel(): предыдущая операция должна освободить своё соединение
+        # до запуска следующей. Результат отбрасывается по _generation.
 
         watched = self._watcher.directories()
 
@@ -83,23 +100,55 @@ class FolderSync(QObject):
 
     def _on_fs_event(self, _changed_path: str) -> None:
 
-        # новые подпапки, появившиеся после watch(), сами не отслеживаются —
-        # добавляем их, раз уж событие всё равно пришло
         if self._folder is not None:
-
-            watched = set(self._watcher.directories())
-
-            for p in Path(self._folder).rglob("*"):
-                if p.is_dir() and str(p) not in watched:
-                    self._watcher.addPath(str(p))
-
-        self._sync()
+            self._debounce.start()
 
     def _sync(self) -> None:
 
         if self._folder is None:
             return
 
-        if self._repository.sync_folder(self._folder):
-            logger.info("Автосинхронизация обнаружила изменения в %s", self._folder)
-            self.changed.emit()
+        if self._task.is_busy():
+            self._pending = True
+            return
+
+        self._pending = False
+        folder, generation, db_path = self._folder, self._generation, self._db_path
+
+        def scan() -> tuple[bool, list[str]]:
+            repository = GenerationRepository(db_path)
+            try:
+                directories = [folder] + [str(p) for p in Path(folder).rglob("*") if p.is_dir()]
+                changed = repository.sync_folder(folder)
+                return changed, directories
+            finally:
+                repository.close()
+
+        self._task.run(scan, lambda result, error: self._on_scanned(generation, result, error))
+
+    def _on_scanned(
+        self,
+        generation: int,
+        result: tuple[bool, list[str]] | None,
+        error: Exception | None,
+    ) -> None:
+        if generation == self._generation and self._folder is not None:
+            if error is not None:
+                logger.error("Ошибка синхронизации %s: %s", self._folder, error)
+                # Первичную ошибку показываем один раз; повторные фоновые
+                # ошибки остаются в журнале и не мешают работе с галереей.
+                if self._initial and not self._initial_error_reported:
+                    self._initial_error_reported = True
+                    self.failed.emit(str(error))
+            elif result is not None:
+                changed, directories = result
+                watched = set(self._watcher.directories())
+                additions = [path for path in directories if path not in watched]
+                if additions:
+                    self._watcher.addPaths(additions)
+                initial, self._initial = self._initial, False
+                if changed or initial:
+                    self.changed.emit()
+
+        if self._pending and self._folder is not None:
+            self._sync()

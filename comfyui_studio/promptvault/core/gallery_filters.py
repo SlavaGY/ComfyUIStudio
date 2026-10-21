@@ -31,6 +31,15 @@ class FiltersMixin(GalleryBase):
         остальные подгружаются по требованию (прокрутка списка).
         """
 
+        self._repository.sync_folder(folder)
+        self.load_indexed_folder(folder)
+
+    def load_indexed_folder(self, folder: str) -> None:
+        """Показывает уже проиндексированные данные без обхода диска.
+
+        MainWindow запускает первичную и последующую индексацию через FolderSync.
+        Синхронный load_folder сохранён для программных потребителей.
+        """
         folder = str(folder)
 
         logger.info("Открытие папки: %s", folder)
@@ -40,11 +49,9 @@ class FiltersMixin(GalleryBase):
 
         # задача: сохранение пути к папке просмотра между сессиями —
         # запоминаем КАЖДУЮ успешно открытую папку. Пишем ДО
-        # sync_folder/apply_filters ниже — даже если сама загрузка упадёт
+        # apply_filters ниже — даже если сама загрузка упадёт
         # на середине, путь всё равно успеет сохраниться.
         self._settings.setValue("last_folder", folder)
-
-        self._repository.sync_folder(folder)
 
         self._invalidate_available_cache()
         self.apply_filters()

@@ -30,6 +30,8 @@ class GenerationRepository(TransferMixin, QueryMixin, EditMixin, StatisticsMixin
 
     def __init__(self, db_path: str | Path | None = None):
         self._conn = connect(db_path)
+        # SQLite returns the resolved filename, including the configured default.
+        self.db_path: str = self._conn.execute("PRAGMA database_list").fetchone()[2]
 
     # ------------------------------------------------------------
     # синхронизация с диском

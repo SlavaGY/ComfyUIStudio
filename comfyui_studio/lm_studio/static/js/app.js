@@ -254,7 +254,8 @@
     if (!retry) chat.messages.push({role: "user", content: text, attachments: [...pendingAttachments]});
     const answer = {role: "assistant", content: "", reasoning: "", status: "streaming"};
     chat.messages.push(answer); renderMessages();
-    let article = $("messages").lastChild, terminal = false;
+    const streamRenderer = createStudioStreamRenderer($("messages").lastChild, answer, $("messages"));
+    let terminal = false;
     try {
       const response = await fetch("api/chats/" + id + "/send", {method: "POST", signal: controller.signal, headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
       if (!response.ok) { const error = await response.json(); throw Error(typeof error.detail === "string" ? error.detail : JSON.stringify(error.detail)); }
@@ -272,18 +273,13 @@
           if (delta.tool_status) $("generationInfo").textContent = t("Выполняется инструмент MCP…");
           if (delta.done) { terminal = true; answer.status = "completed"; }
           answer.content += delta.content || ""; answer.reasoning += delta.reasoning || "";
-          const pane = $("messages"), nearBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 140;
-          const reasoningOpen = article.querySelector("details")?.open;
-          const replacement = messageElement(answer);
-          if (answer.status === "streaming" && reasoningOpen !== undefined && replacement.querySelector("details"))
-            replacement.querySelector("details").open = reasoningOpen;
-          article.replaceWith(replacement); article = replacement;
-          if (nearBottom) pane.scrollTop = pane.scrollHeight;
+          streamRenderer.update();
         }
       }
       if (!terminal) throw Error(t("Соединение прервано до завершения ответа."));
     } catch (e) { if (e.name !== "AbortError" && !stopRequested) banner(e.message); }
     finally {
+      streamRenderer.finish();
       controller = null;
       // The server commits its partial response in the stream's finally block.
       // Retry briefly after abort rather than overwriting that response locally.

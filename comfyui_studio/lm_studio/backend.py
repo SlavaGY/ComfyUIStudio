@@ -147,7 +147,7 @@ def create_app(config: dict, data_dir: Path, runtime=None):
         return result
 
     @app.get("/api/chats")
-    async def chats():
+    def chats():
         return {"chats": store.list()}
 
     @app.post("/api/attachments")
