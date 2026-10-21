@@ -51,7 +51,7 @@
     const id = chat.id, body = settings();
     saveQueue = saveQueue.then(async () => {
       try {
-        await api("chats/" + id, "PUT", body); pendingSaveError = null;
+        await api("chats/" + id + "?summary=true", "PUT", body); pendingSaveError = null;
         const item = chats.find(c => c.id === id);
         const renamed = item ? item.title !== body.title : chat && chat.id === id && chat.title !== body.title;
         if (item) {
@@ -91,7 +91,7 @@
     $("temperature").value = chat.temperature;
     $("topP").value = chat.top_p;
     $("maxTokens").value = chat.max_tokens;
-    renderModels(); renderMessages(); renderHistory();
+    renderModels(); renderMessages({reset: true, forceBottom: true}); renderHistory();
     $("generationInfo").textContent = "";
     } finally { navigating = false; controls(); }
   }
@@ -141,14 +141,13 @@
     if (message.error) article.append(node("p", "error-text", message.error));
     article.append(actions); return article;
   }
-  function renderMessages() {
-    const pane = $("messages"); pane.replaceChildren();
-    if (!chat || !chat.messages.length) {
-      const welcome = node("div", "welcome");
-      welcome.append(node("span", "mark", "◆"), node("h2", "", t("О чём поговорим?")), node("p", "", t("Выберите локальную модель и начните диалог. Ваша история останется на этом компьютере.")));
-      pane.append(welcome);
-    } else for (const [index, message] of chat.messages.entries()) pane.append(messageElement(message, index));
-    pane.scrollTop = pane.scrollHeight;
+  const messageWindow = createStudioMessageWindow($("messages"), messageElement, () => {
+    const welcome = node("div", "welcome");
+    welcome.append(node("span", "mark", "◆"), node("h2", "", t("О чём поговорим?")), node("p", "", t("Выберите локальную модель и начните диалог. Ваша история останется на этом компьютере.")));
+    return welcome;
+  }, controls);
+  function renderMessages(options) {
+    messageWindow.render(chat, options);
   }
   function renderModels() {
     const select = $("modelSelect"), previous = chat ? chat.model : select.value;
@@ -267,7 +266,7 @@
     else if (retry && chat.messages.at(-1)?.role === "assistant") chat.messages.pop();
     if (!retry) chat.messages.push({role: "user", content: text, attachments: [...pendingAttachments]});
     const answer = {role: "assistant", content: "", reasoning: "", status: "streaming"};
-    chat.messages.push(answer); renderMessages();
+    chat.messages.push(answer); renderMessages({forceBottom: true});
     const streamRenderer = createStudioStreamRenderer($("messages").lastChild, answer, $("messages"));
     let terminal = false;
     try {
@@ -375,7 +374,7 @@
       if (button.dataset.tab === "settings") guarded(loadIntegrations);
       document.querySelectorAll("[data-tab]").forEach(tab => tab.classList.toggle("is-active", tab === button));
     }; });
-    window.addEventListener("imagine:languagechange", () => { renderHistory(); renderModels(); if (!busy) renderMessages(); if (healthPoll) void healthPoll.refresh(); });
+    window.addEventListener("imagine:languagechange", () => { renderHistory(); renderModels(); if (!busy) renderMessages({invalidate: true}); if (healthPoll) void healthPoll.refresh(); });
     await history(); if (chats.length) await open(chats[0].id); else await newChat();
     await health(); healthPoll = window.createBackgroundPoll(health, 4000);
   }

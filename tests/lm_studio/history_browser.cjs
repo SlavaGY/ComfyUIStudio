@@ -21,6 +21,22 @@ async function test() {
     await page.locator(".chat-item").click();
     await page.waitForFunction(() => document.getElementById("chatTitle").value.includes("target") &&
       !document.getElementById("chatTitle").disabled);
+    assert.equal(await page.locator(".message").count(), 40);
+    assert.equal(await page.locator(".message__body").first().textContent(), "Message 200\n");
+    await page.evaluate(() => {
+      window.previousLastMessage = document.querySelector(".message:last-child");
+      window.previousFirstMessage = document.querySelector(".message");
+      document.getElementById("messages").scrollTop = 0;
+    });
+    const beforeTop = await page.evaluate(() => window.previousFirstMessage.getBoundingClientRect().top);
+    await page.locator(".message-earlier").click();
+    assert.equal(await page.locator(".message").count(), 80);
+    assert.ok(await page.evaluate(() => window.previousLastMessage === document.querySelector(".message:last-child")));
+    const afterTop = await page.evaluate(() => window.previousFirstMessage.getBoundingClientRect().top);
+    assert.ok(Math.abs(beforeTop - afterTop) < 2, "prepending older messages preserves the reading position");
+    await page.locator(".message-edit").first().click();
+    assert.equal(await page.locator("#prompt").inputValue(), "Message 160");
+    await page.locator("#cancelEdit").click();
     await page.locator("#chatTitle").fill("Another title");
     await page.locator("#chatTitle").press("Tab");
     await page.waitForFunction(() => document.querySelectorAll(".chat-item").length === 0 &&
@@ -29,6 +45,7 @@ async function test() {
     await page.locator("#chatTitle").press("Tab");
     await page.waitForFunction(() => document.querySelectorAll(".chat-item").length === 1 &&
       document.querySelector(".chat-item").textContent.includes("restored"));
+    await require("./richtext_browser.cjs")(page);
     assert.deepEqual(errors, []);
     console.log("Real page: 50 -> 100 -> 120 chats; Unicode search and renaming passed");
   } finally { await browser.close(); }

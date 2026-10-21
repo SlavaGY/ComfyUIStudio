@@ -11,6 +11,7 @@ import pytest
 @pytest.mark.parametrize("harness, source", [
     ("stream_renderer.cjs", "stream_renderer.js"),
     ("chat_history.cjs", "chat_history.js"),
+    ("message_window.cjs", "message_window.js"),
 ])
 def test_javascript_regressions(harness, source):
     node = os.environ.get("NODE_BINARY") or shutil.which("node")

@@ -14,6 +14,7 @@ window.I18N = window.createI18n({storagePrefix: "studio.lmstudio", EN: {
   "Подключения MCP для инструментов модели":"MCP connections for model tools",
   "Подключите MCP-сервер по HTTP/HTTPS URL. Разрешите Remote MCP в настройках сервера LM Studio. Пустой список инструментов разрешает все инструменты подключения.":"Connect an MCP server by HTTP/HTTPS URL. Enable Remote MCP in LM Studio server settings. An empty tool list allows all tools from the connection.",
   "Чат":"Chat", "Модели":"Models", "Подключение…":"Connecting…", "Готов к работе":"Ready", "Ошибка подключения":"Connection error",
+  "Показать предыдущие сообщения":"Show earlier messages",
   "＋ Новый диалог":"＋ New conversation", "Поиск диалогов":"Search conversations", "ДИАЛОГИ":"CONVERSATIONS",
   "Диалоги сохраняются в Studio на этом компьютере.":"Conversations are saved in Studio on this computer.",
   "Название диалога":"Conversation title", "Новый диалог":"New conversation", "Удалить":"Delete", "Сообщение":"Message",

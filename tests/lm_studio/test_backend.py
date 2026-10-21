@@ -201,6 +201,21 @@ def test_chat_settings_delete_and_validation(environment):
     assert client.get(f"/api/chats/{chat_id}").status_code == 404
 
 
+def test_settings_summary_avoids_resending_large_message_history(environment):
+    client, app, _, _ = environment
+    chat = app.state.store.create()
+    chat["messages"] = [{"role": "user", "content": "x" * 1000000}]
+    app.state.store.save(chat)
+    response = client.put(f"/api/chats/{chat['id']}?summary=true", json={"title": "Renamed"})
+    assert response.status_code == 200
+    assert len(response.content) < 512
+    assert response.json()["title"] == "Renamed"
+    full = client.get(f"/api/chats/{chat['id']}").json()
+    assert full["messages"] == chat["messages"]
+    # Existing callers retain the full-response API when they do not opt in.
+    assert client.put(f"/api/chats/{chat['id']}", json={"title": "Again"}).json()["messages"] == chat["messages"]
+
+
 def test_local_only_and_static_assets(environment):
     client, _, _, _ = environment
     assert client.post("/api/chats", headers={"origin": "https://example.com"}).status_code == 403

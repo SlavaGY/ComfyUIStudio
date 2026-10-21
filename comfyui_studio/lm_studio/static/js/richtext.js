@@ -29,9 +29,9 @@
     const copied = document.execCommand("copy"); input.remove(); active?.focus();
     if (!copied) throw Error(t("Не удалось скопировать текст"));
   };
-  window.renderStudioMarkdown = (element, text) => {
+  function renderHTML(element, parse) {
     math.length = 0;
-    element.innerHTML = DOMPurify.sanitize(marked.parse(text), {USE_PROFILES: {html: true}, ADD_ATTR: ["data-math"], FORBID_TAGS: ["style", "input", "form", "button"]});
+    element.innerHTML = DOMPurify.sanitize(parse(), {USE_PROFILES: {html: true}, ADD_ATTR: ["data-math"], FORBID_TAGS: ["style", "input", "form", "button"]});
     element.querySelectorAll(".math-slot").forEach(slot => {
       const formula = math[Number(slot.dataset.math)];
       if (formula) katex.render(formula.text, slot, {displayMode: formula.display, throwOnError: false, trust: false, strict: "ignore", maxExpand: 1000, maxSize: 20});
@@ -45,5 +45,40 @@
       };
       code.parentElement.prepend(button);
     });
+  }
+  window.renderStudioMarkdown = (element, text) => renderHTML(element, () => marked.parse(text));
+  window.createStudioMarkdownRenderer = element => {
+    let blocks = [], links = "", initialized = false;
+    return text => {
+      // Lex the whole source: a late reference definition can change earlier text.
+      // Only changed top-level blocks go through HTML parsing, sanitization and KaTeX.
+      const tokens = marked.lexer(text), nextLinks = JSON.stringify(tokens.links);
+      let common = 0;
+      if (links === nextLinks) {
+        while (common < blocks.length && common < tokens.length &&
+          blocks[common].raw === tokens[common].raw && blocks[common].type === tokens[common].type) common++;
+        const previous = blocks[common], token = tokens[common];
+        if (previous?.code && token?.type === "code" && !token.escaped &&
+          previous.lang === token.lang && token.text.startsWith(previous.text)) {
+          // Growing fenced code is plain text. Keep its scroll position/copy button
+          // and avoid reparsing/sanitizing an ever larger HTML string.
+          previous.code.textContent = token.text ? token.text.replace(/\n$/, "") + "\n" : "";
+          previous.raw = token.raw; previous.text = token.text;
+          common++;
+        }
+      }
+      if (!initialized) { element.replaceChildren(); initialized = true; }
+      for (const block of blocks.slice(common)) for (const child of block.nodes) child.remove();
+      blocks.length = common;
+      for (const token of tokens.slice(common)) {
+        const temporary = document.createElement("div");
+        const single = [token]; single.links = tokens.links;
+        renderHTML(temporary, () => marked.parser(single));
+        const nodes = Array.from(temporary.childNodes), code = token.type === "code" && !token.escaped ? temporary.querySelector("pre > code") : null;
+        element.append(...nodes);
+        blocks.push({ raw: token.raw, type: token.type, nodes, code, lang: token.lang, text: token.text });
+      }
+      links = nextLinks;
+    };
   };
 })();

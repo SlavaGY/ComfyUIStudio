@@ -186,11 +186,13 @@ def create_app(config: dict, data_dir: Path, runtime=None):
         return get_chat(chat_id)
 
     @app.put("/api/chats/{chat_id}")
-    async def update_chat(chat_id: str, body: ChatSettings):
+    async def update_chat(chat_id: str, body: ChatSettings, summary: bool = False):
         require_idle(chat_id)
         chat = get_chat(chat_id)
         chat.update(body.model_dump())
         store.save(chat)
+        if summary:
+            return {key: chat[key] for key in ("id", "title", "model", "updated")}
         return chat
 
     @app.delete("/api/chats/{chat_id}")

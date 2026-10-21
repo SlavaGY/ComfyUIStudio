@@ -2,13 +2,14 @@
 "use strict";
 window.createStudioStreamRenderer = (article, answer, pane) => {
   const body = article.querySelector(".message__body");
+  const markdown = createStudioMarkdownRenderer(body);
   let timer = null, content = "", reasoning = "", details = null, reasoningText = null;
   let copy = null;
   function render() {
     timer = null;
     const nearBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 140;
     if (content !== answer.content) {
-      renderStudioMarkdown(body, answer.content);
+      markdown(answer.content);
       content = answer.content;
       if (!copy && content) {
         copy = document.createElement("button");
@@ -32,7 +33,10 @@ window.createStudioStreamRenderer = (article, answer, pane) => {
     if (nearBottom) pane.scrollTop = pane.scrollHeight;
   }
   return {
-    update() { if (timer === null) timer = setTimeout(render, 50); },
+    update() {
+      // Long answers need fewer full-source lexing passes, while short ones stay responsive.
+      if (timer === null) timer = setTimeout(render, Math.min(250, 50 + Math.floor(answer.content.length / 20000) * 25));
+    },
     finish() {
       if (timer !== null) clearTimeout(timer);
       render();

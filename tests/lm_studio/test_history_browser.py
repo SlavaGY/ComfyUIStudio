@@ -39,6 +39,11 @@ def test_real_page_history_pagination_and_search(tmp_path):
     for index in range(120):
         chat = app.state.store.create()
         chat["title"] = "ЁЖИК target" if index == 0 else f"Conversation {index}"
+        if index == 0:
+            chat["messages"] = [
+                {"role": "user" if item % 2 == 0 else "assistant", "content": f"Message {item}"}
+                for item in range(240)
+            ]
         app.state.store.save(chat)
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
