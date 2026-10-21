@@ -53,7 +53,9 @@ function makeEnv({ storage = {}, prefs = null, fetchFails = false } = {}) {
     if (fetchFails) return Promise.reject(new Error("offline"));
     return Promise.resolve({ ok: state.prefs !== null, json: async () => state.prefs });
   };
-  const window = {};
+  const window = {
+    createBackgroundPoll(fn, ms) { timers.push({ fn, ms }); return { stop() {} }; },
+  };
   const context = {
     window, document, localStorage, fetch, CustomEvent, console,
     setInterval(fn, ms) { timers.push({ fn, ms }); return timers.length; },

@@ -25,7 +25,6 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, UploadFile
-from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -36,6 +35,7 @@ from comfyui_studio.web_common import (
     register_ui_prefs,
     static_dir,
 )
+from comfyui_studio.web_common.image_stream import stream_image
 
 from . import config_store, launcher, lora_scan, progress_forwarder, promptgen, workflow
 from .comfy_client import ComfyClient, ComfyUIError
@@ -517,13 +517,9 @@ def interrupt(prompt_id: str):
 
 
 @app.get("/api/image")
-def get_image(filename: str, subfolder: str = "", type: str = "output"):
+async def get_image(filename: str, subfolder: str = "", type: str = "output"):
     client = get_client()
-    try:
-        data, content_type = client.fetch_image_bytes(filename, subfolder, type)
-    except ComfyUIError as exc:
-        raise HTTPException(502, str(exc)) from exc
-    return Response(content=data, media_type=content_type)
+    return await stream_image(client.view_image_url(filename, subfolder, type), client.timeout)
 
 
 # ---------------------------------------------------------------------------

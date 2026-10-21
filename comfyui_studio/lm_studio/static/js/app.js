@@ -6,6 +6,7 @@
   let controller = null, saveQueue = Promise.resolve(), pendingSaveError = null, stopRequested = false;
   let pendingAttachments = [], editIndex = null, uploading = false;
   let searchTimer = null;
+  let healthPoll = null;
   const historyPager = createStudioChatHistory(params => api("chats?" + params), () => {
     chats = historyPager.items; renderHistory();
   });
@@ -315,7 +316,10 @@
       $("statusText").textContent = t(ready ? "Готов к работе" : state.state === "error" ? "Ошибка подключения" : "Подключение…");
       if (state.error) banner(state.error);
       if (ready && !wasReady) { banner(); await refreshModels(); }
-    } catch (e) { ready = false; $("statusText").textContent = t("Ошибка подключения"); banner(e.message); }
+    } catch (e) {
+      ready = false; $("statusText").textContent = t("Ошибка подключения"); banner(e.message);
+      controls(); return false;
+    }
     controls();
   }
   async function init() {
@@ -371,9 +375,9 @@
       if (button.dataset.tab === "settings") guarded(loadIntegrations);
       document.querySelectorAll("[data-tab]").forEach(tab => tab.classList.toggle("is-active", tab === button));
     }; });
-    window.addEventListener("imagine:languagechange", () => { renderHistory(); renderModels(); if (!busy) renderMessages(); health(); });
+    window.addEventListener("imagine:languagechange", () => { renderHistory(); renderModels(); if (!busy) renderMessages(); if (healthPoll) void healthPoll.refresh(); });
     await history(); if (chats.length) await open(chats[0].id); else await newChat();
-    await health(); setInterval(health, 4000);
+    await health(); healthPoll = window.createBackgroundPoll(health, 4000);
   }
   guarded(init);
 })();

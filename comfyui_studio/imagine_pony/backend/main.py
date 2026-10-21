@@ -15,7 +15,6 @@ import time
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from comfyui_studio.imagine.backend.comfy_client import ComfyClient, ComfyUIError
@@ -27,6 +26,7 @@ from comfyui_studio.web_common import (
     register_ui_prefs,
     static_dir,
 )
+from comfyui_studio.web_common.image_stream import stream_image
 
 from . import config_store, workflow
 
@@ -375,12 +375,9 @@ def interrupt(prompt_id: str):
 
 
 @app.get("/api/image")
-def get_image(filename: str, subfolder: str = "", type: str = "output"):
-    try:
-        data, content_type = get_client().fetch_image_bytes(filename, subfolder, type)
-    except ComfyUIError as exc:
-        raise HTTPException(502, str(exc)) from exc
-    return Response(content=data, media_type=content_type)
+async def get_image(filename: str, subfolder: str = "", type: str = "output"):
+    client = get_client()
+    return await stream_image(client.view_image_url(filename, subfolder, type), client.timeout)
 
 
 # ---------------------------------------------------------------------------
