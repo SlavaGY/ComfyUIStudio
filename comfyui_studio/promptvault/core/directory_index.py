@@ -19,8 +19,9 @@ class DirectoryIndex:
     """Worker-owned snapshot with a periodic full reconciliation as a fallback.
 
     Directory mtimes detect additions/removals, not writes to existing files.
-    Known JSON files are therefore stat'ed on every poll. Their contents and
-    database records are touched only when their signature changes.
+    Known JSON files have their metadata checked on every poll. On Windows,
+    large directories use scandir's cached FindFirstFile metadata in batches.
+    Contents/database records are touched only when their signature changes.
     """
 
     def __init__(self, folder: str, reconcile_seconds: float = 60.0):
@@ -55,15 +56,27 @@ class DirectoryIndex:
                 self._children.pop(directory, None)
                 continue
             signature = (metadata.st_mtime_ns, metadata.st_ctime_ns)
-            if reconcile or directory in forced or self._directories.get(directory) != signature:
+            cached_files = self._children.get(directory, (set(), set()))[0]
+            batch_metadata = os.name == "nt" and len(cached_files) >= 128
+            file_metadata: dict[Path, os.stat_result] = {}
+            if reconcile or batch_metadata or directory in forced or self._directories.get(directory) != signature:
                 files: set[Path] = set()
                 directories: set[Path] = set()
                 with os.scandir(directory) as entries:
                     for entry in entries:
                         if entry.is_dir(follow_symlinks=False):
-                            directories.add(Path(entry.path))
+                            # Resolve directories once, including Windows junctions;
+                            # ordinary files below them already have canonical paths.
+                            directories.add(Path(entry.path).resolve())
                         elif entry.name.lower().endswith(".json") and entry.is_file():
-                            files.add(Path(entry.path).resolve())
+                            path = Path(entry.path)
+                            if entry.is_symlink():
+                                path = path.resolve()
+                            try:
+                                file_metadata[path] = entry.stat()
+                            except FileNotFoundError:
+                                continue
+                            files.add(path)
                 # Files and subdirectories share one inventory, avoiding a
                 # second recursive walk just to update QFileSystemWatcher.
                 self._children[directory] = (files, directories)
@@ -75,7 +88,7 @@ class DirectoryIndex:
 
             for path in files:
                 try:
-                    metadata = path.stat()
+                    metadata = file_metadata[path] if path in file_metadata else path.stat()
                 except FileNotFoundError:
                     continue
                 key = str(path)

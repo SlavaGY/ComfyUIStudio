@@ -127,6 +127,7 @@ STATISTICS_HISTOGRAM_BUCKETS = 10
 # подхватывает изменения (в т.ч. новые подпапки), которые мог
 # пропустить QFileSystemWatcher
 POLL_INTERVAL_MS = 4000
+MAX_POLL_INTERVAL_MS = 16000
 
 
 # ------------------------------------------------------------------

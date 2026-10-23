@@ -6,6 +6,7 @@ import threading
 import pytest
 from PySide6.QtCore import QTimer
 
+from comfyui_studio.promptvault.config import MAX_POLL_INTERVAL_MS, POLL_INTERVAL_MS
 from comfyui_studio.promptvault.core.folder_sync import FolderSync
 from comfyui_studio.promptvault.core.repository import GenerationRepository
 
@@ -28,6 +29,34 @@ def write_generation(folder, timestamp):
         "timestamp": timestamp, "generation_time": 1.0, "model_name": "modelA",
         "images": [], "loras": [],
     }), encoding="utf-8")
+
+
+def test_idle_polling_backs_off_but_events_changes_and_errors_reset_it(sync_environment, tmp_path, qtbot):
+    sync, _ = sync_environment
+    folder = tmp_path / "idle"
+    write_generation(folder, "idle")
+    sync.watch(folder)
+    qtbot.waitUntil(lambda: not sync._initial and not sync._task.is_busy())
+    assert sync._timer.interval() == POLL_INTERVAL_MS
+    directories = sync._watcher.directories()
+    for _ in range(4):
+        sync._on_scanned(sync._generation, (False, directories), None)
+    assert sync._timer.interval() == MAX_POLL_INTERVAL_MS
+    sync._on_fs_event(str(folder))
+    assert sync._timer.interval() == POLL_INTERVAL_MS
+    timer_id = sync._timer.timerId()
+    sync._on_fs_event(str(folder))
+    assert sync._timer.timerId() == timer_id  # event storms cannot postpone fallback
+    sync._on_scanned(sync._generation, (False, directories), None)
+    assert sync._timer.interval() == POLL_INTERVAL_MS  # event arrived during a scan
+    sync._dirty.clear()
+    sync._on_scanned(sync._generation, (False, directories), None)
+    assert sync._timer.interval() > POLL_INTERVAL_MS
+    sync._on_scanned(sync._generation, (True, directories), None)
+    assert sync._timer.interval() == POLL_INTERVAL_MS
+    sync._on_scanned(sync._generation, (False, directories), None)
+    sync._on_scanned(sync._generation, None, OSError("retry scan"))
+    assert sync._timer.interval() == POLL_INTERVAL_MS
 
 
 def test_initial_scan_runs_off_gui_and_updates_shared_database(sync_environment, tmp_path, qtbot, monkeypatch):

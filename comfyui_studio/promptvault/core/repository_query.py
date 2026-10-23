@@ -116,8 +116,10 @@ class QueryMixin(RepositoryBase):
         пагинации отфильтрованного списка (см.
         GalleryManager.apply_filters)."""
 
-        pattern = self._folder_like_pattern(folder)
         extra_where, extra_params = GenerationFilterSQL.build_where(options)
+        if not extra_where:
+            return self.count_generations(folder)
+        pattern = self._folder_like_pattern(folder)
 
         row = self._conn.execute(
             "SELECT COUNT(*) FROM generations g "
@@ -138,18 +140,29 @@ class QueryMixin(RepositoryBase):
     ) -> list[Generation]:
         """Возвращает отфильтрованную и отсортированную страницу папки.
 
-        WHERE, ORDER BY и LIMIT/OFFSET выполняются одним SQL-запросом; избранные
-        идут первыми. Остальные страницы не загружаются."""
+        Сначала выбираются и сортируются только ID нужной страницы; полные
+        тексты загружаются после LIMIT/OFFSET. Избранные идут первыми."""
 
         pattern = self._folder_like_pattern(folder)
         extra_where, extra_params = GenerationFilterSQL.build_where(options)
         order_sql = GenerationSorterSQL.build_order_by(sort_mode)
 
-        rows = self._conn.execute(
-            f"{self._GENERATION_SELECT} WHERE g.path LIKE ? ESCAPE '\\'{extra_where} "
+        ids = [row[0] for row in self._conn.execute(
+            "SELECT g.id FROM generations g "
+            "LEFT JOIN user_data u ON u.generation_id = g.id "
+            f"WHERE g.path LIKE ? ESCAPE '\\'{extra_where} "
             f"ORDER BY {order_sql} LIMIT ? OFFSET ?",
             [pattern, *extra_params, limit, offset]
-        ).fetchall()
+        )]
+        if not ids:
+            return []
+        # Sort/page narrow IDs before retrieving prompt text. In particular,
+        # OFFSET must not put every preceding large prompt in a temporary sorter.
+        placeholders = ",".join("?" * len(ids))
+        rows_by_id = {row[0]: row for row in self._conn.execute(
+            f"{self._GENERATION_SELECT} WHERE g.id IN ({placeholders})", ids
+        )}
+        rows = [rows_by_id[identifier] for identifier in ids if identifier in rows_by_id]
 
         return self._build_generations(rows)
 

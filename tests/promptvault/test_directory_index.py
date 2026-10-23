@@ -4,6 +4,8 @@ import json
 import os
 import sqlite3
 
+import pytest
+
 from comfyui_studio.promptvault.core import directory_index
 from comfyui_studio.promptvault.core.directory_index import DirectoryIndex
 from comfyui_studio.promptvault.core.repository import GenerationRepository
@@ -131,3 +133,30 @@ def test_reconciliation_batches_sql_variables(tmp_path):
         assert not repository.sync_files(tmp_path, files)
     finally:
         repository.close()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows caches metadata in scandir entries")
+def test_large_windows_directory_batches_metadata_and_detects_silent_edits(tmp_path, monkeypatch):
+    tmp_path = tmp_path / "library"
+    tmp_path.mkdir()
+    for index in range(140):
+        (tmp_path / f"{index}.json").write_text("{}")
+    inventory = DirectoryIndex(str(tmp_path))
+    inventory.scan()
+    target = tmp_path / "0.json"
+    stamp = target.stat().st_mtime_ns
+    target.write_text('{"changed":true}')
+    os.utime(target, ns=(stamp, stamp))
+    original = directory_index.Path.stat
+    stat_paths = []
+
+    def record(path, *args, **kwargs):
+        stat_paths.append(path)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(directory_index.Path, "stat", record)
+    changes = inventory.scan()
+    assert list(changes.files) == [str(target)]
+    assert not any(path.suffix == ".json" for path in stat_paths)
+    assert len(stat_paths) == 1  # directory itself, instead of 140 file stat calls
+    assert not inventory.scan().files

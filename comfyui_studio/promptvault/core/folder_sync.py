@@ -6,7 +6,7 @@ from pathlib import Path
 from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer, Signal
 
 from comfyui_studio.launcher.core.background import BackgroundTask
-from comfyui_studio.promptvault.config import POLL_INTERVAL_MS
+from comfyui_studio.promptvault.config import MAX_POLL_INTERVAL_MS, POLL_INTERVAL_MS
 from comfyui_studio.promptvault.core.directory_index import DirectoryIndex
 from comfyui_studio.promptvault.core.repository import GenerationRepository
 
@@ -21,7 +21,8 @@ class FolderSync(QObject):
     вложенные подпапки и по-разному ведёт себя в разных ОС — поэтому
     как надёжный резерв используется периодический QTimer, который
     гарантированно подхватит любые изменения (в т.ч. новые подпапки)
-    в течение нескольких секунд.
+    в течение 4–16 секунд. При простое интервал растёт, событие файловой
+    системы возвращает быстрый режим и запускает синхронизацию через debounce.
     """
 
     changed = Signal()
@@ -83,6 +84,7 @@ class FolderSync(QObject):
         активно. Безопасно вызывать повторно."""
 
         self._timer.stop()
+        self._timer.setInterval(POLL_INTERVAL_MS)
         self._debounce.stop()
         self._generation += 1
         self._pending = False
@@ -108,6 +110,10 @@ class FolderSync(QObject):
 
         if self._folder is not None:
             self._dirty.add(_changed_path)
+            # setInterval restarts an active QTimer, even at the same value.
+            # A continuous event stream must not postpone the fallback forever.
+            if self._timer.interval() != POLL_INTERVAL_MS:
+                self._timer.setInterval(POLL_INTERVAL_MS)
             self._debounce.start()
 
     def _sync(self) -> None:
@@ -145,6 +151,7 @@ class FolderSync(QObject):
     ) -> None:
         if generation == self._generation and self._folder is not None:
             if error is not None:
+                self._timer.setInterval(POLL_INTERVAL_MS)
                 if self._index is not None:
                     self._index.invalidate()
                 logger.error("Ошибка синхронизации %s: %s", self._folder, error)
@@ -163,6 +170,10 @@ class FolderSync(QObject):
                 if additions:
                     self._watcher.addPaths(additions)
                 initial, self._initial = self._initial, False
+                if changed or initial or self._dirty:
+                    self._timer.setInterval(POLL_INTERVAL_MS)
+                else:
+                    self._timer.setInterval(min(MAX_POLL_INTERVAL_MS, self._timer.interval() * 2))
                 if changed or initial:
                     self.changed.emit()
 
