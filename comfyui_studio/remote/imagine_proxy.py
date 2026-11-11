@@ -73,7 +73,7 @@ _client = httpx.AsyncClient(timeout=60.0, limits=httpx.Limits(max_keepalive_conn
 #   - "content-length"/"transfer-encoding" в ОТВЕТЕ -- становятся
 #     неверными после внедрения токена в HTML (тело меняет размер),
 #     Starlette/uvicorn сами выставят корректные при отправке ответа.
-_HOP_BY_HOP_REQUEST_HEADERS = {"host", "connection", "cookie"}
+_HOP_BY_HOP_REQUEST_HEADERS = {"host", "connection", "cookie", "transfer-encoding"}
 _HOP_BY_HOP_RESPONSE_HEADERS = {"connection", "content-length", "transfer-encoding"}
 
 
@@ -139,14 +139,16 @@ async def _proxy_app(app_id: str, label: str, port, path: str, request: Request)
         if "origin" in upstream_headers:
             upstream_headers["origin"] = target_base
         params = params.remove("token")
-    body = await request.body()
-
     upstream_request = _client.build_request(
         request.method,
         upstream_url,
         params=params,
         headers=upstream_headers,
-        content=body,
+        # Consume only as fast as the upstream accepts data. In particular,
+        # multipart uploads must not become one bytes object inside Remote.
+        content=request.stream() if request.method not in {"GET", "HEAD"} or any(
+            name in request.headers for name in ("content-length", "transfer-encoding")
+        ) else None,
         timeout=httpx.Timeout(None, connect=5) if lm_studio else _client.timeout,
     )
     try:
@@ -162,8 +164,15 @@ async def _proxy_app(app_id: str, label: str, port, path: str, request: Request)
     }
 
     if content_type.startswith("text/html"):
-        raw_body = await upstream_response.aread()
-        await upstream_response.aclose()
+        try:
+            raw_body = await upstream_response.aread()
+        finally:
+            await upstream_response.aclose()
+        # This body is decoded and personalised with a device token. Upstream
+        # validators/encoding no longer describe it, and it must never be cached.
+        for name in ("etag", "last-modified", "content-encoding"):
+            response_headers.pop(name, None)
+        response_headers["cache-control"] = "no-store"
         injected_body = raw_body.replace(
             b"</head>",
             f'<script>window.__REMOTE_TOKEN__ = {token!r};</script></head>'.encode("utf-8"),

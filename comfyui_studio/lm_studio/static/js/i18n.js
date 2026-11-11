@@ -14,6 +14,7 @@ window.I18N = window.createI18n({storagePrefix: "studio.lmstudio", EN: {
   "Подключения MCP для инструментов модели":"MCP connections for model tools",
   "Подключите MCP-сервер по HTTP/HTTPS URL. Разрешите Remote MCP в настройках сервера LM Studio. Пустой список инструментов разрешает все инструменты подключения.":"Connect an MCP server by HTTP/HTTPS URL. Enable Remote MCP in LM Studio server settings. An empty tool list allows all tools from the connection.",
   "Чат":"Chat", "Модели":"Models", "Подключение…":"Connecting…", "Готов к работе":"Ready", "Ошибка подключения":"Connection error",
+  "Показать предыдущие сообщения":"Show earlier messages",
   "＋ Новый диалог":"＋ New conversation", "Поиск диалогов":"Search conversations", "ДИАЛОГИ":"CONVERSATIONS",
   "Диалоги сохраняются в Studio на этом компьютере.":"Conversations are saved in Studio on this computer.",
   "Название диалога":"Conversation title", "Новый диалог":"New conversation", "Удалить":"Delete", "Сообщение":"Message",
@@ -30,6 +31,7 @@ window.I18N = window.createI18n({storagePrefix: "studio.lmstudio", EN: {
   "Ответ прерван":"Response interrupted", "Генерация…":"Generating…", "Загрузить":"Load", "Выгрузить":"Unload", "В памяти":"Loaded", "На диске":"On disk",
   "Загрузка модели…":"Loading model…", "Выгрузка модели…":"Unloading model…", "Нет локальных языковых моделей. Скачайте модель в оригинальном LM Studio.":"No local language models. Download a model in the original LM Studio app.",
   "Удалить этот диалог?":"Delete this conversation?", "Нет сохранённых диалогов":"No saved conversations", "Остановлено":"Stopped",
+  "Показать ещё":"Show more", "Диалоги не найдены":"No matching conversations", "Загрузка…":"Loading…",
   "Сначала выберите модель":"Select a model first", "Сохранение…":"Saving…", "Соединение прервано до завершения ответа.":"Connection closed before the response completed."
 }});
 window.t = window.I18N.t;

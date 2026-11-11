@@ -5,6 +5,11 @@
   let chat = null, chats = [], models = [], ready = false, busy = false, modelBusy = false, navigating = false;
   let controller = null, saveQueue = Promise.resolve(), pendingSaveError = null, stopRequested = false;
   let pendingAttachments = [], editIndex = null, uploading = false;
+  let searchTimer = null;
+  let healthPoll = null;
+  const historyPager = createStudioChatHistory(params => api("chats?" + params), () => {
+    chats = historyPager.items; renderHistory();
+  });
 
   function node(tag, className, text) {
     const element = document.createElement(tag);
@@ -36,6 +41,7 @@
     document.querySelectorAll(".chat-item").forEach(button => { button.disabled = busy || modelBusy || navigating || uploading; });
     document.querySelectorAll(".model-card button").forEach(button => { button.disabled = busy || modelBusy || !ready; });
     $("prompt").disabled = busy || navigating;
+    $("moreChats").disabled = historyPager.loading || busy || navigating || uploading;
     for (const id of ["attach", "fileInput", "cancelEdit", "addIntegration", "saveIntegrations"])
       $(id).disabled = busy || modelBusy || navigating || uploading;
     document.querySelectorAll(".message-edit,.message-retry,.attachment-remove,.integration-list input,.integration-list textarea,.integration-list button").forEach(button => { button.disabled = busy || navigating || uploading; });
@@ -45,26 +51,33 @@
     const id = chat.id, body = settings();
     saveQueue = saveQueue.then(async () => {
       try {
-        await api("chats/" + id, "PUT", body); pendingSaveError = null;
+        await api("chats/" + id + "?summary=true", "PUT", body); pendingSaveError = null;
         const item = chats.find(c => c.id === id);
-        if (item) { item.title = body.title; item.model = body.model; renderHistory(); }
+        const renamed = item ? item.title !== body.title : chat && chat.id === id && chat.title !== body.title;
+        if (item) {
+          item.title = body.title; item.model = body.model;
+        }
+        if (chat && chat.id === id) chat.title = body.title;
+        if (renamed && historyPager.query) await history(); else renderHistory();
       }
       catch (e) { pendingSaveError = e; banner(e.message); }
     });
     return saveQueue;
   }
   async function flush() { await save(); if (pendingSaveError) throw pendingSaveError; }
-  async function history() { chats = (await api("chats")).chats; renderHistory(); }
+  async function history() { clearTimeout(searchTimer); await historyPager.reset($("chatSearch").value); }
   function renderHistory() {
     const list = $("chatList"); list.replaceChildren();
-    const query = $("chatSearch").value.toLocaleLowerCase();
-    for (const item of chats.filter(c => (c.title || t("Новый диалог")).toLocaleLowerCase().includes(query))) {
+    for (const item of chats) {
       const button = node("button", "chat-item" + (chat && chat.id === item.id ? " is-active" : ""), item.title || t("Новый диалог"));
       button.title = item.title || t("Новый диалог");
       button.onclick = () => guarded(async () => { await flush(); await open(item.id); });
       list.append(button);
     }
-    if (!chats.length) list.append(node("p", "hint", t("Нет сохранённых диалогов")));
+    if (!chats.length) list.append(node("p", "hint", t(historyPager.loading ? "Загрузка…" :
+      historyPager.query ? "Диалоги не найдены" : "Нет сохранённых диалогов")));
+    $("moreChats").hidden = !historyPager.nextCursor;
+    $("moreChats").textContent = t(historyPager.loading ? "Загрузка…" : "Показать ещё");
     controls();
   }
   async function open(id) {
@@ -78,7 +91,7 @@
     $("temperature").value = chat.temperature;
     $("topP").value = chat.top_p;
     $("maxTokens").value = chat.max_tokens;
-    renderModels(); renderMessages(); renderHistory();
+    renderModels(); renderMessages({reset: true, forceBottom: true}); renderHistory();
     $("generationInfo").textContent = "";
     } finally { navigating = false; controls(); }
   }
@@ -87,6 +100,7 @@
     try {
       if (chat) await flush();
       const created = await api("chats", "POST");
+      $("chatSearch").value = "";
       await history(); await open(created.id); $("prompt").value = ""; $("prompt").focus();
     } finally { navigating = false; controls(); }
   }
@@ -127,14 +141,13 @@
     if (message.error) article.append(node("p", "error-text", message.error));
     article.append(actions); return article;
   }
-  function renderMessages() {
-    const pane = $("messages"); pane.replaceChildren();
-    if (!chat || !chat.messages.length) {
-      const welcome = node("div", "welcome");
-      welcome.append(node("span", "mark", "◆"), node("h2", "", t("О чём поговорим?")), node("p", "", t("Выберите локальную модель и начните диалог. Ваша история останется на этом компьютере.")));
-      pane.append(welcome);
-    } else for (const [index, message] of chat.messages.entries()) pane.append(messageElement(message, index));
-    pane.scrollTop = pane.scrollHeight;
+  const messageWindow = createStudioMessageWindow($("messages"), messageElement, () => {
+    const welcome = node("div", "welcome");
+    welcome.append(node("span", "mark", "◆"), node("h2", "", t("О чём поговорим?")), node("p", "", t("Выберите локальную модель и начните диалог. Ваша история останется на этом компьютере.")));
+    return welcome;
+  }, controls);
+  function renderMessages(options) {
+    messageWindow.render(chat, options);
   }
   function renderModels() {
     const select = $("modelSelect"), previous = chat ? chat.model : select.value;
@@ -253,8 +266,9 @@
     else if (retry && chat.messages.at(-1)?.role === "assistant") chat.messages.pop();
     if (!retry) chat.messages.push({role: "user", content: text, attachments: [...pendingAttachments]});
     const answer = {role: "assistant", content: "", reasoning: "", status: "streaming"};
-    chat.messages.push(answer); renderMessages();
-    let article = $("messages").lastChild, terminal = false;
+    chat.messages.push(answer); renderMessages({forceBottom: true});
+    const streamRenderer = createStudioStreamRenderer($("messages").lastChild, answer, $("messages"));
+    let terminal = false;
     try {
       const response = await fetch("api/chats/" + id + "/send", {method: "POST", signal: controller.signal, headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
       if (!response.ok) { const error = await response.json(); throw Error(typeof error.detail === "string" ? error.detail : JSON.stringify(error.detail)); }
@@ -272,18 +286,13 @@
           if (delta.tool_status) $("generationInfo").textContent = t("Выполняется инструмент MCP…");
           if (delta.done) { terminal = true; answer.status = "completed"; }
           answer.content += delta.content || ""; answer.reasoning += delta.reasoning || "";
-          const pane = $("messages"), nearBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 140;
-          const reasoningOpen = article.querySelector("details")?.open;
-          const replacement = messageElement(answer);
-          if (answer.status === "streaming" && reasoningOpen !== undefined && replacement.querySelector("details"))
-            replacement.querySelector("details").open = reasoningOpen;
-          article.replaceWith(replacement); article = replacement;
-          if (nearBottom) pane.scrollTop = pane.scrollHeight;
+          streamRenderer.update();
         }
       }
       if (!terminal) throw Error(t("Соединение прервано до завершения ответа."));
     } catch (e) { if (e.name !== "AbortError" && !stopRequested) banner(e.message); }
     finally {
+      streamRenderer.finish();
       controller = null;
       // The server commits its partial response in the stream's finally block.
       // Retry briefly after abort rather than overwriting that response locally.
@@ -306,7 +315,10 @@
       $("statusText").textContent = t(ready ? "Готов к работе" : state.state === "error" ? "Ошибка подключения" : "Подключение…");
       if (state.error) banner(state.error);
       if (ready && !wasReady) { banner(); await refreshModels(); }
-    } catch (e) { ready = false; $("statusText").textContent = t("Ошибка подключения"); banner(e.message); }
+    } catch (e) {
+      ready = false; $("statusText").textContent = t("Ошибка подключения"); banner(e.message);
+      controls(); return false;
+    }
     controls();
   }
   async function init() {
@@ -326,7 +338,10 @@
       });
     }
     $("newChat").onclick = () => guarded(newChat);
-    $("chatSearch").oninput = renderHistory;
+    $("chatSearch").oninput = () => {
+      clearTimeout(searchTimer); searchTimer = setTimeout(() => guarded(history), 250);
+    };
+    $("moreChats").onclick = () => guarded(() => historyPager.loadMore());
     $("send").onclick = () => guarded(() => send(false));
     $("retry").onclick = () => guarded(() => send(true));
     $("attach").onclick = () => $("fileInput").click();
@@ -345,7 +360,8 @@
     $("refreshModels").onclick = $("reloadModels").onclick = () => guarded(refreshModels);
     $("deleteChat").onclick = () => guarded(async () => {
       if (!chat || !confirm(t("Удалить этот диалог?"))) return;
-      await flush(); await api("chats/" + chat.id, "DELETE"); chat = null; await history();
+      await flush(); await api("chats/" + chat.id, "DELETE"); chat = null;
+      $("chatSearch").value = ""; await history();
       if (chats.length) await open(chats[0].id); else await newChat();
     });
     document.querySelectorAll("[data-tab]").forEach(button => { button.onclick = () => {
@@ -358,9 +374,9 @@
       if (button.dataset.tab === "settings") guarded(loadIntegrations);
       document.querySelectorAll("[data-tab]").forEach(tab => tab.classList.toggle("is-active", tab === button));
     }; });
-    window.addEventListener("imagine:languagechange", () => { renderHistory(); renderModels(); if (!busy) renderMessages(); health(); });
+    window.addEventListener("imagine:languagechange", () => { renderHistory(); renderModels(); if (!busy) renderMessages({invalidate: true}); if (healthPoll) void healthPoll.refresh(); });
     await history(); if (chats.length) await open(chats[0].id); else await newChat();
-    await health(); setInterval(health, 4000);
+    await health(); healthPoll = window.createBackgroundPoll(health, 4000);
   }
   guarded(init);
 })();

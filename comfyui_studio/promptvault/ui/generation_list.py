@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 
 from comfyui_studio.promptvault.config import BUFFER_ROWS, CARD_HEIGHT, MAX_RATING
 from comfyui_studio.promptvault.core.generation import Generation
-from comfyui_studio.promptvault.core.thumbnails import make_thumb
+from comfyui_studio.promptvault.core.thumbnail_loader import ThumbnailLoader
 from comfyui_studio.promptvault.ui.star_rating import StarRatingWidget
 
 
@@ -77,6 +77,7 @@ class GenerationList(QListWidget):
         # не подгруженных строк, см. _create_card), только для реально
         # созданных (видимых + буфер) виджетов
         self._active_widgets: dict[int, GenerationCard | _LoadingPlaceholder] = {}
+        self._thumbnail_loader = ThumbnailLoader(self)
 
         self.setSpacing(6)
         self.setIconSize(QSize(90, 90))
@@ -355,7 +356,7 @@ class GenerationList(QListWidget):
 
         generation = self.generations[index]
 
-        card = GenerationCard(generation)
+        card = GenerationCard(generation, self._thumbnail_loader)
 
         card.favoriteToggled.connect(self.favoriteToggled.emit)
         card.ratingChanged.connect(self.ratingChanged.emit)
@@ -375,6 +376,8 @@ class GenerationList(QListWidget):
 
         if widget is None:
             return
+        if isinstance(widget, GenerationCard):
+            widget.cancel_preview()
 
         item = self.item(index)
 
@@ -558,7 +561,7 @@ class GenerationCard(QWidget):
     favoriteToggled = Signal(int)
     ratingChanged = Signal(int, int)
 
-    def __init__(self, generation: Generation):
+    def __init__(self, generation: Generation, thumbnail_loader: ThumbnailLoader | None = None):
 
         super().__init__()
 
@@ -566,6 +569,10 @@ class GenerationCard(QWidget):
 
         self.generation = generation
         self.preview_loaded = False
+        self._thumbnail_loader = thumbnail_loader or ThumbnailLoader(self)
+        self._preview_token: int | None = None
+        self._preview_path: str | None = None
+        self._thumbnail_loader.ready.connect(self._on_preview_ready)
 
         self.setMinimumHeight(
             110
@@ -734,20 +741,19 @@ class GenerationCard(QWidget):
             self.generation.images[0].file
         )
 
-        if not image_path.exists():
+        self._preview_path = str(image_path)
+        token = self._thumbnail_loader.request(image_path, self.preview.width())
+        self._preview_token = token
+        loader = self._thumbnail_loader
+        self.destroyed.connect(lambda: loader.cancel(token))
+
+    def cancel_preview(self) -> None:
+        if self._preview_token is not None:
+            self._thumbnail_loader.cancel(self._preview_token)
+            self._preview_token = None
+
+    def _on_preview_ready(self, path: str, size: int, cache_path: object) -> None:
+        if self._preview_token is None or path != self._preview_path or size != self.preview.width():
             return
-
-        thumb_path = make_thumb(
-            image_path
-        )
-
-        if thumb_path is None:
-            return
-
-        pixmap = QPixmap(
-            str(thumb_path)
-        )
-
-        self.preview.setPixmap(
-            pixmap
-        )
+        if cache_path is not None:
+            self.preview.setPixmap(QPixmap(str(cache_path)))

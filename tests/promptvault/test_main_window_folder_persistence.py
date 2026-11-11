@@ -7,6 +7,8 @@ MainWindow._restore_last_folder/_open_folder_path.
 import json
 import shutil
 
+import pytest
+
 from comfyui_studio.promptvault.ui.main_window import MainWindow
 
 
@@ -36,6 +38,33 @@ def _write_json(folder, name, **overrides):
 
 class TestRestoreLastFolder:
 
+    @pytest.mark.parametrize("show_errors", [False, True])
+    def test_async_open_error_respects_silent_restore(self, qapp, qtbot, tmp_path, monkeypatch, show_errors):
+        folder = tmp_path / "gens"
+        folder.mkdir()
+        _write_json(folder, "first")
+        warnings = []
+
+        def fail_sync(repository, path, files, **kwargs):
+            raise OSError("disk unavailable")
+
+        monkeypatch.setattr(
+            "comfyui_studio.promptvault.core.repository.GenerationRepository.sync_files", fail_sync
+        )
+        monkeypatch.setattr(
+            "comfyui_studio.promptvault.ui.main_window.QMessageBox.warning",
+            lambda *args: warnings.append(args[-1]),
+        )
+        window = MainWindow()
+        try:
+            assert window._open_folder_path(str(folder), show_errors=show_errors)
+            qtbot.waitUntil(lambda: not window.folder_sync._task.is_busy())
+            assert len(warnings) == int(show_errors)
+            if show_errors:
+                assert "disk unavailable" in warnings[0]
+        finally:
+            window.close()
+
     def test_fresh_start_opens_nothing(self, qapp):
         """Ни одна папка ещё не открывалась в этом (изолированном)
         QSettings-хранилище — MainWindow не должен пытаться что-то
@@ -48,7 +77,7 @@ class TestRestoreLastFolder:
         finally:
             w.close()
 
-    def test_second_session_reopens_the_same_folder(self, qapp, tmp_path):
+    def test_second_session_reopens_the_same_folder(self, qapp, tmp_path, qtbot):
 
         folder = tmp_path / "gens"
         folder.mkdir()
@@ -59,6 +88,7 @@ class TestRestoreLastFolder:
         try:
             w1._open_folder_path(str(folder))
             assert w1.gallery.current_folder == str(folder)
+            qtbot.waitUntil(lambda: len(w1.gallery.filtered_generations) == 1)
         finally:
             w1.close()
 
@@ -68,11 +98,12 @@ class TestRestoreLastFolder:
 
         try:
             assert w2.gallery.current_folder == str(folder)
-            assert len(w2.gallery.filtered_generations) == 1
+            qtbot.waitUntil(lambda: len(w2.gallery.filtered_generations) == 1)
         finally:
             w2.close()
+            qtbot.waitUntil(lambda: not w2.folder_sync._task.is_busy())
 
-    def test_missing_folder_is_skipped_silently(self, qapp, tmp_path):
+    def test_missing_folder_is_skipped_silently(self, qapp, tmp_path, qtbot):
         """Папка была открыта, потом исчезла с диска (переименовали,
         отключили внешний накопитель) — следующий старт не должен ни
         падать, ни показывать диалог об ошибке, просто не открывает
@@ -87,6 +118,7 @@ class TestRestoreLastFolder:
             w1._open_folder_path(str(folder))
         finally:
             w1.close()
+            qtbot.waitUntil(lambda: not w1.folder_sync._task.is_busy())
 
         shutil.rmtree(folder)
 
@@ -97,7 +129,7 @@ class TestRestoreLastFolder:
         finally:
             w2.close()
 
-    def test_open_folder_dialog_persists_for_next_session(self, qapp, tmp_path, monkeypatch):
+    def test_open_folder_dialog_persists_for_next_session(self, qapp, tmp_path, monkeypatch, qtbot):
         """open_folder() (обычный путь через диалог выбора папки)
         тоже должен сохранять путь — не только программное открытие
         через _open_folder_path напрямую."""
@@ -117,6 +149,7 @@ class TestRestoreLastFolder:
             assert w1.gallery.current_folder == str(folder)
         finally:
             w1.close()
+            qtbot.waitUntil(lambda: not w1.folder_sync._task.is_busy())
 
         w2 = MainWindow()
 
@@ -124,3 +157,4 @@ class TestRestoreLastFolder:
             assert w2.gallery.current_folder == str(folder)
         finally:
             w2.close()
+            qtbot.waitUntil(lambda: not w2.folder_sync._task.is_busy())

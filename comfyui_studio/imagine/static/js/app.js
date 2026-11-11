@@ -44,6 +44,7 @@ const state = {
 };
 
 const el = (id) => document.getElementById(id);
+let comfyStatusPoll = null, promptGenAvailabilityPoll = null;
 
 // Состояние перетаскивания увеличенной картинки в лайтбоксе мышкой
 // (отдельно от общего state -- сугубо переходное UI-состояние жеста,
@@ -75,10 +76,10 @@ async function init() {
   } finally {
     hideLoadingScreen();
   }
-  setInterval(refreshComfyStatus, 6000);
+  comfyStatusPoll = window.createBackgroundPoll(refreshComfyStatus, 6000);
   // Настройки генератора промптов меняются в Studio, а не на этой
   // странице -- кнопка должна появляться/исчезать без перезагрузки.
-  setInterval(refreshPromptGenAvailability, 10000);
+  promptGenAvailabilityPoll = window.createBackgroundPoll(refreshPromptGenAvailability, 10000);
 }
 
 // НОВОЕ (§Этап 6.5 дорожной карты, "Push-уведомления" -- живой отчёт
@@ -693,6 +694,7 @@ function wireStaticHandlers() {
 async function refreshComfyStatus() {
   try {
     const res = await fetch('api/comfyui/status');
+    if (!res.ok) throw new Error(res.statusText);
     const data = await res.json();
     const dot = el('statusDot');
     const wasAlive = dot.classList.contains('alive');
@@ -709,6 +711,7 @@ async function refreshComfyStatus() {
   } catch {
     el('statusDot').className = 'status-dot dead';
     el('statusText').textContent = t('нет связи с бэкендом');
+    return false;
   }
 }
 
@@ -1663,7 +1666,7 @@ async function onSaveConnection(e) {
   state.config.comfyui.launch_bat_path = el('connBatPath').value.trim();
   state.config.comfyui.lora_folder = el('connLoraFolder').value.trim();
   await persistConfig();
-  refreshComfyStatus();
+  if (comfyStatusPoll) void comfyStatusPoll.refresh();
   loadAvailableLoraFiles();
   await renderAspectRatios();
 }
@@ -1707,10 +1710,10 @@ async function refreshPromptGenAvailability() {
   let st;
   try {
     const res = await fetch('api/promptgen/status');
-    if (!res.ok) return;
+    if (!res.ok) return false;
     st = await res.json();
   } catch {
-    return; // бэкенд недоступен -- остаёмся при прежнем состоянии
+    return false; // бэкенд недоступен -- остаёмся при прежнем состоянии
   }
   pg.configured = !!(st.available && st.configured);
   pg.vision = !!st.vision;
@@ -1743,7 +1746,7 @@ function updatePromptGenModalState() {
 
 function openPromptGen() {
   el('promptGenModal').hidden = false;
-  refreshPromptGenAvailability();
+  if (promptGenAvailabilityPoll) void promptGenAvailabilityPoll.refresh();
   el('pgInput').focus();
 }
 

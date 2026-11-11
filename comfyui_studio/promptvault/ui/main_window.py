@@ -67,6 +67,7 @@ class MainWindow(QMainWindow):
 
         super().__init__()
         self.standalone = standalone
+        self._folder_show_errors = True
 
         self.setWindowTitle("PromptVault")
         self.resize(1600, 900)
@@ -230,7 +231,8 @@ class MainWindow(QMainWindow):
 
         # -------- автосинхронизация папки --------
 
-        self.folder_sync.changed.connect(self.gallery.resync)
+        self.folder_sync.changed.connect(self._on_folder_synced)
+        self.folder_sync.failed.connect(self._on_folder_sync_error)
 
         # -------- GalleryManager -> UI --------
 
@@ -308,6 +310,16 @@ class MainWindow(QMainWindow):
         logger.error("Ошибка GalleryManager: %s", message)
 
         QMessageBox.warning(self, "PromptVault", message)
+
+    def _on_folder_synced(self) -> None:
+        self.gallery.resync()
+        self._refresh_folder_filters()
+
+    def _on_folder_sync_error(self, message: str) -> None:
+        if self._folder_show_errors:
+            self._on_gallery_error(
+                self.tr("Could not open folder:\n{}\n\n{}").format(self.gallery.current_folder, message)
+            )
 
     # --------------------------------------------------
     # редактирование метаданных
@@ -776,7 +788,10 @@ class MainWindow(QMainWindow):
         self.thumbnail_panel.clear()
 
         try:
-            self.gallery.load_folder(folder)
+            if not Path(folder).is_dir():
+                raise FileNotFoundError(folder)
+            self.folder_sync.stop()
+            self.gallery.load_indexed_folder(folder)
         except OSError as e:
             logger.exception("Не удалось открыть папку %s", folder)
             if show_errors:
@@ -786,6 +801,13 @@ class MainWindow(QMainWindow):
                 )
             return False
 
+        self._refresh_folder_filters()
+        self._folder_show_errors = show_errors
+        self.folder_sync.watch(folder)
+
+        return True
+
+    def _refresh_folder_filters(self) -> None:
         models = self.gallery.available_models()
         samplers = self.gallery.available_samplers()
         loras = self.gallery.available_loras()
@@ -801,11 +823,6 @@ class MainWindow(QMainWindow):
         # безопасно проигнорировать — set_models/set_samplers уже
         # обработали это выше)
         self.filter_popup.apply_options(self.gallery.filter_options())
-
-        # начинаем следить за изменениями в папке
-        self.folder_sync.watch(folder)
-
-        return True
 
     # --------------------------------------------------
 

@@ -12,7 +12,8 @@
 
    Файл раздаётся бэкендом обоих приложений по /common (см.
    comfyui_studio/web_common/__init__.py) и подключается в index.html
-   ОТНОСИТЕЛЬНЫМ путём `common/js/i18n_engine.js` ПЕРЕД js/i18n.js --
+   ОТНОСИТЕЛЬНЫМ путём `common/js/i18n_engine.js` после background_poll.js
+   и ПЕРЕД js/i18n.js --
    относительным, потому что за reverse-proxy Remote страница живёт под
    префиксом /api/v1/remote/apps/<id>/, и путь с ведущим "/" ушёл бы мимо.
 
@@ -137,9 +138,8 @@
       // открыта (см. startPolling() ниже) -- чтобы смена темы/языка в
       // Studio "живьём" подхватывалась и здесь, тем же принципом, что и
       // QFileSystemWatcher у shared_theme.py для Qt-приложений комплекта
-      // (у веб-страницы такого watcher'а нет, поэтому вместо него — редкий
-      // поллинг, раз в 5 секунд, той же периодичности, что и опрос статуса
-      // ComfyUI в app.js).
+      // Опрос раз в 5 секунд при видимой странице; скрытые вкладки ждут
+      // возвращения, при сетевых ошибках общий планировщик снижает частоту.
       async init() {
         let lang = "ru";
         let theme = DEFAULT_THEME;
@@ -152,12 +152,14 @@
         applyStaticTranslations();
 
         await this._syncFromServer();
-        setInterval(() => this._syncFromServer(), 5000);
+        if (this._prefsPoll) this._prefsPoll.stop();
+        this._prefsPoll = window.createBackgroundPoll(() => this._syncFromServer(), 5000);
       },
 
       async _syncFromServer() {
         try {
           const resp = await fetch("api/ui-prefs");
+          if (!resp.ok) return false;
           if (resp.ok) {
             const prefs = await resp.json();
             if (prefs.language && prefs.language !== CURRENT_LANG) {
@@ -171,6 +173,7 @@
           // Studio не смогла ответить (или Imagine запущен отдельно от
           // неё, без /api/ui-prefs вообще) -- остаёмся на том, что уже
           // применили из localStorage/умолчаний, ничего страшного.
+          return false;
         }
       },
     };

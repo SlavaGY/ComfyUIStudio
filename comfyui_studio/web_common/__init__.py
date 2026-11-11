@@ -3,7 +3,7 @@
 Imagine и Imagine Pony были написаны «по образцу» друг друга, и несколько
 кусков в их бэкендах совпадали дословно. Здесь осталась одна копия:
 
-* ``NoCacheMiddleware`` -- отключение кэша браузера для статики;
+* ``CachePolicyMiddleware`` / ``CachedStaticFiles`` -- кэш версионированной статики;
 * ``static_dir()`` -- каталог статики приложения (и из исходников, и из
   собранного exe, где он лежит под ``sys._MEIPASS``);
 * ``register_ui_prefs()`` -- ``GET/PUT /api/ui-prefs``: тема и язык общие с
@@ -24,8 +24,11 @@ import sys
 from pathlib import Path
 
 from fastapi import FastAPI
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.staticfiles import StaticFiles
+
+from .static_cache import CachedStaticFiles, CachePolicyMiddleware
+
+# Compatibility for callers of the old default-only middleware.
+NoCacheMiddleware = CachePolicyMiddleware
 
 try:
     # Необязательно: доступно только внутри ComfyUIStudio. Если приложение
@@ -43,21 +46,6 @@ except ImportError:  # pragma: no cover - запущено отдельно от
 COMMON_STATIC_URL = "/common"
 
 
-class NoCacheMiddleware(BaseHTTPMiddleware):
-    """Инструмент локальный, файлы меняются между запусками dev-сессии
-    чаще, чем у любого обычного сайта -- кэш браузера здесь только
-    вредит (см. как рассинхронизировались index.html и app.js после
-    обновления: браузер получил 304 и продолжил использовать старый
-    app.js). Отключаем кэш статики целиком, а не разбираемся с
-    ETag/Last-Modified вручную."""
-
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        return response
-
-
 def static_dir(package: str) -> Path:
     """Каталог ``static`` пакета ``comfyui_studio.<package>``.
 
@@ -73,7 +61,7 @@ def static_dir(package: str) -> Path:
 def mount_common_static(app: FastAPI) -> None:
     """Раздаёт общую статику по ``/common``. Вызывать ДО монтирования ``/``
     (корневой StaticFiles перехватил бы и этот путь)."""
-    app.mount(COMMON_STATIC_URL, StaticFiles(directory=str(static_dir("web_common"))), name="common")
+    app.mount(COMMON_STATIC_URL, CachedStaticFiles(directory=static_dir("web_common")), name="common")
 
 
 def register_ui_prefs(app: FastAPI) -> None:

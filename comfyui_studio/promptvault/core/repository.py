@@ -30,6 +30,8 @@ class GenerationRepository(TransferMixin, QueryMixin, EditMixin, StatisticsMixin
 
     def __init__(self, db_path: str | Path | None = None):
         self._conn = connect(db_path)
+        # SQLite returns the resolved filename, including the configured default.
+        self.db_path: str = self._conn.execute("PRAGMA database_list").fetchone()[2]
 
     # ------------------------------------------------------------
     # синхронизация с диском
@@ -56,12 +58,22 @@ class GenerationRepository(TransferMixin, QueryMixin, EditMixin, StatisticsMixin
         """
 
         folder = str(Path(folder).resolve())
-        conn = self._conn
-
         disk_files = {
             str(p.resolve()): p.stat().st_mtime
             for p in Path(folder).rglob("*.json")
         }
+
+        return self.sync_files(folder, disk_files)
+
+    def sync_files(self, folder: str | Path, disk_files: dict[str, float], *, force: bool = False) -> bool:
+        """Синхронизирует готовый набор файлов без повторного обхода диска.
+
+        force используется для изменений, обнаруженных DirectoryIndex, в т.ч.
+        если размер изменился при сохранённом mtime. При полной сверке БД
+        по-прежнему исключает уже проиндексированные файлы по mtime.
+        """
+        folder = str(Path(folder).resolve())
+        conn = self._conn
 
         if not disk_files:
             logger.debug("Синхронизация %s: JSON-файлы не найдены", folder)
@@ -70,16 +82,18 @@ class GenerationRepository(TransferMixin, QueryMixin, EditMixin, StatisticsMixin
         # быстрый путь: файлы, которые уже лежат в БД под тем же путём
         # и с тем же mtime — трогать не нужно вообще (даже не паримся
         # с их identity)
-        placeholders = ",".join("?" * len(disk_files))
-
-        unchanged_paths = {
-            path
-            for path, mtime in conn.execute(
-                f"SELECT path, mtime FROM generations WHERE path IN ({placeholders})",
-                list(disk_files.keys())
-            )
-            if abs(disk_files.get(path, float("nan")) - mtime) < 1e-6
-        }
+        unchanged_paths: set[str] = set()
+        if not force:
+            # Large initial libraries may exceed SQLite's parameter limit.
+            paths = list(disk_files)
+            for start in range(0, len(paths), 500):
+                batch = paths[start:start + 500]
+                placeholders = ",".join("?" * len(batch))
+                unchanged_paths.update(
+                    path for path, mtime in conn.execute(
+                        f"SELECT path, mtime FROM generations WHERE path IN ({placeholders})", batch
+                    ) if abs(disk_files.get(path, float("nan")) - mtime) < 1e-6
+                )
 
         changed = False
         added = 0

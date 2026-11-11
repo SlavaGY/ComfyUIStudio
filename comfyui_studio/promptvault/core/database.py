@@ -30,6 +30,11 @@ CREATE INDEX IF NOT EXISTS idx_generations_model ON generations(model);
 CREATE INDEX IF NOT EXISTS idx_generations_sampler ON generations(sampler);
 CREATE INDEX IF NOT EXISTS idx_generations_timestamp ON generations(timestamp);
 CREATE INDEX IF NOT EXISTS idx_generations_path ON generations(path);
+-- Narrow page selection and filter menus avoid reading prompt/workflow pages.
+CREATE INDEX IF NOT EXISTS idx_generations_browse
+ON generations(path, timestamp, model, sampler, cfg, steps, generation_time);
+CREATE INDEX IF NOT EXISTS idx_generations_cfg ON generations(cfg);
+CREATE INDEX IF NOT EXISTS idx_generations_steps ON generations(steps);
 """
 
 CREATE_LORAS = """

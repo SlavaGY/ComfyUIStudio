@@ -1,0 +1,283 @@
+{
+  "rows": 1968,
+  "folder_rows": 1961,
+  "folder": "<ComfyUI output>",
+  "queries": {
+    "count": {
+      "median_ms": 0.362,
+      "samples_ms": [
+        0.415,
+        0.4,
+        0.362,
+        0.363,
+        0.351,
+        0.342,
+        0.341
+      ],
+      "plans": [
+        [
+          "SEARCH generations USING COVERING INDEX idx_generations_path (path>? AND path<?)"
+        ]
+      ]
+    },
+    "first_100": {
+      "median_ms": 2.48,
+      "samples_ms": [
+        2.48,
+        2.451,
+        2.429,
+        2.32,
+        2.952,
+        2.603,
+        2.511
+      ],
+      "plans": [
+        [
+          "SEARCH g USING COVERING INDEX idx_generations_browse (path>? AND path<?)",
+          "SEARCH u USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        [
+          "SEARCH g USING INTEGER PRIMARY KEY (rowid=?)",
+          "SEARCH u USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
+        ],
+        [
+          "SEARCH loras USING INDEX idx_loras_generation (generation_id=?)"
+        ],
+        [
+          "SEARCH images USING INDEX idx_images_generation (generation_id=?)"
+        ],
+        [
+          "SEARCH custom_tags USING COVERING INDEX sqlite_autoindex_custom_tags_1 (generation_id=?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ]
+      ]
+    },
+    "deep_100": {
+      "median_ms": 3.125,
+      "samples_ms": [
+        3.245,
+        3.246,
+        3.172,
+        3.08,
+        2.975,
+        3.025,
+        3.125
+      ],
+      "plans": [
+        [
+          "SEARCH g USING COVERING INDEX idx_generations_browse (path>? AND path<?)",
+          "SEARCH u USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        [
+          "SEARCH g USING INTEGER PRIMARY KEY (rowid=?)",
+          "SEARCH u USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
+        ],
+        [
+          "SEARCH loras USING INDEX idx_loras_generation (generation_id=?)"
+        ],
+        [
+          "SEARCH images USING INDEX idx_images_generation (generation_id=?)"
+        ],
+        [
+          "SEARCH custom_tags USING COVERING INDEX sqlite_autoindex_custom_tags_1 (generation_id=?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ]
+      ]
+    },
+    "model_100": {
+      "median_ms": 5.196,
+      "samples_ms": [
+        5.451,
+        5.529,
+        5.395,
+        5.196,
+        5.177,
+        4.935,
+        4.759
+      ],
+      "plans": [
+        [
+          "SEARCH g USING INDEX idx_generations_model (model=?)",
+          "SEARCH u USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        [
+          "SEARCH g USING INTEGER PRIMARY KEY (rowid=?)",
+          "SEARCH u USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
+        ],
+        [
+          "SEARCH loras USING INDEX idx_loras_generation (generation_id=?)"
+        ],
+        [
+          "SEARCH images USING INDEX idx_images_generation (generation_id=?)"
+        ],
+        [
+          "SEARCH custom_tags USING COVERING INDEX sqlite_autoindex_custom_tags_1 (generation_id=?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ]
+      ]
+    },
+    "search_100": {
+      "median_ms": 14.923,
+      "samples_ms": [
+        15.313,
+        14.99,
+        15.65,
+        14.605,
+        14.923,
+        14.792,
+        14.736
+      ],
+      "plans": [
+        [
+          "SEARCH g USING INDEX idx_generations_path (path>? AND path<?)",
+          "CORRELATED SCALAR SUBQUERY 1",
+          "SEARCH l USING INDEX idx_loras_generation (generation_id=?)",
+          "CORRELATED SCALAR SUBQUERY 2",
+          "SEARCH im USING INDEX idx_images_generation (generation_id=?)",
+          "SEARCH u USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        [
+          "SEARCH g USING INTEGER PRIMARY KEY (rowid=?)",
+          "SEARCH u USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
+        ],
+        [
+          "SEARCH loras USING INDEX idx_loras_generation (generation_id=?)"
+        ],
+        [
+          "SEARCH images USING INDEX idx_images_generation (generation_id=?)"
+        ],
+        [
+          "SEARCH custom_tags USING COVERING INDEX sqlite_autoindex_custom_tags_1 (generation_id=?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ]
+      ]
+    },
+    "available_models": {
+      "median_ms": 0.494,
+      "samples_ms": [
+        0.611,
+        0.48,
+        0.46,
+        0.671,
+        0.502,
+        0.494,
+        0.471
+      ],
+      "plans": [
+        [
+          "SEARCH generations USING COVERING INDEX idx_generations_browse (path>? AND path<?)",
+          "USE TEMP B-TREE FOR DISTINCT"
+        ]
+      ]
+    },
+    "statistics": {
+      "median_ms": 1.597,
+      "samples_ms": [
+        1.626,
+        1.589,
+        1.596,
+        1.591,
+        1.597,
+        1.693,
+        1.642
+      ],
+      "plans": [
+        [
+          "SCAN generations USING COVERING INDEX idx_generations_steps"
+        ],
+        [
+          "SEARCH user_data USING COVERING INDEX idx_user_data_favorite (favorite=?)"
+        ],
+        [
+          "SEARCH user_data USING COVERING INDEX idx_user_data_rating (rating>?)"
+        ],
+        [
+          "SEARCH generations USING COVERING INDEX idx_generations_model (model>?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        [
+          "SEARCH generations USING COVERING INDEX idx_generations_sampler (sampler>?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        [
+          "SCAN loras USING COVERING INDEX idx_loras_filename",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        [
+          "SEARCH user_data USING COVERING INDEX idx_user_data_rating (rating>?)"
+        ],
+        [
+          "SEARCH generations USING COVERING INDEX idx_generations_cfg (cfg>?)"
+        ],
+        [
+          "SEARCH generations USING COVERING INDEX idx_generations_cfg (cfg>?)",
+          "USE TEMP B-TREE FOR GROUP BY"
+        ],
+        [
+          "SEARCH generations USING COVERING INDEX idx_generations_steps (steps>?)"
+        ],
+        [
+          "SEARCH generations USING COVERING INDEX idx_generations_steps (steps>?)",
+          "USE TEMP B-TREE FOR GROUP BY"
+        ]
+      ]
+    },
+    "lora_100": {
+      "median_ms": 3.831,
+      "samples_ms": [
+        3.979,
+        3.976,
+        3.975,
+        3.831,
+        3.728,
+        3.769,
+        3.828
+      ],
+      "plans": [
+        [
+          "SEARCH g USING COVERING INDEX idx_generations_browse (path>? AND path<?)",
+          "CORRELATED SCALAR SUBQUERY 1",
+          "SEARCH l USING INDEX idx_loras_generation (generation_id=?)",
+          "SEARCH u USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ],
+        [
+          "SEARCH g USING INTEGER PRIMARY KEY (rowid=?)",
+          "SEARCH u USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
+        ],
+        [
+          "SEARCH loras USING INDEX idx_loras_generation (generation_id=?)"
+        ],
+        [
+          "SEARCH images USING INDEX idx_images_generation (generation_id=?)"
+        ],
+        [
+          "SEARCH custom_tags USING COVERING INDEX sqlite_autoindex_custom_tags_1 (generation_id=?)",
+          "USE TEMP B-TREE FOR ORDER BY"
+        ]
+      ]
+    }
+  },
+  "scan": {
+    "initial_ms": 25.378,
+    "files": 1955,
+    "directories": 11,
+    "idle": {
+      "median_ms": 31.569,
+      "samples_ms": [
+        30.333,
+        29.768,
+        32.017,
+        35.733,
+        32.257,
+        31.409,
+        31.569
+      ]
+    },
+    "idle_stat_calls": 168
+  }
+}

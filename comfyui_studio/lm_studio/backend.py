@@ -8,12 +8,17 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from ..web_common import NoCacheMiddleware, mount_common_static, register_ui_prefs, static_dir
+from ..web_common import (
+    CachedStaticFiles,
+    CachePolicyMiddleware,
+    mount_common_static,
+    register_ui_prefs,
+    static_dir,
+)
 from .attachments import Attachments, AttachmentUpload
 from .integrations import IntegrationSettings, IntegrationStore
 from .reasoning import ReasoningParser
@@ -74,7 +79,7 @@ def create_app(config: dict, data_dir: Path, runtime=None):
             await engine.close()
 
     app = FastAPI(title="Studio · LM Studio", lifespan=lifespan)
-    app.add_middleware(NoCacheMiddleware)
+    app.add_middleware(CachePolicyMiddleware)
     app.state.engine = engine
     app.state.store = store
     app.state.generations = tasks
@@ -147,8 +152,12 @@ def create_app(config: dict, data_dir: Path, runtime=None):
         return result
 
     @app.get("/api/chats")
-    async def chats():
-        return {"chats": store.list()}
+    def chats(limit: int = Query(50, ge=1, le=100), cursor: str | None = Query(None, max_length=512),
+              search: str = Query("", max_length=200)):
+        try:
+            return store.list_page(limit, cursor, search)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
 
     @app.post("/api/attachments")
     def upload_attachment(body: AttachmentUpload):
@@ -177,11 +186,13 @@ def create_app(config: dict, data_dir: Path, runtime=None):
         return get_chat(chat_id)
 
     @app.put("/api/chats/{chat_id}")
-    async def update_chat(chat_id: str, body: ChatSettings):
+    async def update_chat(chat_id: str, body: ChatSettings, summary: bool = False):
         require_idle(chat_id)
         chat = get_chat(chat_id)
         chat.update(body.model_dump())
         store.save(chat)
+        if summary:
+            return {key: chat[key] for key in ("id", "title", "model", "updated")}
         return chat
 
     @app.delete("/api/chats/{chat_id}")
@@ -358,5 +369,5 @@ def create_app(config: dict, data_dir: Path, runtime=None):
 
     register_ui_prefs(app)
     mount_common_static(app)
-    app.mount("/", StaticFiles(directory=str(static_dir("lm_studio")), html=True), name="ui")
+    app.mount("/", CachedStaticFiles(directory=static_dir("lm_studio"), html=True), name="ui")
     return app

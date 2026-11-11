@@ -1372,6 +1372,7 @@ async function refreshComfyStatus() {
   } catch {
     el('statusDot').className = 'status-dot dead';
     el('statusText').textContent = t('нет связи с бэкендом');
+    return false;
   }
 }
 
@@ -1466,7 +1467,7 @@ async function init() {
   } finally {
     hideLoadingScreen();
   }
-  setInterval(refreshComfyStatus, 6000);
+  window.createBackgroundPoll(refreshComfyStatus, 6000);
 }
 
 document.addEventListener('DOMContentLoaded', init);

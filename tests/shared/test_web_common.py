@@ -140,7 +140,9 @@ def test_apps_use_the_shared_layer(app_dir):
         if isinstance(node, ast.ImportFrom) and node.module == "comfyui_studio.web_common"
         for alias in node.names
     }
-    assert imported == {"NoCacheMiddleware", "mount_common_static", "register_ui_prefs", "static_dir"}
+    assert imported == {
+        "CachedStaticFiles", "CachePolicyMiddleware", "mount_common_static", "register_ui_prefs", "static_dir"
+    }
 
     # собственных копий больше нет
     assert not [n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "NoCacheMiddleware"]

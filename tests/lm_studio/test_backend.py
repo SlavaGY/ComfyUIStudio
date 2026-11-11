@@ -201,15 +201,47 @@ def test_chat_settings_delete_and_validation(environment):
     assert client.get(f"/api/chats/{chat_id}").status_code == 404
 
 
+def test_settings_summary_avoids_resending_large_message_history(environment):
+    client, app, _, _ = environment
+    chat = app.state.store.create()
+    chat["messages"] = [{"role": "user", "content": "x" * 1000000}]
+    app.state.store.save(chat)
+    response = client.put(f"/api/chats/{chat['id']}?summary=true", json={"title": "Renamed"})
+    assert response.status_code == 200
+    assert len(response.content) < 512
+    assert response.json()["title"] == "Renamed"
+    full = client.get(f"/api/chats/{chat['id']}").json()
+    assert full["messages"] == chat["messages"]
+    # Existing callers retain the full-response API when they do not opt in.
+    assert client.put(f"/api/chats/{chat['id']}", json={"title": "Again"}).json()["messages"] == chat["messages"]
+
+
 def test_local_only_and_static_assets(environment):
     client, _, _, _ = environment
     assert client.post("/api/chats", headers={"origin": "https://example.com"}).status_code == 403
     assert client.get("/api/health", headers={"host": "attacker.test"}).status_code == 403
     assert client.get("/").status_code == 200
     assert client.get("/css/themes.css").status_code == 200
+    assert 'src="js/stream_renderer.js?v=' in client.get("/").text
+    assert client.get("/js/stream_renderer.js").status_code == 200
     assert client.get("/common/js/i18n_engine.js").status_code == 200
     assert "no-store" in client.get("/").headers["cache-control"]
     assert client.get("/api/v1/remote/apps").status_code == 404
+
+
+def test_chat_list_pages_searches_and_validates_input(environment):
+    client, app, _, _ = environment
+    for i in range(55):
+        chat = app.state.store.create()
+        chat["title"] = f"Диалог {i}"
+        app.state.store.save(chat)
+    first = client.get("/api/chats").json()
+    assert len(first["chats"]) == 50 and first["next_cursor"]
+    second = client.get("/api/chats", params={"cursor": first["next_cursor"]}).json()
+    assert len(second["chats"]) == 5 and second["next_cursor"] is None
+    assert client.get("/api/chats?search=диалог%200").json()["chats"][0]["title"] == "Диалог 0"
+    for query in ("limit=0", "limit=101", "cursor=invalid"):
+        assert client.get("/api/chats?" + query).status_code == 422
 
 
 def test_stop_persists_partial_reply_and_releases_chat(tmp_path):

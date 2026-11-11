@@ -18,22 +18,24 @@ IMAGINE_DEV_MODE, которую выставляет run.bat) -- в интер�
 import asyncio
 import logging
 import os
+import shutil
 import uuid
 from contextlib import suppress
 from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, UploadFile
-from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from comfyui_studio.web_common import (
-    NoCacheMiddleware,
+    CachedStaticFiles,
+    CachePolicyMiddleware,
     mount_common_static,
     register_ui_prefs,
     static_dir,
 )
+from comfyui_studio.web_common.image_stream import stream_image
 
 from . import config_store, launcher, lora_scan, progress_forwarder, promptgen, workflow
 from .comfy_client import ComfyClient, ComfyUIError
@@ -52,7 +54,7 @@ _STATIC_DIR = static_dir("imagine")
 app = FastAPI(title="Imagine — локальный генератор на ComfyUI")
 
 
-app.add_middleware(NoCacheMiddleware)
+app.add_middleware(CachePolicyMiddleware)
 
 
 # ИЗМЕНЕНО при встраивании в ComfyUIStudio: когда Imagine запущен как
@@ -226,7 +228,7 @@ def available_loras():
 
 
 @app.post("/api/upload-image")
-async def upload_image(file: UploadFile):
+def upload_image(file: UploadFile):
     require_dev_mode()
     ext = Path(file.filename or "").suffix.lower()
     if ext not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
@@ -234,8 +236,15 @@ async def upload_image(file: UploadFile):
     name = f"{uuid.uuid4().hex}{ext}"
     dest = config_store.UPLOADS_DIR / name
     config_store.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-    data = await file.read()
-    dest.write_bytes(data)
+    # A synchronous endpoint runs in FastAPI's worker pool. UploadFile already
+    # spools large multipart bodies to disk; copy without materialising them.
+    partial = dest.with_suffix(dest.suffix + ".part")
+    try:
+        with partial.open("wb") as output:
+            shutil.copyfileobj(file.file, output, length=1024 * 1024)
+        partial.replace(dest)
+    finally:
+        partial.unlink(missing_ok=True)
     # ОТНОСИТЕЛЬНЫЙ путь (без ведущего "/") -- НЕ "/media/{name}" (см.
     # тот же приём и то же объяснение у "url" в /api/generate/{id}/status
     # ниже): страница Imagine теперь может открываться и по своему
@@ -508,13 +517,9 @@ def interrupt(prompt_id: str):
 
 
 @app.get("/api/image")
-def get_image(filename: str, subfolder: str = "", type: str = "output"):
+async def get_image(filename: str, subfolder: str = "", type: str = "output"):
     client = get_client()
-    try:
-        data, content_type = client.fetch_image_bytes(filename, subfolder, type)
-    except ComfyUIError as exc:
-        raise HTTPException(502, str(exc)) from exc
-    return Response(content=data, media_type=content_type)
+    return await stream_image(client.view_image_url(filename, subfolder, type), client.timeout)
 
 
 # ---------------------------------------------------------------------------
@@ -526,4 +531,4 @@ config_store.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 app.mount("/media", StaticFiles(directory=str(config_store.UPLOADS_DIR)), name="media")
 mount_common_static(app)  # /common -- общий JS движок переводов; ДО корневого "/"
-app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="static")
+app.mount("/", CachedStaticFiles(directory=_STATIC_DIR, html=True), name="static")
