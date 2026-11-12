@@ -166,6 +166,10 @@ include = ["comfyui_studio*"]
     "imagine_pony/static/**/*.css",
     "imagine_pony/static/**/*.js",
     "imagine_pony/assets/**/*.json",
+    "ieditor/static/**/*.html",
+    "ieditor/static/**/*.css",
+    "ieditor/static/**/*.js",
+    "ieditor/assets/**/*.json",
     # Ultimate RVC (comfyui_studio/rvc/) -- тот же фронтенд без сборки.
     "rvc/static/**/*.html",
     "rvc/static/**/*.css",

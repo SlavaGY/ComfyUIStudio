@@ -133,8 +133,7 @@ class ComfyUISettingsPage(QWidget):
 
         self.interface_hint = QLabel(
             self._tr(
-                "Что запускать — ComfyUI, Imagine, Imagine Pony или Ultimate "
-                "RVC — выбирается списком рядом с кнопкой «Запустить» на "
+                "Приложение выбирается списком рядом с кнопкой «Запустить» на "
                 "главном экране. Здесь — порты и параметры этих режимов."
             )
         )
@@ -172,6 +171,13 @@ class ComfyUISettingsPage(QWidget):
         self.pony_port_spin.valueChanged.connect(self._on_field_changed)
         self.pony_port_row_label = QLabel(self._tr("Порт Imagine Pony:"))
         interface_form.addRow(self.pony_port_row_label, self.pony_port_spin)
+
+        self.ieditor_port_spin = QSpinBox()
+        self.ieditor_port_spin.setRange(1, 65535)
+        self.ieditor_port_spin.setValue(int(cfg.get("ieditor", {}).get("port", 7865)))
+        self.ieditor_port_spin.valueChanged.connect(self._on_field_changed)
+        self.ieditor_port_row_label = QLabel(self._tr("Порт IEditor:"))
+        interface_form.addRow(self.ieditor_port_row_label, self.ieditor_port_spin)
 
         root.addWidget(interface_box)
 
@@ -355,6 +361,7 @@ class ComfyUISettingsPage(QWidget):
                 "dev_mode": self.imagine_dev_mode_check.isChecked(),
             },
             "imagine_pony": {"port": self.pony_port_spin.value()},
+            "ieditor": {"port": self.ieditor_port_spin.value()},
             "launch_args": self.collect_launch_args(),
             "env_vars": self.collect_env_vars(),
         }
@@ -365,7 +372,7 @@ class ComfyUISettingsPage(QWidget):
         for w in (self.path_edit, self.browse_btn, self.script_combo, self.port_spin,
                   self.disable_auto_launch_check, self.sync_comfy_theme_check,
                   self.imagine_port_spin, self.imagine_dev_mode_check,
-                  self.pony_port_spin):
+                  self.pony_port_spin, self.ieditor_port_spin):
             w.setEnabled(editable)
         # Порты Imagine/Pony больше не зависят от выбранного режима (режим
         # выбирается на главном экране, а порты настраиваются заранее),
@@ -410,13 +417,13 @@ class ComfyUISettingsPage(QWidget):
         self.interface_box.setTitle(self._tr("Интерфейс"))
         self.interface_hint.setText(
             self._tr(
-                "Что запускать — ComfyUI, Imagine, Imagine Pony или Ultimate "
-                "RVC — выбирается списком рядом с кнопкой «Запустить» на "
+                "Приложение выбирается списком рядом с кнопкой «Запустить» на "
                 "главном экране. Здесь — порты и параметры этих режимов."
             )
         )
         self.imagine_port_row_label.setText(self._tr("Порт Imagine:"))
         self.pony_port_row_label.setText(self._tr("Порт Imagine Pony:"))
+        self.ieditor_port_row_label.setText(self._tr("Порт IEditor:"))
         self.imagine_dev_mode_check.setText(
             self._tr("Запускать Imagine в дев-режиме (редактирование каталога стилей)")
         )

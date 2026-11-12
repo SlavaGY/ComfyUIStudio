@@ -115,6 +115,7 @@ def port_conflict(cfg, port):
         "Imagine": (cfg.get("imagine") or {}).get("port", 7860),
         "Remote": (cfg.get("remote") or {}).get("port", 7861),
         "Imagine Pony": (cfg.get("imagine_pony") or {}).get("port", 7862),
+        "IEditor": (cfg.get("ieditor") or {}).get("port", 7865),
     }
     for name, value in taken.items():
         try:

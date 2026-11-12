@@ -39,6 +39,7 @@ def test_ports_enabled_regardless_of_selected_mode(make):
     page = make(interface="comfyui", imagine_pony={"port": 7890})
     assert page.imagine_port_spin.isEnabled() and page.pony_port_spin.isEnabled()
     out = page.collect()
+    assert out["ieditor"] == {"port": 7865}
     assert out["imagine_pony"] == {"port": 7890}
     assert out["imagine"]["port"] == page.imagine_port_spin.value()
 
@@ -46,7 +47,9 @@ def test_ports_enabled_regardless_of_selected_mode(make):
 def test_ports_locked_while_comfyui_running(make):
     page = make()
     page.set_editable(False)
+    assert not page.ieditor_port_spin.isEnabled()
     assert not page.pony_port_spin.isEnabled() and not page.imagine_port_spin.isEnabled()
     assert not page.imagine_dev_mode_check.isEnabled()
     page.set_editable(True)
+    assert page.ieditor_port_spin.isEnabled()
     assert page.pony_port_spin.isEnabled() and page.imagine_dev_mode_check.isEnabled()

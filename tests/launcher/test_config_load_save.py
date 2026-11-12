@@ -35,7 +35,7 @@ def test_default_config_schema_is_stable():
         "root_path", "script", "port", "disable_auto_launch", "sync_comfy_theme",
         "interface", "imagine", "imagine_pony", "env_vars", "log_level", "remote",
         "rvc",  # Ultimate RVC (этап RVC-1), см. docs/history/RVC_APPLY.md
-        "lm_studio",
+        "lm_studio", "ieditor",
     }
     assert d["port"] == 8188
     assert d["interface"] == "comfyui"

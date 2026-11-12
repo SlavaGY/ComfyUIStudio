@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IEditor — ComfyUI Studio</title>
+  <link rel="stylesheet" href="studio-style/css/style.css">
+  <link rel="stylesheet" href="studio-style/css/themes.css">
+  <link rel="stylesheet" href="css/editor.css">
+  <script defer src="common/js/background_poll.js"></script>
+  <script defer src="common/js/i18n_engine.js"></script>
+  <script defer src="js/i18n.js"></script>
+  <script defer src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__brand"><svg class="editor-mark" width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="m5 17 5-5 4 4 3-3 4 4M15 7h3m-1.5-1.5v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>IEditor</span></div>
+    <div class="topbar__status"><span class="status-dot" id="statusDot"></span><span id="statusText" data-i18n="Проверка ComfyUI…">Проверка ComfyUI…</span></div>
+    <button type="button" class="btn-ghost" id="freeMemory" data-i18n="Выгрузить модели">Выгрузить модели</button>
+  </header>
+  <main class="editor-layout">
+    <section class="editor-controls" aria-labelledby="editorTitle">
+      <div class="editor-heading"><h1 id="editorTitle" data-i18n="Редактор изображений">Редактор изображений</h1><p data-i18n="Прикрепите исходник и опишите изменения. Второе изображение можно использовать как референс.">Прикрепите исходник и опишите изменения. Второе изображение можно использовать как референс.</p></div>
+      <div class="notice" id="modelWarning" role="status" hidden></div>
+      <form id="editForm">
+        <div class="card source-card">
+          <div class="section-head"><h2 data-i18n="Изображения">Изображения</h2><span class="hint" id="imageCount">0 / 2</span></div>
+          <div class="upload-grid" id="uploads">
+            <div class="upload-slot" data-slot="0">
+              <div class="slot-head"><label for="file0" data-i18n="Исходное изображение">Исходное изображение</label><button type="button" class="remove-image" id="remove0" aria-label="Убрать изображение" data-i18n-title="Убрать изображение" title="Убрать изображение" hidden>×</button></div>
+              <label class="dropzone" id="drop0" tabindex="0" role="button" for="file0" aria-label="Загрузить исходное изображение">
+                <img id="preview0" alt="" hidden>
+                <span class="dropzone-empty" id="empty0"><span class="upload-plus" aria-hidden="true">+</span><span data-i18n="Выбрать изображение">Выбрать изображение</span><span class="hint" data-i18n="или перетащить сюда">или перетащить сюда</span></span>
+              </label>
+              <input class="file-input" type="file" id="file0" accept="image/png,image/jpeg,image/webp,image/gif">
+              <span class="file-caption" id="caption0" data-i18n="PNG, JPEG, WebP, GIF · до 32 МБ">PNG, JPEG, WebP, GIF · до 32 МБ</span>
+            </div>
+            <div class="upload-slot" data-slot="1">
+              <div class="slot-head"><label for="file1" data-i18n="Второе изображение">Второе изображение</label><button type="button" class="remove-image" id="remove1" aria-label="Убрать изображение" data-i18n-title="Убрать изображение" title="Убрать изображение" hidden>×</button></div>
+              <label class="dropzone" id="drop1" tabindex="0" role="button" for="file1" aria-label="Загрузить второе изображение">
+                <img id="preview1" alt="" hidden>
+                <span class="dropzone-empty" id="empty1"><span class="upload-plus" aria-hidden="true">+</span><span data-i18n="Добавить референс">Добавить референс</span><span class="hint" data-i18n="необязательно">необязательно</span></span>
+              </label>
+              <input class="file-input" type="file" id="file1" accept="image/png,image/jpeg,image/webp,image/gif">
+              <span class="file-caption" id="caption1" data-i18n="Одежда, стиль, предмет или другой образец">Одежда, стиль, предмет или другой образец</span>
+            </div>
+          </div>
+        </div>
+        <div class="card prompt-card">
+          <div class="section-head"><label for="prompt" data-i18n="Что изменить">Что изменить</label><span class="hint">Ctrl + Enter</span></div>
+          <textarea id="prompt" rows="6" maxlength="20000" placeholder="Например: измени освещение на тёплое вечернее, сохрани персонажа и стиль рисунка." data-i18n-placeholder="Например: измени освещение на тёплое вечернее, сохрани персонажа и стиль рисунка."></textarea>
+          <p class="field-hint" data-i18n="Для двух изображений укажите, что взять с первого и что — со второго.">Для двух изображений укажите, что взять с первого и что — со второго.</p>
+        </div>
+        <details class="card advanced">
+          <summary data-i18n="Параметры обработки">Параметры обработки</summary>
+          <div class="field-grid editor-fields">
+            <div class="field"><label for="steps" data-i18n="Шаги">Шаги</label><input id="steps" type="number" min="1" max="150" value="4" required></div>
+            <div class="field"><label for="megapixels" data-i18n="Разрешение">Разрешение</label><select id="megapixels"><option value="0.5">0.5 MP</option><option value="0.75">0.75 MP</option><option value="1" selected>1 MP</option><option value="1.5">1.5 MP</option><option value="2">2 MP</option></select></div>
+            <div class="field"><label for="sampler" data-i18n="Сэмплер">Сэмплер</label><select id="sampler"><option>euler_ancestral</option></select></div>
+            <div class="field"><label for="cfg">CFG</label><input id="cfg" type="number" min="0" max="30" step="0.1" value="1" required></div>
+            <div class="field seed-field"><label for="seed" data-i18n="Сид">Сид</label><input id="seed" type="number" min="0" max="9007199254740991" step="1" value="0" required><label class="checkbox-label"><input id="randomSeed" type="checkbox" checked><span data-i18n="Случайный при каждом запуске">Случайный при каждом запуске</span></label></div>
+          </div>
+          <dl class="model-info"><dt data-i18n="Модель">Модель</dt><dd id="modelName">—</dd><dt data-i18n="Кодировщик текста">Кодировщик текста</dt><dd id="encoderName">—</dd></dl>
+        </details>
+        <div class="form-error" id="formError" role="alert" hidden></div>
+        <button type="submit" class="btn-primary edit-button" id="generate" disabled data-i18n="Обработать изображение">Обработать изображение</button>
+        <p class="field-hint output-hint" data-i18n="Пропорции результата определяются первым изображением.">Пропорции результата определяются первым изображением.</p>
+      </form>
+    </section>
+    <section class="results-panel" aria-labelledby="resultsTitle">
+      <div class="section-head results-heading"><h2 id="resultsTitle" data-i18n="Результат">Результат</h2><span class="hint" id="jobInfo"></span></div>
+      <div class="result-stage" id="resultStage" aria-live="polite">
+        <div class="result-empty" id="resultEmpty"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor"/><circle cx="8" cy="8" r="1.5" stroke="currentColor"/><path d="m3 17 6-6 5 5 3-3 4 4" stroke="currentColor"/></svg><p data-i18n="Здесь появится обработанное изображение">Здесь появится обработанное изображение</p><span class="hint" data-i18n="Добавьте исходник и напишите промпт слева">Добавьте исходник и напишите промпт слева</span></div>
+        <button type="button" class="result-image-button" id="resultImageButton" aria-label="Открыть изображение" hidden><img id="resultImage" alt="Результат обработки"></button>
+        <div class="job-progress" id="jobProgress" hidden><span class="progress-spinner" aria-hidden="true"></span><strong id="progressText"></strong><span class="hint" id="elapsed"></span><button type="button" class="btn-ghost" id="cancelJob" data-i18n="Остановить">Остановить</button></div>
+        <div class="result-error" id="resultError" role="alert" hidden></div>
+      </div>
+      <div class="result-actions" id="resultActions" hidden><button type="button" class="btn-ghost" id="reuseResult" data-i18n="Использовать как исходник">Использовать как исходник</button><a class="btn-primary" id="downloadResult" download data-i18n="Скачать">Скачать</a><span class="hint" id="resultSeed"></span></div>
+      <div class="history-head"><h3 data-i18n="Недавние обработки">Недавние обработки</h3><span class="hint" id="historyCount"></span></div>
+      <div class="job-history" id="history"></div>
+    </section>
+  </main>
+  <dialog id="imageDialog"><button type="button" class="btn-ghost dialog-close" id="closeDialog" data-i18n="Закрыть">Закрыть</button><img id="largeImage" alt="Результат обработки"></dialog>
+  <div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

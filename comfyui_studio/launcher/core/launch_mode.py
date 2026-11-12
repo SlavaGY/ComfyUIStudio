@@ -8,6 +8,7 @@
   comfyui       -- ComfyUI, открывается своим веб-интерфейсом
   imagine       -- Imagine поверх ComfyUI
   imagine_pony  -- Imagine Pony поверх ComfyUI
+  ieditor       -- редактор изображений через проверенный API-граф Klein 9B
   rvc           -- Ultimate RVC: собственное приложение Studio (comfyui_studio/rvc/)
   rvc_gradio    -- Ultimate RVC: оригинальный Gradio-интерфейс (там есть то, чего
                    в приложении Studio пока нет, например обучение моделей)
@@ -24,6 +25,7 @@ from __future__ import annotations
 COMFYUI = "comfyui"
 IMAGINE = "imagine"
 IMAGINE_PONY = "imagine_pony"
+IEDITOR = "ieditor"
 RVC = "rvc"
 RVC_GRADIO = "rvc_gradio"
 LM_STUDIO = "lm_studio"
@@ -34,6 +36,7 @@ MODES = (
     (COMFYUI, "ComfyUI"),
     (IMAGINE, "Imagine"),
     (IMAGINE_PONY, "Imagine Pony"),
+    (IEDITOR, "IEditor"),
     (RVC, "Ultimate RVC"),
     (RVC_GRADIO, "Ultimate RVC (оригинал)"),
     (LM_STUDIO_APP, "LM Studio"),
@@ -56,7 +59,7 @@ def is_rvc_mode(mode):
 
 def is_comfy_family(mode):
     """Режимы, которым нужен запущенный ComfyUI (весь прежний путь запуска)."""
-    return mode in (COMFYUI, IMAGINE, IMAGINE_PONY)
+    return mode in (COMFYUI, IMAGINE, IMAGINE_PONY, IEDITOR)
 
 
 def is_lm_studio_mode(mode):

@@ -70,9 +70,11 @@ def env(monkeypatch):
     e = Env()
     e.comfy, e.imagine = _fake_class("FakeComfy"), _fake_class("FakeImagine")
     e.pony = _fake_class("FakeImaginePony")
+    e.ieditor = _fake_class("FakeIEditor")
     monkeypatch.setattr(lc, "ComfyProcess", e.comfy)
     monkeypatch.setattr(lc, "ImagineProcess", e.imagine)
     monkeypatch.setattr(lc, "ImaginePonyProcess", e.pony)
+    monkeypatch.setattr(lc, "IEditorProcess", e.ieditor)
     monkeypatch.setattr(lc, "prepare_launch_script", lambda root, script, extra: "launch.bat")
     monkeypatch.setattr(lc, "build_extra_launch_args", lambda cfg: [])
     e.sync = MagicMock()
@@ -101,6 +103,41 @@ def env(monkeypatch):
 
 
 # -- запуск ComfyUI ------------------------------------------------------------
+
+
+def test_ieditor_launch_and_ready_uses_configured_port_and_shared_lifecycle(env):
+    env.cfg.update(interface="ieditor", ieditor={"port": 7895})
+    env.ctl.on_server_ready()
+    process = env.ieditor.instances[0]
+    assert process.started and env.ctl.imagine_process is process
+    assert process.kwargs == {"host": "127.0.0.1", "port": 7895, "comfy_host": "127.0.0.1", "comfy_port": 8188}
+    env.iw.start.assert_called_once_with(7895, process, "IEditor")
+    env.iw.ready.emit()
+    assert env.signals == [("imagine_ready", 7895)]
+    env.ctl.stop_processes()
+    assert process.stopped
+
+
+def test_ieditor_start_failure_rolls_back_comfy(env):
+    env.cfg["interface"] = "ieditor"
+    env.ctl.comfy_process = env.comfy()
+    def fail(self):
+        raise RuntimeError("missing dependency")
+    env.ieditor.start = fail
+    env.ctl.on_server_ready()
+    assert env.ctl.comfy_process.stopped and env.ctl.imagine_process.stopped
+    assert "IEditor" in env.view.set_status.call_args.args[0]
+
+
+def test_ieditor_port_conflict_is_reported_before_comfyui_is_started(env, monkeypatch):
+    env.cfg["interface"] = "ieditor"
+    def port_in_use(host, port):
+        raise RuntimeError(f"Порт IEditor {port} уже занят")
+    monkeypatch.setattr(lc, "check_ieditor_port", port_in_use)
+    env.ctl.launch(env.cfg)
+    assert env.comfy.instances == []
+    env.view.set_status.assert_called_once_with("Порт IEditor 7865 уже занят")
+    env.cw.start.assert_not_called()
 
 
 def test_launch_creates_starts_comfy_and_arms_watcher(env):

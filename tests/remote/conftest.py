@@ -25,6 +25,9 @@ import pytest
 @pytest.fixture(autouse=True)
 def sent_pushes(monkeypatch, tmp_path):
     from comfyui_studio.remote import device_store, fcm
+    from comfyui_studio.remote.state import runtime
+
+    monkeypatch.setattr(runtime, "ieditor_port", None)
 
     sent = []
     monkeypatch.setattr(fcm, "send_generation_push", lambda event: sent.append(event))

@@ -93,6 +93,11 @@ def dispatch_subprocess_mode():
         lm_studio_main(sys.argv[2:])
         sys.exit(0)
 
+    if len(sys.argv) > 1 and sys.argv[1] == "--ieditor-subprocess":
+        from comfyui_studio.ieditor.__main__ import main as ieditor_main
+        ieditor_main(sys.argv[2:])
+        sys.exit(0)
+
     # Диспетчеризация в режим подпроцесса -- для Imagine (см.
     # comfyui_studio/imagine/, launcher/core/imagine_process.py): из
     # исходников лаунчер спавнит `python -m comfyui_studio.imagine`

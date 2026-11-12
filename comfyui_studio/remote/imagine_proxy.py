@@ -224,3 +224,8 @@ async def proxy_imagine_pony(path: str, request: Request):
 @router.api_route("/apps/lm_studio/{path:path}", methods=_PROXY_METHODS)
 async def proxy_lm_studio(path: str, request: Request):
     return await _proxy_app("lm_studio", "LM Studio", runtime.lm_studio_port, path, request)
+
+
+@router.api_route("/apps/ieditor/{path:path}", methods=_PROXY_METHODS)
+async def proxy_ieditor(path: str, request: Request):
+    return await _proxy_app("ieditor", "IEditor", runtime.ieditor_port, path, request)

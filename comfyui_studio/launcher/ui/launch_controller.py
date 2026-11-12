@@ -28,6 +28,7 @@ from PySide6.QtCore import QObject, Signal
 
 from ..core.comfy_process import ComfyProcess
 from ..core.config import build_extra_launch_args, prepare_launch_script
+from ..core.ieditor_process import IEditorProcess, check_ieditor_port
 from ..core.imagine_pony_process import ImaginePonyProcess
 from ..core.imagine_process import ImagineProcess
 from ..core.logging_setup import log
@@ -94,6 +95,12 @@ class LaunchController(QObject):
 
     def launch(self, cfg):
         self.cfg = cfg
+        if cfg.get("interface") == "ieditor":
+            try:
+                check_ieditor_port("127.0.0.1", cfg.get("ieditor", {}).get("port", 7865))
+            except RuntimeError as exc:
+                self._view.set_status(str(exc))
+                return
         try:
             launch_script = prepare_launch_script(
                 cfg["root_path"], cfg["script"], build_extra_launch_args(cfg)
@@ -130,6 +137,9 @@ class LaunchController(QObject):
             return
         if interface == "imagine_pony":
             self._start_imagine_pony()
+            return
+        if interface == "ieditor":
+            self._start_ieditor()
             return
 
         self.comfy_ready.emit()
@@ -190,9 +200,25 @@ class LaunchController(QObject):
             return
         self.imagine_launch_watcher.start(pony_port, self.imagine_process, "Imagine Pony")
 
+    def _start_ieditor(self):
+        port = self.cfg.get("ieditor", {}).get("port", 7865)
+        self._view.show_launch_progress(self._view._tr("Запуск IEditor, ожидание сервера..."))
+        self.imagine_process = IEditorProcess(
+            host="127.0.0.1", port=port, comfy_host="127.0.0.1", comfy_port=self.cfg["port"],
+        )
+        try:
+            self.imagine_process.start()
+        except RuntimeError as exc:
+            self.on_imagine_failed(self._view._tr("Не удалось запустить IEditor: {}").format(exc))
+            return
+        self.imagine_launch_watcher.start(port, self.imagine_process, "IEditor")
+
     def on_imagine_ready(self):
         log.info("Сервер Imagine поднялся, открываю встроенный браузер")
         self._view.hide_launch_progress()
+        if self.cfg.get("interface") == "ieditor":
+            self.imagine_ready.emit(self.cfg.get("ieditor", {}).get("port", 7865))
+            return
         if self.cfg.get("interface") == "imagine_pony":
             self.imagine_ready.emit(self.cfg.get("imagine_pony", {}).get("port", 7862))
             return

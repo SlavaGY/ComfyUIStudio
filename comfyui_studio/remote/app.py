@@ -30,7 +30,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 
 from ..launcher.core.imagine_process import is_imagine_available
-from . import app_launcher, lm_studio_launcher, pony_launcher
+from . import app_launcher, ieditor_launcher, lm_studio_launcher, pony_launcher
 from . import mdns as mdns_module
 from .apps_registry import RemoteApp, register_app
 from .generation_watcher import GenerationWatcher
@@ -82,6 +82,14 @@ def _register_imagine_pony() -> None:
 
 def _register_known_apps() -> None:
     _register_imagine_pony()
+    if runtime.ieditor_port is not None:
+        register_app(RemoteApp(
+            id="ieditor", name="IEditor", path="/apps/ieditor/",
+            proxy_target=lambda: (f"http://127.0.0.1:{runtime.ieditor_port}"
+                                  if ieditor_launcher.status() == "running" else None),
+            status_fn=ieditor_launcher.status, start_fn=ieditor_launcher.start,
+            error_fn=ieditor_launcher.last_error, stop_fn=ieditor_launcher.stop,
+        ))
     if runtime.lm_studio_port is not None:
         register_app(RemoteApp(
             id="lm_studio", name="LM Studio", path="/apps/lm_studio/",

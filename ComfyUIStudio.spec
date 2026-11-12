@@ -42,6 +42,8 @@ datas = [
     # Imagine Pony (comfyui_studio/imagine_pony/) -- то же: статика и workflow_template.json.
     ('comfyui_studio/imagine_pony/static', 'comfyui_studio/imagine_pony/static'),
     ('comfyui_studio/imagine_pony/assets', 'comfyui_studio/imagine_pony/assets'),
+    ('comfyui_studio/ieditor/static', 'comfyui_studio/ieditor/static'),
+    ('comfyui_studio/ieditor/assets', 'comfyui_studio/ieditor/assets'),
     # Общая статика Imagine и Imagine Pony (js/i18n_engine.js, раздаётся по /common).
     ('comfyui_studio/web_common/static', 'comfyui_studio/web_common/static'),
     # Ultimate RVC (comfyui_studio/rvc/): приложение запускается питоном из venv
@@ -79,6 +81,8 @@ hiddenimports = [
     # Imagine Pony -- та же двухуровневая лень (IMAGINE_PONY_CLI_FLAG в main.py).
     "comfyui_studio.imagine_pony.__main__",
     "comfyui_studio.imagine_pony.backend.main",
+    "comfyui_studio.ieditor.__main__",
+    "comfyui_studio.ieditor.backend.main",
     # Общий слой веб-приложений (middleware, /api/ui-prefs, раздача /common).
     # Backend.main обоих приложений его и так импортирует, но явная строка
     # страхует от потери при будущей перестройке импортов.

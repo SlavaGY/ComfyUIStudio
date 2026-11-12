@@ -167,6 +167,9 @@ class GenerationWatcher:
         "unknown" -> None). Контракт GET /api/generate/{id}/status у них
         одинаков, различаются порт и префикс проксирования."""
         self._resolved_app_path = None
+        if self._ieditor_owns_job(prompt_id):
+            self._resolved_app_path = "/apps/ieditor/"
+            return self._fetch_app_status(prompt_id, runtime.ieditor_port, self._resolved_app_path)
         for port, prefix in (
             (runtime.imagine_port, "/apps/imagine/"),
             (runtime.imagine_pony_port, "/apps/imagine_pony/"),
@@ -176,6 +179,25 @@ class GenerationWatcher:
                 self._resolved_app_path = prefix
                 return result
         return None
+
+    def _ieditor_owns_job(self, prompt_id: str) -> bool:
+        """Also works with an IEditor already open before Remote was updated.
+
+        Older image apps can answer /status for any ComfyUI history entry.
+        Resolve IEditor through its job list first so the phone receives the
+        right app path even while Imagine is running on the same server.
+        """
+        if runtime.ieditor_port is None:
+            return False
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{runtime.ieditor_port}/api/jobs",
+                timeout=IMAGINE_STATUS_TIMEOUT_SECONDS,
+            ) as response:
+                data = json.loads(response.read())
+            return any(job.get("prompt_id") == prompt_id for job in data.get("jobs", []))
+        except (urllib.error.URLError, ValueError, OSError):
+            return False
 
     def _fetch_app_status(self, prompt_id: str, port, prefix: str):
         """Синхронный (вызывается через asyncio.to_thread) поход в
@@ -218,6 +240,8 @@ class GenerationWatcher:
                 if "url" in img
             ]
             return "done", urls
+        if state == "cancelled":
+            return "error", "Генерация остановлена."
         if state == "error":
             return "error", "Генерация завершилась с ошибкой -- подробности в логе ComfyUI."
         # "running"/"pending"/"unknown" здесь не ожидаются (prompt_id

@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 PACKAGE = Path(__file__).resolve().parent.parent.parent / "comfyui_studio"
-APPS = ["imagine", "imagine_pony", "rvc"]
+APPS = ["imagine", "imagine_pony", "rvc", "ieditor"]
 PLACEHOLDER = re.compile(r"\{[A-Za-z_]+\}")
 
 

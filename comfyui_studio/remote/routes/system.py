@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ...launcher.core.comfy_api import ComfyAPIClient
 from ...launcher.core.imagine_process import is_imagine_available
-from .. import app_launcher, comfy_launcher, lm_studio_launcher, pony_launcher
+from .. import app_launcher, comfy_launcher, ieditor_launcher, lm_studio_launcher, pony_launcher
 from ..auth import require_device
 from ..gpu_stats import get_gpu_stats
 from ..models import RemoteStatus
@@ -83,6 +83,7 @@ def stop_server(_device_id: str = Depends(require_device)) -> dict:
         lm_studio_launcher.stop()
     except RuntimeError as error:
         lm_error = str(error)
+    ieditor_launcher.stop()
     pony_launcher.stop_pony()
     app_launcher.stop_imagine()
     comfy_launcher.stop_comfyui()
